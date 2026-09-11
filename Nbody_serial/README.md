@@ -3,7 +3,8 @@
 This directory contains three stand-alone programs for the direct gravitational N-body exercise:
 
 - `nbody_direct_serial.c`: serial softened direct solver with selectable KDK
-  or DKD leapfrog integration step and a relative energy-drift verifier.
+  or DKD leapfrog integration.
+  step and a relative energy-drift verifier.
 - `gen_plummer_sphere.c`: Plummer-sphere initial-condition generator.
 - `gen_uniform_ball_maxwell.c`: uniform-ball generator with isotropic Maxwellian
   velocities.
@@ -83,6 +84,13 @@ Generate a uniform ball with Maxwellian velocities. If `--sigma` is negative or 
 ```sh
 ./gen_uniform_ball_maxwell --n 1000 --seed 456 --radius 1.0 --mass 1.0 --output ball_1000.bin
 ./nbody_direct_serial --input ball_1000.bin --nsteps 100 --dt 1e-4 --eps 0.05 --mass 1.0 --energy-every 10
+```
+
+Add `--timing` to print section timings for I/O, force evaluations,
+integration, energy diagnostics, and output writing:
+
+```sh
+./nbody_direct_serial --input plummer_1000.bin --nsteps 100 --dt 1e-4 --eps 0.05 --energy-every 10 --timing
 ```
 
 Run both smoke tests:

@@ -29,6 +29,8 @@
  *
  */
 
+#define _POSIX_C_SOURCE 200809L
+
 #include "nbody_common.h"
 
 #include <errno.h>
@@ -38,6 +40,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /* ========================================================================================
 
@@ -69,6 +72,20 @@ typedef enum integrator_e
   INTEGRATOR_DKD
 } integrator_t;
 
+typedef struct timing_s
+{
+  double total_seconds;
+  double read_seconds;
+  double initial_energy_seconds;
+  double initial_acceleration_seconds;
+  double integration_seconds;
+  double force_seconds;
+  double drift_seconds;
+  double kick_seconds;
+  double energy_seconds;
+  double write_seconds;
+} timing_t;
+
 
 
 
@@ -88,6 +105,44 @@ static void die (const char *format, ...)
   va_end (args);
   fputc ('\n', stderr);
   exit (EXIT_FAILURE);
+}
+
+static double wall_seconds (void)
+{
+  struct timespec now;
+
+  if (clock_gettime (CLOCK_MONOTONIC, &now) != 0)
+    die ("clock_gettime(CLOCK_MONOTONIC) failed");
+
+  return (double) now.tv_sec + (double) now.tv_nsec * 1.0e-9;
+}
+
+static void timing_init (timing_t *timing)
+{
+  timing->total_seconds = 0.0;
+  timing->read_seconds = 0.0;
+  timing->initial_energy_seconds = 0.0;
+  timing->initial_acceleration_seconds = 0.0;
+  timing->integration_seconds = 0.0;
+  timing->force_seconds = 0.0;
+  timing->drift_seconds = 0.0;
+  timing->kick_seconds = 0.0;
+  timing->energy_seconds = 0.0;
+  timing->write_seconds = 0.0;
+}
+
+static void print_timing (const timing_t *timing)
+{
+  printf ("# timing total_seconds %.9f\n", timing->total_seconds);
+  printf ("# timing read_seconds %.9f\n", timing->read_seconds);
+  printf ("# timing initial_energy_seconds %.9f\n", timing->initial_energy_seconds);
+  printf ("# timing initial_acceleration_seconds %.9f\n", timing->initial_acceleration_seconds);
+  printf ("# timing integration_seconds %.9f\n", timing->integration_seconds);
+  printf ("# timing force_seconds %.9f\n", timing->force_seconds);
+  printf ("# timing drift_seconds %.9f\n", timing->drift_seconds);
+  printf ("# timing kick_seconds %.9f\n", timing->kick_seconds);
+  printf ("# timing energy_seconds %.9f\n", timing->energy_seconds);
+  printf ("# timing write_seconds %.9f\n", timing->write_seconds);
 }
 
 /*
@@ -618,15 +673,37 @@ static void kick (particles_t *p,       // particle velocities are modified in p
 static void leapfrog_kdk_step (particles_t *p,        // complete particle state, modified in place
                                dtype        g,        // gravitational constant
                                dtype        eps,      // softening length
-                               dtype        dt        // full time step
+                               dtype        dt,       // full time step
+                               timing_t    *timing    // optional timers, or NULL
 			       )
 {
+  double t0;
+
+  if (timing != NULL)
+    t0 = wall_seconds ();
   kick (p, (dtype) 0.5 * dt);
+  if (timing != NULL)
+    timing->kick_seconds += wall_seconds () - t0;
+
+  if (timing != NULL)
+    t0 = wall_seconds ();
   drift (p, dt);
+  if (timing != NULL)
+    timing->drift_seconds += wall_seconds () - t0;
+
+  if (timing != NULL)
+    t0 = wall_seconds ();
   compute_accelerations_naive (p->n, g, p->mass, eps,
                                p->x, p->y, p->z,
                                p->ax, p->ay, p->az);
+  if (timing != NULL)
+    timing->force_seconds += wall_seconds () - t0;
+
+  if (timing != NULL)
+    t0 = wall_seconds ();
   kick (p, (dtype) 0.5 * dt);
+  if (timing != NULL)
+    timing->kick_seconds += wall_seconds () - t0;
 }
 
 /*
@@ -643,15 +720,37 @@ static void leapfrog_kdk_step (particles_t *p,        // complete particle state
 static void leapfrog_dkd_step (particles_t *p,        // complete particle state, modified in place
                                dtype        g,        // gravitational constant
                                dtype        eps,      // softening length
-                               dtype        dt        // full time step
+                               dtype        dt,       // full time step
+                               timing_t    *timing    // optional timers, or NULL
 			       )
 {
+  double t0;
+
+  if (timing != NULL)
+    t0 = wall_seconds ();
   drift (p, (dtype) 0.5 * dt);
+  if (timing != NULL)
+    timing->drift_seconds += wall_seconds () - t0;
+
+  if (timing != NULL)
+    t0 = wall_seconds ();
   compute_accelerations_naive (p->n, g, p->mass, eps,
                                p->x, p->y, p->z,
                                p->ax, p->ay, p->az);
+  if (timing != NULL)
+    timing->force_seconds += wall_seconds () - t0;
+
+  if (timing != NULL)
+    t0 = wall_seconds ();
   kick (p, dt);
+  if (timing != NULL)
+    timing->kick_seconds += wall_seconds () - t0;
+
+  if (timing != NULL)
+    t0 = wall_seconds ();
   drift (p, (dtype) 0.5 * dt);
+  if (timing != NULL)
+    timing->drift_seconds += wall_seconds () - t0;
 }
 
 /*
@@ -770,6 +869,7 @@ static void print_usage (const char *program    // argv[0]
            "  --integrator NAME         leapfrog variant: kdk or dkd (default: kdk)\n"
            "  --energy-every N          diagnostic period in steps (default: 1)\n"
            "  --energy-tol X            warning tolerance for max relative drift (default: 1e-3)\n"
+           "  --timing                  print section timing summary\n"
            "  --quiet                   only print final summary\n"
            "  --help                    show this help message\n",
            program, NBODY_BINARY_VERSION_TEXT);
@@ -791,12 +891,18 @@ int main (int argc, char **argv)
   dtype        mass          = (dtype) 1.0;
   dtype        energy_tol    = (dtype) 1.0e-3;
   bool         quiet         = false;
+  bool timing_enabled = false;
   integrator_t integrator = INTEGRATOR_KDK;
   particles_t  particles;
+  timing_t     timing;
   dtype        kinetic0;
   dtype        potential0;
   dtype        energy0;
+  double       total_start;
+  double       t0;
 
+  timing_init (&timing);
+  total_start = wall_seconds ();
 
   // ·························································
   // allocate particles container to an empty state
@@ -829,6 +935,8 @@ int main (int argc, char **argv)
         integrator = parse_integrator (value);
       else if ((value = option_value (&argi, argc, argv, "--energy-tol")) != NULL)
         energy_tol = parse_dtype (value, "--energy-tol");
+      else if (strcmp (argv[argi], "--timing") == 0)
+        timing_enabled = true;
       else if (strcmp (argv[argi], "--quiet") == 0)
         quiet = true;
       else if (strcmp (argv[argi], "--help") == 0)
@@ -864,11 +972,16 @@ int main (int argc, char **argv)
 
   // ························································
   // read particles from input file
+  t0 = wall_seconds ();
   particles_read_binary (input_path, mass, &particles);
+  timing.read_seconds += wall_seconds () - t0;
 
   // ························································
   // get energy baseline
+  t0 = wall_seconds ();
   energy0 = total_energy (&particles, g, eps, &kinetic0, &potential0);
+  timing.initial_energy_seconds += wall_seconds () - t0;
+  timing.energy_seconds += timing.initial_energy_seconds;
 
   if (!quiet)
     {
@@ -892,16 +1005,22 @@ int main (int argc, char **argv)
   double max_rel_drift = 0.0;
 
   if ((nsteps > 0u) && (integrator == INTEGRATOR_KDK))
-    compute_accelerations_naive (particles.n, g, particles.mass, eps,
-                                 particles.x, particles.y, particles.z,
-                                 particles.ax, particles.ay, particles.az);
+    {
+      t0 = wall_seconds ();
+      compute_accelerations_naive (particles.n, g, particles.mass, eps,
+                                   particles.x, particles.y, particles.z,
+                                   particles.ax, particles.ay, particles.az);
+      timing.initial_acceleration_seconds += wall_seconds () - t0;
+      timing.force_seconds += timing.initial_acceleration_seconds;
+    }
   
+  t0 = wall_seconds ();
   for (size_t step = 1u; step <= nsteps; ++step)
     {
       if (integrator == INTEGRATOR_KDK)
-        leapfrog_kdk_step (&particles, g, eps, dt);
+        leapfrog_kdk_step (&particles, g, eps, dt, timing_enabled ? &timing : NULL);
       else
-        leapfrog_dkd_step (&particles, g, eps, dt);
+        leapfrog_dkd_step (&particles, g, eps, dt, timing_enabled ? &timing : NULL);
 
       // once in a while, get diagnostics
       //
@@ -909,9 +1028,13 @@ int main (int argc, char **argv)
         {
           dtype         kinetic;
           dtype         potential;
+          const double  energy_t0 = wall_seconds ();
           const dtype   energy = total_energy (&particles, g, eps, &kinetic, &potential);
-          const double  denom  = fmax (fabs ((double) energy0), (double) DTYPE_MIN_NORMAL);
-          const double  rel    = fabs ((double) (energy - energy0)) / denom;
+          const double  energy_dt = wall_seconds () - energy_t0;
+          const double  denom = fmax (fabs ((double) energy0), (double) DTYPE_MIN_NORMAL);
+          const double  rel = fabs ((double) (energy - energy0)) / denom;
+
+          timing.energy_seconds += energy_dt;
 
           if (rel > max_rel_drift)
             max_rel_drift = rel;
@@ -921,15 +1044,22 @@ int main (int argc, char **argv)
                     (double) potential, (double) energy, rel);
         }
     }
+  timing.integration_seconds += wall_seconds () - t0;
 
   // ························································
   // write final file
 
   if (output_path != NULL)
-    particles_write_binary (output_path, &particles);
+    {
+      t0 = wall_seconds ();
+      particles_write_binary (output_path, &particles);
+      timing.write_seconds += wall_seconds () - t0;
+    }
 
   // ························································
   // say good-bye
+
+  timing.total_seconds = wall_seconds () - total_start;
 
   printf ("# final: N=%zu steps=%zu arithmetic_dtype=%s integrator=%s max_relative_energy_drift=%.17g tolerance=%.17g status=%s\n",
           particles.n, nsteps, DTYPE_NAME, integrator_name (integrator), max_rel_drift, (double) energy_tol,
@@ -940,6 +1070,9 @@ int main (int argc, char **argv)
              "warning: relative energy drift %.6e exceeds tolerance %.6e; "
              "try smaller --dt, larger --eps, or better initial conditions\n",
              max_rel_drift, (double) energy_tol);
+
+  if (timing_enabled)
+    print_timing (&timing);
 
   
   // ························································
