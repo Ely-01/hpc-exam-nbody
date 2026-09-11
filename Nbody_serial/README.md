@@ -29,6 +29,14 @@ make clean
 make PRECISION=float
 ```
 
+OpenMP force-kernel build:
+
+```sh
+make clean
+make OPENMP=1
+OMP_NUM_THREADS=4 ./nbody_direct_serial --input plummer_1000.bin --nsteps 100 --dt 1e-4 --eps 0.05 --energy-every 10 --timing
+```
+
 The equivalent manual switches are:
 
 ```sh

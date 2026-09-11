@@ -42,6 +42,10 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 /* ========================================================================================
 
    : ------------------------------------------------------ :
@@ -117,6 +121,9 @@ static double wall_seconds (void)
   return (double) now.tv_sec + (double) now.tv_nsec * 1.0e-9;
 }
 
+static int openmp_max_threads (void);
+static const char *openmp_status (void);
+
 static void timing_init (timing_t *timing)
 {
   timing->total_seconds = 0.0;
@@ -133,6 +140,8 @@ static void timing_init (timing_t *timing)
 
 static void print_timing (const timing_t *timing)
 {
+  printf ("# timing openmp %s max_threads %d\n",
+          openmp_status (), openmp_max_threads ());
   printf ("# timing total_seconds %.9f\n", timing->total_seconds);
   printf ("# timing read_seconds %.9f\n", timing->read_seconds);
   printf ("# timing initial_energy_seconds %.9f\n", timing->initial_energy_seconds);
@@ -212,6 +221,24 @@ static const char *integrator_name (integrator_t integrator)
     }
 
   return "unknown";
+}
+
+static int openmp_max_threads (void)
+{
+#ifdef _OPENMP
+  return omp_get_max_threads ();
+#else
+  return 1;
+#endif
+}
+
+static const char *openmp_status (void)
+{
+#ifdef _OPENMP
+  return "enabled";
+#else
+  return "disabled";
+#endif
 }
 
 /*
@@ -573,10 +600,11 @@ static void compute_accelerations_naive (size_t  n,          // number of partic
 					 )
 {
   const dtype  eps2 = eps * eps;
-  size_t       i;
-  size_t       j;
 
-  for (i = 0u; i < n; ++i)
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+  for (size_t i = 0u; i < n; ++i)
     {
       const dtype  xi  = x[i];
       const dtype  yi  = y[i];
@@ -585,7 +613,7 @@ static void compute_accelerations_naive (size_t  n,          // number of partic
       dtype        ayi = (dtype) 0.0;
       dtype        azi = (dtype) 0.0;
 
-      for (j = 0u; j < n; ++j)
+      for (size_t j = 0u; j < n; ++j)
         {
           if (j != i)
             {
@@ -989,6 +1017,8 @@ int main (int argc, char **argv)
               integrator_name (integrator));
       printf ("# arithmetic_dtype=%s binary_storage=float32 format=%s\n",
               DTYPE_NAME, NBODY_BINARY_VERSION_TEXT);
+      printf ("# openmp=%s max_threads=%d\n",
+              openmp_status (), openmp_max_threads ());
       printf ("# N=%zu nsteps=%zu dt=%.17g eps=%.17g G=%.17g mass=%.17g integrator=%s\n",
               particles.n, nsteps, (double) dt, (double) eps,
               (double) g, (double) mass, integrator_name (integrator));
