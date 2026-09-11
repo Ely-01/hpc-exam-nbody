@@ -63,6 +63,12 @@ typedef struct particles_s
   dtype  *az;
 } particles_t;
 
+typedef enum integrator_e
+{
+  INTEGRATOR_KDK,
+  INTEGRATOR_DKD
+} integrator_t;
+
 
 
 
@@ -127,6 +133,30 @@ static dtype parse_dtype (const char *text,     // decimal text to parse
     die ("floating-point value for %s is outside the selected dtype range: %s", name, text);
 
   return (dtype) value;
+}
+
+static integrator_t parse_integrator (const char *text)
+{
+  if (strcmp (text, "kdk") == 0)
+    return INTEGRATOR_KDK;
+  if (strcmp (text, "dkd") == 0)
+    return INTEGRATOR_DKD;
+
+  die ("invalid integrator '%s': expected kdk or dkd", text);
+  return INTEGRATOR_KDK;
+}
+
+static const char *integrator_name (integrator_t integrator)
+{
+  switch (integrator)
+    {
+    case INTEGRATOR_KDK:
+      return "kdk";
+    case INTEGRATOR_DKD:
+      return "dkd";
+    }
+
+  return "unknown";
 }
 
 /*
@@ -524,9 +554,8 @@ static void compute_accelerations_naive (size_t  n,          // number of partic
 }
 
 /*
- * Drift all particles by a time interval using the current velocities.  
- * The DKD leapfrog workflow calls it twice per step: a half-drift before the
- * force evaluation and a half-drift after the kick.
+ * Drift all particles by a time interval using the current velocities.
+ * The KDK leapfrog workflow calls it once per step, after the first half-kick.
  *
  * Again: are data qualifiers missed for optimization?
  */
@@ -552,7 +581,7 @@ static void drift (particles_t *p,       // particle positions are modified in p
 }
 
 /*
- * Kick all velocities using the current accelerations.  his is the K in DKD
+ * Kick all velocities using the current accelerations.  This is the K in KDK.
  */
 static void kick (particles_t *p,       // particle velocities are modified in place
                   dtype        dt       // full kick interval
@@ -576,6 +605,31 @@ static void kick (particles_t *p,       // particle velocities are modified in p
 }
 
 /*
+ * Compute one KDK leapfrog step:
+ *
+ *   1. kick velocities by dt/2 using a(t);
+ *   2. drift positions by dt using v(t + dt/2);
+ *   3. compute accelerations a(t + dt);
+ *   4. kick velocities by dt/2 using a(t + dt).
+ *
+ * The caller must compute the initial accelerations before the first step.
+ * This keeps positions and velocities synchronised at integer time levels.
+ */
+static void leapfrog_kdk_step (particles_t *p,        // complete particle state, modified in place
+                               dtype        g,        // gravitational constant
+                               dtype        eps,      // softening length
+                               dtype        dt        // full time step
+			       )
+{
+  kick (p, (dtype) 0.5 * dt);
+  drift (p, dt);
+  compute_accelerations_naive (p->n, g, p->mass, eps,
+                               p->x, p->y, p->z,
+                               p->ax, p->ay, p->az);
+  kick (p, (dtype) 0.5 * dt);
+}
+
+/*
  * Compute one DKD leapfrog step:
  *
  *   1. drift positions by dt/2;
@@ -583,7 +637,8 @@ static void kick (particles_t *p,       // particle velocities are modified in p
  *   3. kick velocities by dt;
  *   4. drift positions by dt/2 with the updated velocities.
  *
- * This keeps positions and velocities synchronised at integer time levels 
+ * This variant is kept as a comparison point against the KDK scheme required
+ * by the project specification.
  */
 static void leapfrog_dkd_step (particles_t *p,        // complete particle state, modified in place
                                dtype        g,        // gravitational constant
@@ -707,11 +762,12 @@ static void print_usage (const char *program    // argv[0]
            "options:\n"
            "  --input FILE              input binary particle file (%s)\n"
            "  --output FILE             optional final-state binary file\n"
-           "  --nsteps N                number of DKD steps (default: 10)\n"
+           "  --nsteps N                number of integration steps (default: 10)\n"
            "  --dt X                    time step (default: 0.001)\n"
            "  --eps X                   softening length (default: 0.01)\n"
            "  --G X                     gravitational constant (default: 1)\n"
            "  --mass X                  particle mass (default: 1)\n"
+           "  --integrator NAME         leapfrog variant: kdk or dkd (default: kdk)\n"
            "  --energy-every N          diagnostic period in steps (default: 1)\n"
            "  --energy-tol X            warning tolerance for max relative drift (default: 1e-3)\n"
            "  --quiet                   only print final summary\n"
@@ -735,6 +791,7 @@ int main (int argc, char **argv)
   dtype        mass          = (dtype) 1.0;
   dtype        energy_tol    = (dtype) 1.0e-3;
   bool         quiet         = false;
+  integrator_t integrator = INTEGRATOR_KDK;
   particles_t  particles;
   dtype        kinetic0;
   dtype        potential0;
@@ -768,6 +825,8 @@ int main (int argc, char **argv)
         g = parse_dtype (value, "--G");
       else if ((value = option_value (&argi, argc, argv, "--mass")) != NULL)
         mass = parse_dtype (value, "--mass");
+      else if ((value = option_value (&argi, argc, argv, "--integrator")) != NULL)
+        integrator = parse_integrator (value);
       else if ((value = option_value (&argi, argc, argv, "--energy-tol")) != NULL)
         energy_tol = parse_dtype (value, "--energy-tol");
       else if (strcmp (argv[argi], "--quiet") == 0)
@@ -813,12 +872,13 @@ int main (int argc, char **argv)
 
   if (!quiet)
     {
-      printf ("# serial direct N-body DKD baseline\n");
+      printf ("# serial direct N-body baseline, leapfrog=%s\n",
+              integrator_name (integrator));
       printf ("# arithmetic_dtype=%s binary_storage=float32 format=%s\n",
               DTYPE_NAME, NBODY_BINARY_VERSION_TEXT);
-      printf ("# N=%zu nsteps=%zu dt=%.17g eps=%.17g G=%.17g mass=%.17g\n",
+      printf ("# N=%zu nsteps=%zu dt=%.17g eps=%.17g G=%.17g mass=%.17g integrator=%s\n",
               particles.n, nsteps, (double) dt, (double) eps,
-              (double) g, (double) mass);
+              (double) g, (double) mass, integrator_name (integrator));
       printf ("# step time kinetic potential total rel_energy_drift\n");
       printf ("%zu %.17g %.17g %.17g %.17g %.17g\n",
               (size_t) 0u, 0.0, (double) kinetic0, (double) potential0,
@@ -830,10 +890,18 @@ int main (int argc, char **argv)
   // integration
 
   double max_rel_drift = 0.0;
+
+  if ((nsteps > 0u) && (integrator == INTEGRATOR_KDK))
+    compute_accelerations_naive (particles.n, g, particles.mass, eps,
+                                 particles.x, particles.y, particles.z,
+                                 particles.ax, particles.ay, particles.az);
   
   for (size_t step = 1u; step <= nsteps; ++step)
     {
-      leapfrog_dkd_step (&particles, g, eps, dt);
+      if (integrator == INTEGRATOR_KDK)
+        leapfrog_kdk_step (&particles, g, eps, dt);
+      else
+        leapfrog_dkd_step (&particles, g, eps, dt);
 
       // once in a while, get diagnostics
       //
@@ -863,8 +931,8 @@ int main (int argc, char **argv)
   // ························································
   // say good-bye
 
-  printf ("# final: N=%zu steps=%zu arithmetic_dtype=%s max_relative_energy_drift=%.17g tolerance=%.17g status=%s\n",
-          particles.n, nsteps, DTYPE_NAME, max_rel_drift, (double) energy_tol,
+  printf ("# final: N=%zu steps=%zu arithmetic_dtype=%s integrator=%s max_relative_energy_drift=%.17g tolerance=%.17g status=%s\n",
+          particles.n, nsteps, DTYPE_NAME, integrator_name (integrator), max_rel_drift, (double) energy_tol,
           (max_rel_drift <= (double) energy_tol) ? "OK" : "WARNING");
 
   if (max_rel_drift > (double) energy_tol)

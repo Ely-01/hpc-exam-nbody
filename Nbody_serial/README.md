@@ -2,8 +2,8 @@
 
 This directory contains three stand-alone programs for the direct gravitational N-body exercise:
 
-- `nbody_direct_serial.c`: serial softened direct solver using a DKD leapfrog
-  step and a relative energy-drift verifier.
+- `nbody_direct_serial.c`: serial softened direct solver with selectable KDK
+  or DKD leapfrog integration step and a relative energy-drift verifier.
 - `gen_plummer_sphere.c`: Plummer-sphere initial-condition generator.
 - `gen_uniform_ball_maxwell.c`: uniform-ball generator with isotropic Maxwellian
   velocities.
@@ -93,12 +93,17 @@ make run-smoke
 
 ## Solver notes
 
-The implemented time integrator is Drift-Kick-Drift:
+The default time integrator is Kick-Drift-Kick, selected with
+`--integrator kdk`:
 
-1. drift positions by `dt/2`;
-2. compute accelerations at the half-step positions;
-3. kick velocities by `dt`;
-4. drift positions by `dt/2` with the updated velocities.
+1. compute the initial accelerations before the first step;
+2. kick velocities by `dt/2` using the current accelerations;
+3. drift positions by `dt` with the half-step velocities;
+4. compute accelerations at the new positions;
+5. kick velocities by `dt/2` using the updated accelerations.
+
+The previous Drift-Kick-Drift variant is still available with
+`--integrator dkd` for numerical and performance comparisons.
 
 The energy check uses the same softened potential as the force law:
 
