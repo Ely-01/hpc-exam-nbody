@@ -5,7 +5,7 @@ CFLAGS    ?= -O2 -Wall -Wextra -Wpedantic
 LDLIBS    ?= -lm
 PRECISION ?= double
 
-PROGRAMS := nbody_direct_serial generate_ic
+PROGRAMS := nbody_direct_serial generate_ic inspect_particles
 HEADERS  := nbody_common.h
 
 ifeq ($(PRECISION),float)
@@ -24,6 +24,9 @@ nbody_direct_serial: nbody_direct_serial.c $(HEADERS)
 	$(CC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) -o $@ $< $(LDLIBS)
 
 generate_ic: generate_ic.c $(HEADERS)
+	$(CC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) -o $@ $< $(LDLIBS)
+
+inspect_particles: inspect_particles.c $(HEADERS)
 	$(CC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) -o $@ $< $(LDLIBS)
 
 
