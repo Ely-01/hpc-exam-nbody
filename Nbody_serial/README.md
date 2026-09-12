@@ -10,7 +10,7 @@ This directory contains three stand-alone programs for the direct gravitational 
   velocities.
 
 The codes are intended as *almost complete* exam skeletons. The direct force kernel is deliberately correct but naive. It uses an O(N^2) all-pairs loop, scalar `sqrt`, one accumulator per component, and no Newton-third-law reuse. 
-The comments in `compute_accelerations_naive` mark this as the kernel whose optimization is part of the assignment, along with the hybrid parallelization.
+The comments in `compute_accelerations_direct` mark this as the kernel whose optimization is part of the assignment, along with the hybrid parallelization.
 
 ## Arithmetic type
 
@@ -147,7 +147,7 @@ The baseline is serial on purpose. Natural extensions are:
 
 - **Pay attention to the data qualifiers, like `const`, `resatrict`, and so on, to let the compiler optimize the code**
 
-- convert `compute_accelerations_naive` into an OpenMP loop without inner-loop
+- convert `compute_accelerations_direct` into an OpenMP loop without inner-loop
   atomics;
 - compare Newton-third-law reuse against thread-private force buffers;  
   when is it convenient, against the price of using atomics for a non-local write?

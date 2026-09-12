@@ -586,43 +586,47 @@ static void particles_write_binary (const char        *path,       // output fil
  *
  * ... reason about the needed qualifiers to unleash compiler's optimization
  *
+ * Project decision: the first OpenMP version keeps the non-Newton all-pairs
+ * form, so each thread owns only ax[i], ay[i], and az[i].  This avoids atomics
+ * in the inner loop and keeps the kernel compatible with the later MPI
+ * ring-shift decomposition.
  */
-static void compute_accelerations_naive (size_t  n,          // number of particles
-                                         dtype   g,          // gravitational constant
-                                         dtype   mass,       // mass of every source particle
-                                         dtype   eps,        // Plummer softening length
-                                         dtype * x,          // x positions, read-only
-                                         dtype * y,          // y positions, read-only
-                                         dtype * z,          // z positions, read-only
-                                         dtype * ax,         // x acceleration, overwritten
-                                         dtype * ay,         // y acceleration, overwritten
-                                         dtype * az          // z acceleration, overwritten
+static void compute_accelerations_direct (size_t  n,                       // number of particles
+                                          dtype   g,                       // gravitational constant
+                                          dtype   mass,                    // mass of every source particle
+                                          dtype   eps,                     // Plummer softening length
+                                          const dtype * restrict x,        // x positions, read-only
+                                          const dtype * restrict y,        // y positions, read-only
+                                          const dtype * restrict z,        // z positions, read-only
+                                          dtype * restrict ax,             // x acceleration, overwritten
+                                          dtype * restrict ay,             // y acceleration, overwritten
+                                          dtype * restrict az              // z acceleration, overwritten
 					 )
 {
-  const dtype  eps2 = eps * eps;
+  const dtype eps2 = eps * eps;
 
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
 #endif
   for (size_t i = 0u; i < n; ++i)
     {
-      const dtype  xi  = x[i];
-      const dtype  yi  = y[i];
-      const dtype  zi  = z[i];
-      dtype        axi = (dtype) 0.0;
-      dtype        ayi = (dtype) 0.0;
-      dtype        azi = (dtype) 0.0;
+      const dtype xi = x[i];
+      const dtype yi = y[i];
+      const dtype zi = z[i];
+      dtype axi = (dtype) 0.0;
+      dtype ayi = (dtype) 0.0;
+      dtype azi = (dtype) 0.0;
 
       for (size_t j = 0u; j < n; ++j)
         {
           if (j != i)
             {
-              const dtype  dx   = x[j] - xi;
-              const dtype  dy   = y[j] - yi;
-              const dtype  dz   = z[j] - zi;
-              const dtype  r2   = dx * dx + dy * dy + dz * dz + eps2;
-              const dtype  invr = (dtype) 1.0 / dtype_sqrt (r2);
-              const dtype  s    = g * mass * invr * invr * invr;
+              const dtype dx = x[j] - xi;
+              const dtype dy = y[j] - yi;
+              const dtype dz = z[j] - zi;
+              const dtype r2 = dx * dx + dy * dy + dz * dz + eps2;
+              const dtype invr = (dtype) 1.0 / dtype_sqrt (r2);
+              const dtype s = g * mass * invr * invr * invr;
 
               axi += dx * s;
               ayi += dy * s;
@@ -646,16 +650,15 @@ static void drift (particles_t *p,       // particle positions are modified in p
                    dtype        dt       // drift interval, often 0.5 * full step
 		   )
 {
-  size_t  n  = p->n;
-  dtype  *x  = p->x;
-  dtype  *y  = p->y;
-  dtype  *z  = p->z;
-  dtype  *vx = p->vx;
-  dtype  *vy = p->vy;
-  dtype  *vz = p->vz;
-  size_t  i;
+  const size_t n = p->n;
+  dtype * restrict x = p->x;
+  dtype * restrict y = p->y;
+  dtype * restrict z = p->z;
+  const dtype * restrict vx = p->vx;
+  const dtype * restrict vy = p->vy;
+  const dtype * restrict vz = p->vz;
 
-  for (i = 0u; i < n; ++i)
+  for (size_t i = 0u; i < n; ++i)
     {
       x[i] += dt * vx[i];
       y[i] += dt * vy[i];
@@ -670,16 +673,15 @@ static void kick (particles_t *p,       // particle velocities are modified in p
                   dtype        dt       // full kick interval
 		  )
 {
-  size_t   n  = p->n;
-  dtype  * vx = p->vx;
-  dtype  * vy = p->vy;
-  dtype  * vz = p->vz;
-  dtype  * ax = p->ax;
-  dtype  * ay = p->ay;
-  dtype  * az = p->az;
-  size_t   i;
+  const size_t n = p->n;
+  dtype * restrict vx = p->vx;
+  dtype * restrict vy = p->vy;
+  dtype * restrict vz = p->vz;
+  const dtype * restrict ax = p->ax;
+  const dtype * restrict ay = p->ay;
+  const dtype * restrict az = p->az;
 
-  for (i = 0u; i < n; ++i)
+  for (size_t i = 0u; i < n; ++i)
     {
       vx[i] += dt * ax[i];
       vy[i] += dt * ay[i];
@@ -721,9 +723,9 @@ static void leapfrog_kdk_step (particles_t *p,        // complete particle state
 
   if (timing != NULL)
     t0 = wall_seconds ();
-  compute_accelerations_naive (p->n, g, p->mass, eps,
-                               p->x, p->y, p->z,
-                               p->ax, p->ay, p->az);
+  compute_accelerations_direct (p->n, g, p->mass, eps,
+                                p->x, p->y, p->z,
+                                p->ax, p->ay, p->az);
   if (timing != NULL)
     timing->force_seconds += wall_seconds () - t0;
 
@@ -762,9 +764,9 @@ static void leapfrog_dkd_step (particles_t *p,        // complete particle state
 
   if (timing != NULL)
     t0 = wall_seconds ();
-  compute_accelerations_naive (p->n, g, p->mass, eps,
-                               p->x, p->y, p->z,
-                               p->ax, p->ay, p->az);
+  compute_accelerations_direct (p->n, g, p->mass, eps,
+                                p->x, p->y, p->z,
+                                p->ax, p->ay, p->az);
   if (timing != NULL)
     timing->force_seconds += wall_seconds () - t0;
 
@@ -789,16 +791,18 @@ static void leapfrog_dkd_step (particles_t *p,        // complete particle state
 static dtype kinetic_energy (const particles_t *p    // particle velocities are read-only
 			     )
 {
-  size_t        n    = p->n;
-  dtype         mass = p->mass;
-  long double   sum  = 0.0L;
-  size_t        i;
+  const size_t n = p->n;
+  const dtype mass = p->mass;
+  const dtype * restrict vx_arr = p->vx;
+  const dtype * restrict vy_arr = p->vy;
+  const dtype * restrict vz_arr = p->vz;
+  long double sum = 0.0L;
 
-  for (i = 0u; i < n; ++i)
+  for (size_t i = 0u; i < n; ++i)
     {
-      const long double  vx = (long double) p->vx[i];
-      const long double  vy = (long double) p->vy[i];
-      const long double  vz = (long double) p->vz[i];
+      const long double vx = (long double) vx_arr[i];
+      const long double vy = (long double) vy_arr[i];
+      const long double vz = (long double) vz_arr[i];
 
       sum += vx * vx + vy * vy + vz * vz;
     }
@@ -809,34 +813,35 @@ static dtype kinetic_energy (const particles_t *p    // particle velocities are 
 /*
  * Simple O(N^2) potential-energy diagnostic for the same softened potential used
  * by the force kernel.  Not performance critical if called only every
- * K steps, and keeping it independent of compute_accelerations_naive makes it a
+ * K steps, and keeping it independent of compute_accelerations_direct makes it a
  * useful correctness check during optimisation.
  */
-static dtype potential_energy_naive (particles_t *p,        // particle positions are read-only
+static dtype potential_energy_naive (const particles_t *p,  // particle positions are read-only
                                      dtype        g,        // gravitational constant
                                      dtype        eps       // softening length
 				     )
 {
-  size_t        n    = p->n;
-  dtype         eps2 = eps * eps;
-  dtype         m2   = p->mass * p->mass;
-  long double   sum  = 0.0L;
-  size_t        i;
-  size_t        j;
+  const size_t n = p->n;
+  const dtype eps2 = eps * eps;
+  const dtype m2 = p->mass * p->mass;
+  const dtype * restrict x = p->x;
+  const dtype * restrict y = p->y;
+  const dtype * restrict z = p->z;
+  long double sum = 0.0L;
 
-  for (i = 0u; i < n; ++i)
+  for (size_t i = 0u; i < n; ++i)
     {
-      dtype  xi = p->x[i];
-      dtype  yi = p->y[i];
-      dtype  zi = p->z[i];
+      const dtype xi = x[i];
+      const dtype yi = y[i];
+      const dtype zi = z[i];
 
-      for (j = i + 1u; j < n; ++j)
+      for (size_t j = i + 1u; j < n; ++j)
         {
-          dtype  dx   = p->x[j] - xi;
-          dtype  dy   = p->y[j] - yi;
-          dtype  dz   = p->z[j] - zi;
-          dtype  r2   = dx * dx + dy * dy + dz * dz + eps2;
-          dtype  invr = (dtype) 1.0 / dtype_sqrt (r2);
+          const dtype dx = x[j] - xi;
+          const dtype dy = y[j] - yi;
+          const dtype dz = z[j] - zi;
+          const dtype r2 = dx * dx + dy * dy + dz * dz + eps2;
+          const dtype invr = (dtype) 1.0 / dtype_sqrt (r2);
 
           sum -= (long double) g * (long double) m2 * (long double) invr;
         }
@@ -851,7 +856,7 @@ static dtype potential_energy_naive (particles_t *p,        // particle position
  * The relative drift of this quantity is the main verification
  * metric 
  */
-static dtype total_energy (particles_t *p,           // complete particle state, read-only
+static dtype total_energy (const particles_t *p,     // complete particle state, read-only
                            dtype        g,           // gravitational constant
                            dtype        eps,         // softening length
                            dtype       *kinetic,     // output kinetic energy
@@ -1037,9 +1042,9 @@ int main (int argc, char **argv)
   if ((nsteps > 0u) && (integrator == INTEGRATOR_KDK))
     {
       t0 = wall_seconds ();
-      compute_accelerations_naive (particles.n, g, particles.mass, eps,
-                                   particles.x, particles.y, particles.z,
-                                   particles.ax, particles.ay, particles.az);
+      compute_accelerations_direct (particles.n, g, particles.mass, eps,
+                                    particles.x, particles.y, particles.z,
+                                    particles.ax, particles.ay, particles.az);
       timing.initial_acceleration_seconds += wall_seconds () - t0;
       timing.force_seconds += timing.initial_acceleration_seconds;
     }
