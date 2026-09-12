@@ -829,6 +829,9 @@ static dtype potential_energy_naive (const particles_t *p,  // particle position
   const dtype * restrict z = p->z;
   long double sum = 0.0L;
 
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) reduction(+:sum)
+#endif
   for (size_t i = 0u; i < n; ++i)
     {
       const dtype xi = x[i];
