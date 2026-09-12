@@ -37,6 +37,12 @@ make OPENMP=1
 OMP_NUM_THREADS=4 ./nbody_direct_serial --input plummer_1000.bin --nsteps 100 --dt 1e-4 --eps 0.05 --energy-every 10 --timing
 ```
 
+Run a repeated OpenMP benchmark and save a CSV under `results/`:
+
+```sh
+REPEATS=5 THREADS="1 2 4 8" N=4096 NSTEPS=10 scripts/benchmark_openmp.sh
+```
+
 The equivalent manual switches are:
 
 ```sh
