@@ -1,4 +1,5 @@
 CC        ?= cc
+MPICC     ?= mpicc
 STD       ?= -std=c11
 CPPFLAGS  ?=
 CFLAGS    ?= -O2 -Wall -Wextra -Wpedantic
@@ -7,6 +8,7 @@ PRECISION ?= double
 OPENMP    ?= 0
 
 PROGRAMS := nbody_direct_serial generate_ic inspect_particles
+MPI_PROGRAMS := nbody_mpi_omp
 HEADERS  := nbody_common.h
 BUILD_DIR := build
 COMMON_FLAGS_FILE := $(BUILD_DIR)/common.flags
@@ -31,6 +33,8 @@ endif
 
 all: $(PROGRAMS)
 
+mpi: $(MPI_PROGRAMS)
+
 nbody_direct_serial: nbody_direct_serial.c $(HEADERS) $(COMMON_FLAGS_FILE) $(SOLVER_FLAGS_FILE)
 	$(CC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) $(OPENMP_CFLAGS) -o $@ $< $(LDLIBS) $(OPENMP_LDLIBS)
 
@@ -39,6 +43,9 @@ generate_ic: generate_ic.c $(HEADERS) $(COMMON_FLAGS_FILE)
 
 inspect_particles: inspect_particles.c $(HEADERS) $(COMMON_FLAGS_FILE)
 	$(CC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) -o $@ $< $(LDLIBS)
+
+nbody_mpi_omp: nbody_mpi_omp.c $(HEADERS) $(COMMON_FLAGS_FILE) $(SOLVER_FLAGS_FILE)
+	$(MPICC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) $(OPENMP_CFLAGS) -o $@ $< $(LDLIBS) $(OPENMP_LDLIBS)
 
 $(BUILD_DIR):
 	mkdir -p $@
@@ -60,4 +67,4 @@ run-smoke: all
 	./nbody_direct_serial --input ball_128.bin --nsteps 5 --dt 1e-4 --eps 0.05 --energy-every 1 --output ball_128_final.bin --quiet
 
 clean:
-	rm -rf $(PROGRAMS) *.o *.bin $(BUILD_DIR)
+	rm -rf $(PROGRAMS) $(MPI_PROGRAMS) *.o *.bin $(BUILD_DIR)

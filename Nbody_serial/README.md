@@ -43,6 +43,18 @@ Run a repeated OpenMP benchmark and save a CSV under `results/`:
 REPEATS=5 THREADS="1 2 4 8" N=4096 NSTEPS=10 scripts/benchmark_openmp.sh
 ```
 
+Build the first MPI + OpenMP ring-shift solver when an MPI compiler wrapper is
+available:
+
+```sh
+make mpi OPENMP=1
+mpirun -np 4 ./nbody_mpi_omp --input plummer_8192.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --timing
+```
+
+On SLURM systems such as Leonardo or Orfeo, the launch command will usually be
+`srun` inside a batch script after loading the appropriate compiler and MPI
+modules.
+
 The equivalent manual switches are:
 
 ```sh
