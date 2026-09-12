@@ -76,6 +76,7 @@ Run a first hybrid MPI + OpenMP benchmark over rank/thread combinations:
 ```sh
 CONFIGS="1x4 2x2 4x1" REPEATS=5 N=4096 NSTEPS=10 scripts/benchmark_hybrid.sh
 sbatch scripts/slurm_hybrid_benchmark.slurm
+python3 scripts/summarize_hybrid_csv.py results/hybrid_benchmark_YYYYMMDD_HHMMSS.csv
 ```
 
 Override the defaults with environment variables, for example:
