@@ -79,6 +79,14 @@ sbatch scripts/slurm_hybrid_benchmark.slurm
 python3 scripts/summarize_hybrid_csv.py results/hybrid_benchmark_YYYYMMDD_HHMMSS.csv
 ```
 
+Run strong or weak scaling benchmarks:
+
+```sh
+MODE=strong N=32768 NSTEPS=20 REPEATS=5 CONFIGS="1x1 2x1 4x1 8x1" scripts/benchmark_scaling.sh
+MODE=weak NLOCAL=4096 NSTEPS=20 REPEATS=5 CONFIGS="1x1 2x1 4x1 8x1" scripts/benchmark_scaling.sh
+sbatch scripts/slurm_scaling_benchmark.slurm
+```
+
 Override the defaults with environment variables, for example:
 
 ```sh
