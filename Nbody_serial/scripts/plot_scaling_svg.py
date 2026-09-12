@@ -95,6 +95,9 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
     workers = [float(row["total_workers"]) for row in rows]
     speedup = [float(row["speedup"]) for row in rows]
     efficiency = [float(row["parallel_efficiency"]) for row in rows]
+    communication_fraction = [
+        float(row.get("communication_fraction", "0")) for row in rows
+    ]
     base_workers = workers[0]
 
     if mode == "strong":
@@ -110,7 +113,12 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
     y_max_speedup = nice_max(max(max(speedup), max(ideal_speedup)) * 1.05)
     y_max_eff = 1.1
 
-    svg_width = 1100
+    if mode == "weak":
+        svg_width = 1560
+        panel_width = 390
+    else:
+        svg_width = 1100
+        panel_width = 430
     svg_height = 560
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{svg_width}" height="{svg_height}" viewBox="0 0 {svg_width} {svg_height}">',
@@ -127,7 +135,7 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
             "Speedup",
             82,
             112,
-            430,
+            panel_width,
             330,
             y_max_speedup,
         ),
@@ -138,14 +146,32 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
             "Total workers",
             "Parallel efficiency",
             "Efficiency",
-            622,
+            622 if mode == "strong" else 570,
             112,
-            430,
+            panel_width,
             330,
             y_max_eff,
         ),
-        "</svg>",
     ]
+
+    if mode == "weak":
+        parts.append(
+            draw_panel(
+                workers,
+                communication_fraction,
+                [0.0 for _ in workers],
+                "Total workers",
+                "Communication / total",
+                "Communication fraction",
+                1058,
+                112,
+                panel_width,
+                330,
+                max(0.15, nice_max(max(communication_fraction) * 1.15)),
+            )
+        )
+
+    parts.append("</svg>")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("\n".join(parts) + "\n")
 

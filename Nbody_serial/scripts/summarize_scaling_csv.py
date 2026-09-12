@@ -76,10 +76,13 @@ def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
         total_median = median(totals)
         force_median = median(forces)
 
+        communication_median = median(communications)
+
         if mode == "strong":
             speedup = base_total / total_median
             force_speedup = base_force / force_median
             efficiency = speedup / (workers / base_workers)
+            runtime_over_ideal = total_median / (base_total / (workers / base_workers))
         else:
             # Direct N-body weak scaling keeps Nlocal fixed per MPI rank, so the
             # ideal runtime grows linearly with ranks.  The scaled speedup below
@@ -88,6 +91,7 @@ def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
             speedup = (rank_ratio * rank_ratio) * base_total / total_median
             force_speedup = (rank_ratio * rank_ratio) * base_force / force_median
             efficiency = speedup / (workers / base_workers)
+            runtime_over_ideal = total_median / (base_total * rank_ratio)
 
         max_drift = max(float(row["max_relative_energy_drift"]) for row in group)
         statuses = "|".join(sorted({row["status"] for row in group}))
@@ -105,7 +109,9 @@ def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
                 "total_stdev_s": stdev(totals),
                 "force_median_s": force_median,
                 "force_stdev_s": stdev(forces),
-                "communication_median_s": median(communications),
+                "communication_median_s": communication_median,
+                "communication_fraction": communication_median / total_median,
+                "runtime_over_ideal": runtime_over_ideal,
                 "integration_median_s": median(integrations),
                 "energy_median_s": median(energies),
                 "initial_acceleration_median_s": median(initial_accelerations),
@@ -126,13 +132,13 @@ def markdown_table(summary: list[dict[str, object]]) -> str:
     mode = str(summary[0]["mode"]) if summary else "scaling"
     speedup_label = "Speedup" if mode == "strong" else "Scaled speedup"
     lines = [
-        f"| Ranks | Threads | Workers | N | Nlocal | Repeats | Total median s | Total stdev s | Force median s | Comm median s | {speedup_label} | Efficiency | Max drift | Status |",
-        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---|",
+        f"| Ranks | Threads | Workers | N | Nlocal | Repeats | Total median s | Total stdev s | Force median s | Comm median s | Comm fraction | Runtime/ideal | {speedup_label} | Efficiency | Max drift | Status |",
+        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---|",
     ]
 
     for row in summary:
         lines.append(
-            "| {ranks} | {threads} | {workers} | {n} | {nlocal} | {repeats} | {total} | {total_std} | {force} | {comm} | {speedup} | {efficiency} | {drift} | {statuses} |".format(
+            "| {ranks} | {threads} | {workers} | {n} | {nlocal} | {repeats} | {total} | {total_std} | {force} | {comm} | {comm_frac} | {runtime_over_ideal} | {speedup} | {efficiency} | {drift} | {statuses} |".format(
                 ranks=row["ranks"],
                 threads=row["threads"],
                 workers=row["total_workers"],
@@ -143,6 +149,8 @@ def markdown_table(summary: list[dict[str, object]]) -> str:
                 total_std=fmt_float(float(row["total_stdev_s"])),
                 force=fmt_float(float(row["force_median_s"])),
                 comm=fmt_float(float(row["communication_median_s"])),
+                comm_frac=fmt_ratio(float(row["communication_fraction"])),
+                runtime_over_ideal=fmt_ratio(float(row["runtime_over_ideal"])),
                 speedup=fmt_ratio(float(row["speedup"])),
                 efficiency=fmt_ratio(float(row["parallel_efficiency"])),
                 drift=fmt_sci(float(row["max_relative_energy_drift"])),
@@ -167,6 +175,8 @@ def write_summary_csv(path: Path, summary: list[dict[str, object]]) -> None:
         "force_median_s",
         "force_stdev_s",
         "communication_median_s",
+        "communication_fraction",
+        "runtime_over_ideal",
         "integration_median_s",
         "energy_median_s",
         "initial_acceleration_median_s",
