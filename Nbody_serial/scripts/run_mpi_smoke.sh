@@ -16,6 +16,7 @@ LOG=${LOG:-$OUTPUT_DIR/mpi_smoke_$(date +%Y%m%d_%H%M%S).log}
 
 mkdir -p "$OUTPUT_DIR"
 
+make generate_ic PRECISION=double
 make mpi OPENMP=1 PRECISION=double
 
 if [ ! -f "$INPUT" ]; then
@@ -62,4 +63,3 @@ else
   echo "error: neither srun nor mpirun was found" >&2
   exit 1
 fi
-
