@@ -55,6 +55,20 @@ On SLURM systems such as Leonardo or Orfeo, the launch command will usually be
 `srun` inside a batch script after loading the appropriate compiler and MPI
 modules.
 
+The repository also includes a conservative MPI smoke test for the first
+cluster validation:
+
+```sh
+scripts/run_mpi_smoke.sh
+sbatch scripts/slurm_mpi_smoke.slurm
+```
+
+Override the defaults with environment variables, for example:
+
+```sh
+MPI_RANKS=4 OMP_THREADS=2 N=128 NSTEPS=5 scripts/run_mpi_smoke.sh
+```
+
 The equivalent manual switches are:
 
 ```sh
