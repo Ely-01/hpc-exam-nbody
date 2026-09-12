@@ -1,203 +1,26 @@
 /*
  * nbody_direct_serial.c
  *
- * Serial C11 reference implementation for the direct gravitational N-body
- * exercise.  The O(N^2) force kernel is simple;
- * optimising the kernel is part of the assignment. 
- * The kernel is the natural place to discuss SoA data layout, cache locality,
- *  Newton's third law, accumulator dependency chains, rsqrt, OpenMP
- *  reductions, and MPI ring-shift communication.
- *
- * Units are dimensionless.  By default G = 1, particle mass = 1, and the
- * softened potential is
- *
- *   phi_ij = - G m^2 / sqrt(|r_i-r_j|^2 + eps^2).
- *
- * Binary input/output file format, native endian:
- *
- *   8 bytes       magic "NBODYF1\0"
- *   uint64_t      number of particles
- *   N records     x y z vx vy vz as six IEEE single-precision floats
- *
- * The simulation arithmetic uses dtype, selected at compile time:
- *
- *   -DNBODY_USE_DOUBLE    default double-precision arithmetic
- *   -DNBODY_USE_FLOAT     single-precision arithmetic
- *
- * Files are intentionally still stored in single precision, independently of
- * dtype.
- *
+ * Serial/OpenMP C11 reference implementation for the direct gravitational
+ * N-body exercise.  Shared storage, I/O, timing, and energy routines live in
+ * nbody_core.c so the MPI implementation can reuse them without cloning the
+ * whole program.
  */
 
 #define _POSIX_C_SOURCE 200809L
 
-#include "nbody_common.h"
+#include "nbody_core.h"
 
-#include <errno.h>
-#include <stdarg.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-
-#ifdef _OPENMP
-#include <omp.h>
-#endif
-
-/* ========================================================================================
-
-   : ------------------------------------------------------ :
-   :  DATA TYPES &                                          :
-   :  DATA STRUCTURES                                       :
-   : ------------------------------------------------------ :
- */ 
-
-
-typedef struct particles_s
-{
-  size_t  n;
-  dtype   mass;
-  dtype  *x;
-  dtype  *y;
-  dtype  *z;
-  dtype  *vx;
-  dtype  *vy;
-  dtype  *vz;
-  dtype  *ax;
-  dtype  *ay;
-  dtype  *az;
-} particles_t;
 
 typedef enum integrator_e
 {
   INTEGRATOR_KDK,
   INTEGRATOR_DKD
 } integrator_t;
-
-typedef struct timing_s
-{
-  double total_seconds;
-  double read_seconds;
-  double initial_energy_seconds;
-  double initial_acceleration_seconds;
-  double integration_seconds;
-  double force_seconds;
-  double drift_seconds;
-  double kick_seconds;
-  double energy_seconds;
-  double write_seconds;
-} timing_t;
-
-
-
-
-/* ========================================================================================
-   
-   : ------------------------------------------------------ :
-   :  UTILITIES                                             :
-   : ------------------------------------------------------ :
- */ 
-
-static void die (const char *format, ...)
-{
-  va_list  args;
-
-  va_start (args, format);
-  vfprintf (stderr, format, args);
-  va_end (args);
-  fputc ('\n', stderr);
-  exit (EXIT_FAILURE);
-}
-
-static double wall_seconds (void)
-{
-  struct timespec now;
-
-  if (clock_gettime (CLOCK_MONOTONIC, &now) != 0)
-    die ("clock_gettime(CLOCK_MONOTONIC) failed");
-
-  return (double) now.tv_sec + (double) now.tv_nsec * 1.0e-9;
-}
-
-static int openmp_max_threads (void);
-static const char *openmp_status (void);
-
-static void timing_init (timing_t *timing)
-{
-  timing->total_seconds = 0.0;
-  timing->read_seconds = 0.0;
-  timing->initial_energy_seconds = 0.0;
-  timing->initial_acceleration_seconds = 0.0;
-  timing->integration_seconds = 0.0;
-  timing->force_seconds = 0.0;
-  timing->drift_seconds = 0.0;
-  timing->kick_seconds = 0.0;
-  timing->energy_seconds = 0.0;
-  timing->write_seconds = 0.0;
-}
-
-static void print_timing (const timing_t *timing)
-{
-  printf ("# timing openmp %s max_threads %d\n",
-          openmp_status (), openmp_max_threads ());
-  printf ("# timing total_seconds %.9f\n", timing->total_seconds);
-  printf ("# timing read_seconds %.9f\n", timing->read_seconds);
-  printf ("# timing initial_energy_seconds %.9f\n", timing->initial_energy_seconds);
-  printf ("# timing initial_acceleration_seconds %.9f\n", timing->initial_acceleration_seconds);
-  printf ("# timing integration_seconds %.9f\n", timing->integration_seconds);
-  printf ("# timing force_seconds %.9f\n", timing->force_seconds);
-  printf ("# timing drift_seconds %.9f\n", timing->drift_seconds);
-  printf ("# timing kick_seconds %.9f\n", timing->kick_seconds);
-  printf ("# timing energy_seconds %.9f\n", timing->energy_seconds);
-  printf ("# timing write_seconds %.9f\n", timing->write_seconds);
-}
-
-/*
- * Parse a size_t command-line value.  All user-facing quantities that count
- * particles or steps pass through this function so that overflow and malformed
- * input fail early, before any allocation or simulation state is modified.
- */
-static size_t parse_size (const char *text,     // decimal text to parse
-                          const char *name      // option name used in errors
-			  )
-{
-  char               *endptr;
-  unsigned long long  value;
-
-  errno = 0;
-  value = strtoull (text, &endptr, 10);
-  if ((errno != 0) || (endptr == text) || (*endptr != '\0'))
-    die ("invalid integer for %s: %s", name, text);
-  if (value > (unsigned long long) SIZE_MAX)
-    die ("integer for %s is too large: %s", name, text);
-
-  return (size_t) value;
-}
-
-/*
- * Parse a finite floating-point command-line value and cast it to dtype.  The
- * parser reads through double because strtof and strtod differ only in final
- * rounding for the ranges used here; the explicit range check keeps float-mode
- * builds from silently accepting values that cannot be represented by dtype.
- */
-static dtype parse_dtype (const char *text,     // decimal text to parse
-                          const char *name      // option name used in errors
-			  )
-{
-  char    *endptr;
-  double   value;
-
-  errno = 0;
-  value = strtod (text, &endptr);
-  if ((errno != 0) || (endptr == text) || (*endptr != '\0') || !isfinite (value))
-    die ("invalid floating-point value for %s: %s", name, text);
-  if (fabs (value) > (double) DTYPE_MAX_VALUE)
-    die ("floating-point value for %s is outside the selected dtype range: %s", name, text);
-
-  return (dtype) value;
-}
 
 static integrator_t parse_integrator (const char *text)
 {
@@ -206,7 +29,7 @@ static integrator_t parse_integrator (const char *text)
   if (strcmp (text, "dkd") == 0)
     return INTEGRATOR_DKD;
 
-  die ("invalid integrator '%s': expected kdk or dkd", text);
+  nbody_die ("invalid integrator '%s': expected kdk or dkd", text);
   return INTEGRATOR_KDK;
 }
 
@@ -223,355 +46,10 @@ static const char *integrator_name (integrator_t integrator)
   return "unknown";
 }
 
-static int openmp_max_threads (void)
-{
-#ifdef _OPENMP
-  return omp_get_max_threads ();
-#else
-  return 1;
-#endif
-}
-
-static const char *openmp_status (void)
-{
-#ifdef _OPENMP
-  return "enabled";
-#else
-  return "disabled";
-#endif
-}
-
-/*
- * Return the value associated with either "--key value" or "--key=value".
- * The caller passes the loop index by address so that the separated-value
- * form consumes the following argv entry exactly once.
- */
-static const char *option_value (int        *i,       // current argv index, updated on success
-                                 int         argc,    // argc from main
-                                 char      **argv,    // argv from main
-                                 const char *key      // long option name, including "--"
-				 )
-{
-  const size_t  key_len = strlen (key);
-  const char   *arg     = argv[*i];
-
-  if ((strncmp (arg, key, key_len) == 0) && (arg[key_len] == '='))
-    return arg + key_len + 1;
-
-  if (strcmp (arg, key) == 0)
-    {
-      if (*i + 1 >= argc)
-        die ("missing value after %s", key);
-      *i += 1;
-      return argv[*i];
-    }
-
-  return NULL;
-}
-
-/*
- * Allocate a cache-line aligned block.  Alignment is not required for scalar
- * correctness, but it makes the serial skeleton a better starting point for
- * vectorisation and OpenMP first-touch experiments.
- */
-static void *checked_aligned_alloc (size_t  nbytes,      // requested useful bytes
-                                    size_t  alignment    // power-of-two alignment
-				    )
-{
-  void   *ptr;
-  size_t  padded;
-
-  if (nbytes == 0u)
-    die ("attempted zero-byte allocation");
-  if (alignment == 0u)
-    die ("invalid zero alignment");
-  if (nbytes > SIZE_MAX - alignment)
-    die ("allocation size overflow");
-
-  padded = ((nbytes + alignment - 1u) / alignment) * alignment;
-  ptr = aligned_alloc (alignment, padded);
-  if (ptr == NULL)
-    die ("aligned_alloc failed for %zu bytes", padded);
-
-  return ptr;
-}
-
-/*
- * Read exactly nmemb items from a binary stream.  Centralising the check avoids
- * partial binary records being mistaken for valid particles, which is otherwise
- * easy to do when replacing a line-oriented ASCII reader with fread.
- */
-static void checked_fread (void       *ptr,       // destination buffer
-                           size_t      size,      // item size in bytes
-                           size_t      nmemb,     // number of items expected
-                           FILE       *fp,        // open input stream
-                           const char *path,      // file name for diagnostics
-                           const char *what       // logical record name
-			   )
-{
-  const size_t  got = fread (ptr, size, nmemb, fp);
-
-  if (got != nmemb)
-    {
-      if (ferror (fp))
-        die ("read error while reading %s from '%s'", what, path);
-      die ("short file while reading %s from '%s'", what, path);
-    }
-}
-
-/*
- * Write exactly nmemb items to a binary stream.  All output paths go through
- * this helper so that disk-full and permission errors are reported at the point
- * where the data loss happens, not later in a benchmark script.
- */
-static void checked_fwrite (const void *ptr,       // source buffer
-                            size_t      size,      // item size in bytes
-                            size_t      nmemb,     // number of items to write
-                            FILE       *fp,        // open output stream
-                            const char *path,      // file name for diagnostics
-                            const char *what       // logical record name
-			    )
-{
-  const size_t  written = fwrite (ptr, size, nmemb, fp);
-
-  if (written != nmemb)
-    die ("write error while writing %s to '%s'", what, path);
-}
-
-
-
-/* ======================================================================================== 
-   
-   : ------------------------------------------------------ :
-   :  PARTICLES ALLOCATION                                  :
-   : I/O                                                    :
-   : ------------------------------------------------------ :
- */ 
-
-
-/*
- * Initialise an empty particle container.  This function does not allocate; it
- * simply gives every pointer a known value so that particles_free can safely be
- * called after a partial failure path.
- */
-static void particles_init_empty (particles_t *p    // particle container to initialise
-				  )
-{
-  p->n    = 0u;
-  p->mass = (dtype) 1.0;
-  p->x    = NULL;
-  p->y    = NULL;
-  p->z    = NULL;
-  p->vx   = NULL;
-  p->vy   = NULL;
-  p->vz   = NULL;
-  p->ax   = NULL;
-  p->ay   = NULL;
-  p->az   = NULL;
-}
-
-
-/*
- * Allocate the SoA storage used by the solver.  Positions, velocities, and
- * accelerations are separate arrays, not an array of structs, because the
- * direct kernel only needs streams of x/y/z coordinates and accumulators.  This
- * layout is also the natural one for later SIMD and MPI ring-buffer work.
- */
-static void particles_allocate (particles_t  *p,       // output container
-                                size_t        n,       // number of particles
-                                dtype         mass     // mass of each particle
-				)
-{
-  const size_t  bytes = n * sizeof (dtype);
-
-  if (n == 0u)
-    die ("the number of particles must be positive");
-  if (n > SIZE_MAX / sizeof (dtype))
-    die ("particle count is too large");
-  if (!(mass > (dtype) 0.0) || !dtype_isfinite (mass))
-    die ("particle mass must be positive and finite");
-
-  particles_init_empty (p);
-  p->n    = n;
-  p->mass = mass;
-  p->x    = checked_aligned_alloc (bytes, NBODY_ALIGNMENT);
-  p->y    = checked_aligned_alloc (bytes, NBODY_ALIGNMENT);
-  p->z    = checked_aligned_alloc (bytes, NBODY_ALIGNMENT);
-  p->vx   = checked_aligned_alloc (bytes, NBODY_ALIGNMENT);
-  p->vy   = checked_aligned_alloc (bytes, NBODY_ALIGNMENT);
-  p->vz   = checked_aligned_alloc (bytes, NBODY_ALIGNMENT);
-  p->ax   = checked_aligned_alloc (bytes, NBODY_ALIGNMENT);
-  p->ay   = checked_aligned_alloc (bytes, NBODY_ALIGNMENT);
-  p->az   = checked_aligned_alloc (bytes, NBODY_ALIGNMENT);
-}
-
-/*
- * Release all particle arrays and return the container to the empty state.  No
- * simulation data survive this call.
- */
-static void particles_free (particles_t *p    // container to release
-			    )
-{
-  free (p->x);
-  free (p->y);
-  free (p->z);
-  free (p->vx);
-  free (p->vy);
-  free (p->vz);
-  free (p->ax);
-  free (p->ay);
-  free (p->az);
-  particles_init_empty (p);
-}
-
-/*
- * Cast one physical quantity to the on-disk type.
- * Nofinite values and overflows should still fail loudly.
- * How do we deal with that?
- * Check the initial condition generator for a more performant
- * implementation.
- *
- * NOTE: may this be a bottleneck in the I/O ? what your profiling says?
- *       if so, you may consider to make this optional only when a "debugging mode"
- *       is set, and to expand to a simple cast otherwose,
- *       Optionally this sanity checks should be made as a loop over particles that
- *       accumulates failures counter, instead on per-particle funciton call
- */
-static float dtype_to_storage_float (dtype       value,       // value to store
-                                     const char *component,   // component name for diagnostics
-                                     size_t      i            // particle index for diagnostics
-				     )
-{
-  const double  as_double = (double) value;
-
-  if (!isfinite (as_double) || (fabs (as_double) > (double) FLT_MAX))
-    die ("particle %zu component %s cannot be stored as a finite float", i, component);
-
-  return (float) value;
-}
-
-/*
- * Load particle coordinates and velocities from the binary file.
- * The on-disk values are single precision, then converted to dtype so the same
- * initial-condition file can be used for both float and double solver builds.
- * Acceleration arrays are left uninitialised because every force evaluation
- * overwrites them.
- */
-static void particles_read_binary (const char  *path,       // input file path
-                                   dtype        mass,       // mass assigned to each particle
-                                   particles_t *p           // output particle container
-				   )
-{
-  FILE           *fp;
-  unsigned char   magic[NBODY_BINARY_MAGIC_SIZE];
-  uint64_t        n64;
-  size_t          n;
-  size_t          i;
-
-  fp = fopen (path, "rb");
-  if (fp == NULL)
-    die ("cannot open input file '%s'", path);
-
-  checked_fread (magic, sizeof magic[0], NBODY_BINARY_MAGIC_SIZE,
-                 fp, path, "binary magic");
-  if (memcmp (magic, nbody_binary_magic, NBODY_BINARY_MAGIC_SIZE) != 0)
-    die ("input file '%s' is not an %s file", path, NBODY_BINARY_VERSION_TEXT);
-
-  checked_fread (&n64, sizeof n64, 1u, fp, path, "particle count");
-  if ((n64 == 0u) || (n64 > (uint64_t) SIZE_MAX))
-    die ("invalid particle count in '%s'", path);
-  n = (size_t) n64;
-
-  particles_allocate (p, n, mass);
-
-  for (i = 0u; i < n; ++i)
-    {
-      float  record[NBODY_BINARY_COMPONENTS];
-
-      checked_fread (record, sizeof record[0], NBODY_BINARY_COMPONENTS,
-                     fp, path, "particle record");
-
-      /*
-       * this check is also very costly made like that.
-       * either optimize or render it optional for some debugging mode
-       */
-      if (!isfinite ((double) record[0]) || !isfinite ((double) record[1]) ||
-          !isfinite ((double) record[2]) || !isfinite ((double) record[3]) ||
-          !isfinite ((double) record[4]) || !isfinite ((double) record[5]))
-        die ("non-finite particle value in '%s' at index %zu", path, i);
-
-      p->x[i]  = (dtype) record[0];
-      p->y[i]  = (dtype) record[1];
-      p->z[i]  = (dtype) record[2];
-      p->vx[i] = (dtype) record[3];
-      p->vy[i] = (dtype) record[4];
-      p->vz[i] = (dtype) record[5];
-    }
-
-  if (fclose (fp) != 0)
-    die ("error while closing input file '%s'", path);
-}
-
-/*
- * Write the current particle state in the same binary format accepted by the
- * reader.  Conversion to single precision is done explicitly record by record;
- * this is simple rather than maximally fast;
- * check in the code for initial condition generator
- */
-static void particles_write_binary (const char        *path,       // output file path
-                                    const particles_t *p           // particle state to write
-				    )
-{
-  FILE          *fp;
-  const size_t   n   = p->n;
-  uint64_t       n64 = (uint64_t) n;
-  size_t         i;
-
-  if ((size_t) n64 != n)
-    die ("particle count cannot be represented in the binary header");
-
-  fp = fopen (path, "wb");
-  if (fp == NULL)
-    die ("cannot open output file '%s'", path);
-
-  checked_fwrite (nbody_binary_magic, sizeof nbody_binary_magic[0],
-                  NBODY_BINARY_MAGIC_SIZE, fp, path, "binary magic");
-  checked_fwrite (&n64, sizeof n64, 1u, fp, path, "particle count");
-
-  for (i = 0u; i < n; ++i)
-    {
-      float  record[NBODY_BINARY_COMPONENTS];
-
-      record[0] = dtype_to_storage_float (p->x[i],  "x",  i);
-      record[1] = dtype_to_storage_float (p->y[i],  "y",  i);
-      record[2] = dtype_to_storage_float (p->z[i],  "z",  i);
-      record[3] = dtype_to_storage_float (p->vx[i], "vx", i);
-      record[4] = dtype_to_storage_float (p->vy[i], "vy", i);
-      record[5] = dtype_to_storage_float (p->vz[i], "vz", i);
-      checked_fwrite (record, sizeof record[0], NBODY_BINARY_COMPONENTS,
-                      fp, path, "particle record");
-    }
-
-  if (fclose (fp) != 0)
-    die ("error while closing output file '%s'", path);
-}
-
-
-
-
-/* ======================================================================================== 
-
-   : ------------------------------------------------------ :
-   :  INTEGRATIION                                          :
-   : ------------------------------------------------------ :
- */ 
-
-
-
 /*
  * Naive direct O(N^2) softened gravitational acceleration.
  *
- * This is the most interesting kernel.  
+ * This is the most interesting kernel.
  * A very transparent form: one i particle, one j loop, no Newton-third-law
  * reuse, one accumulator per component, and a scalar sqrt from libm.  That is
  * correct, but it leaves the optimisation space visible:
@@ -591,17 +69,13 @@ static void particles_write_binary (const char        *path,       // output fil
  * in the inner loop and keeps the kernel compatible with the later MPI
  * ring-shift decomposition.
  */
-static void compute_accelerations_direct (size_t  n,                       // number of particles
-                                          dtype   g,                       // gravitational constant
-                                          dtype   mass,                    // mass of every source particle
-                                          dtype   eps,                     // Plummer softening length
-                                          const dtype * restrict x,        // x positions, read-only
-                                          const dtype * restrict y,        // y positions, read-only
-                                          const dtype * restrict z,        // z positions, read-only
-                                          dtype * restrict ax,             // x acceleration, overwritten
-                                          dtype * restrict ay,             // y acceleration, overwritten
-                                          dtype * restrict az              // z acceleration, overwritten
-					 )
+static void compute_accelerations_direct (size_t n, dtype g, dtype mass, dtype eps,
+                                          const dtype * restrict x,
+                                          const dtype * restrict y,
+                                          const dtype * restrict z,
+                                          dtype * restrict ax,
+                                          dtype * restrict ay,
+                                          dtype * restrict az)
 {
   const dtype eps2 = eps * eps;
 
@@ -641,55 +115,6 @@ static void compute_accelerations_direct (size_t  n,                       // nu
 }
 
 /*
- * Drift all particles by a time interval using the current velocities.
- * The KDK leapfrog workflow calls it once per step, after the first half-kick.
- *
- * Again: are data qualifiers missed for optimization?
- */
-static void drift (particles_t *p,       // particle positions are modified in place
-                   dtype        dt       // drift interval, often 0.5 * full step
-		   )
-{
-  const size_t n = p->n;
-  dtype * restrict x = p->x;
-  dtype * restrict y = p->y;
-  dtype * restrict z = p->z;
-  const dtype * restrict vx = p->vx;
-  const dtype * restrict vy = p->vy;
-  const dtype * restrict vz = p->vz;
-
-  for (size_t i = 0u; i < n; ++i)
-    {
-      x[i] += dt * vx[i];
-      y[i] += dt * vy[i];
-      z[i] += dt * vz[i];
-    }
-}
-
-/*
- * Kick all velocities using the current accelerations.  This is the K in KDK.
- */
-static void kick (particles_t *p,       // particle velocities are modified in place
-                  dtype        dt       // full kick interval
-		  )
-{
-  const size_t n = p->n;
-  dtype * restrict vx = p->vx;
-  dtype * restrict vy = p->vy;
-  dtype * restrict vz = p->vz;
-  const dtype * restrict ax = p->ax;
-  const dtype * restrict ay = p->ay;
-  const dtype * restrict az = p->az;
-
-  for (size_t i = 0u; i < n; ++i)
-    {
-      vx[i] += dt * ax[i];
-      vy[i] += dt * ay[i];
-      vz[i] += dt * az[i];
-    }
-}
-
-/*
  * Compute one KDK leapfrog step:
  *
  *   1. kick velocities by dt/2 using a(t);
@@ -700,40 +125,36 @@ static void kick (particles_t *p,       // particle velocities are modified in p
  * The caller must compute the initial accelerations before the first step.
  * This keeps positions and velocities synchronised at integer time levels.
  */
-static void leapfrog_kdk_step (particles_t *p,        // complete particle state, modified in place
-                               dtype        g,        // gravitational constant
-                               dtype        eps,      // softening length
-                               dtype        dt,       // full time step
-                               timing_t    *timing    // optional timers, or NULL
-			       )
+static void leapfrog_kdk_step (particles_t *p, dtype g, dtype eps,
+                               dtype dt, timing_t *timing)
 {
   double t0;
 
   if (timing != NULL)
-    t0 = wall_seconds ();
+    t0 = nbody_wall_seconds ();
   kick (p, (dtype) 0.5 * dt);
   if (timing != NULL)
-    timing->kick_seconds += wall_seconds () - t0;
+    timing->kick_seconds += nbody_wall_seconds () - t0;
 
   if (timing != NULL)
-    t0 = wall_seconds ();
+    t0 = nbody_wall_seconds ();
   drift (p, dt);
   if (timing != NULL)
-    timing->drift_seconds += wall_seconds () - t0;
+    timing->drift_seconds += nbody_wall_seconds () - t0;
 
   if (timing != NULL)
-    t0 = wall_seconds ();
+    t0 = nbody_wall_seconds ();
   compute_accelerations_direct (p->n, g, p->mass, eps,
                                 p->x, p->y, p->z,
                                 p->ax, p->ay, p->az);
   if (timing != NULL)
-    timing->force_seconds += wall_seconds () - t0;
+    timing->force_seconds += nbody_wall_seconds () - t0;
 
   if (timing != NULL)
-    t0 = wall_seconds ();
+    t0 = nbody_wall_seconds ();
   kick (p, (dtype) 0.5 * dt);
   if (timing != NULL)
-    timing->kick_seconds += wall_seconds () - t0;
+    timing->kick_seconds += nbody_wall_seconds () - t0;
 }
 
 /*
@@ -747,149 +168,43 @@ static void leapfrog_kdk_step (particles_t *p,        // complete particle state
  * This variant is kept as a comparison point against the KDK scheme required
  * by the project specification.
  */
-static void leapfrog_dkd_step (particles_t *p,        // complete particle state, modified in place
-                               dtype        g,        // gravitational constant
-                               dtype        eps,      // softening length
-                               dtype        dt,       // full time step
-                               timing_t    *timing    // optional timers, or NULL
-			       )
+static void leapfrog_dkd_step (particles_t *p, dtype g, dtype eps,
+                               dtype dt, timing_t *timing)
 {
   double t0;
 
   if (timing != NULL)
-    t0 = wall_seconds ();
+    t0 = nbody_wall_seconds ();
   drift (p, (dtype) 0.5 * dt);
   if (timing != NULL)
-    timing->drift_seconds += wall_seconds () - t0;
+    timing->drift_seconds += nbody_wall_seconds () - t0;
 
   if (timing != NULL)
-    t0 = wall_seconds ();
+    t0 = nbody_wall_seconds ();
   compute_accelerations_direct (p->n, g, p->mass, eps,
                                 p->x, p->y, p->z,
                                 p->ax, p->ay, p->az);
   if (timing != NULL)
-    timing->force_seconds += wall_seconds () - t0;
+    timing->force_seconds += nbody_wall_seconds () - t0;
 
   if (timing != NULL)
-    t0 = wall_seconds ();
+    t0 = nbody_wall_seconds ();
   kick (p, dt);
   if (timing != NULL)
-    timing->kick_seconds += wall_seconds () - t0;
+    timing->kick_seconds += nbody_wall_seconds () - t0;
 
   if (timing != NULL)
-    t0 = wall_seconds ();
+    t0 = nbody_wall_seconds ();
   drift (p, (dtype) 0.5 * dt);
   if (timing != NULL)
-    timing->drift_seconds += wall_seconds () - t0;
+    timing->drift_seconds += nbody_wall_seconds () - t0;
 }
-
-/*
- * Kinetic energy of the equal-mass system.
- * A long-double accumulator is used so that summation roundoff in the check is less likely to hide
- * errors caused by the integration or the force kernel.
- */
-static dtype kinetic_energy (const particles_t *p    // particle velocities are read-only
-			     )
-{
-  const size_t n = p->n;
-  const dtype mass = p->mass;
-  const dtype * restrict vx_arr = p->vx;
-  const dtype * restrict vy_arr = p->vy;
-  const dtype * restrict vz_arr = p->vz;
-  long double sum = 0.0L;
-
-  for (size_t i = 0u; i < n; ++i)
-    {
-      const long double vx = (long double) vx_arr[i];
-      const long double vy = (long double) vy_arr[i];
-      const long double vz = (long double) vz_arr[i];
-
-      sum += vx * vx + vy * vy + vz * vz;
-    }
-
-  return (dtype) (0.5L * (long double) mass * sum);
-}
-
-/*
- * Simple O(N^2) potential-energy diagnostic for the same softened potential used
- * by the force kernel.  Not performance critical if called only every
- * K steps, and keeping it independent of compute_accelerations_direct makes it a
- * useful correctness check during optimisation.
- */
-static dtype potential_energy_naive (const particles_t *p,  // particle positions are read-only
-                                     dtype        g,        // gravitational constant
-                                     dtype        eps       // softening length
-				     )
-{
-  const size_t n = p->n;
-  const dtype eps2 = eps * eps;
-  const dtype m2 = p->mass * p->mass;
-  const dtype * restrict x = p->x;
-  const dtype * restrict y = p->y;
-  const dtype * restrict z = p->z;
-  long double sum = 0.0L;
-
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static) reduction(+:sum)
-#endif
-  for (size_t i = 0u; i < n; ++i)
-    {
-      const dtype xi = x[i];
-      const dtype yi = y[i];
-      const dtype zi = z[i];
-
-      for (size_t j = i + 1u; j < n; ++j)
-        {
-          const dtype dx = x[j] - xi;
-          const dtype dy = y[j] - yi;
-          const dtype dz = z[j] - zi;
-          const dtype r2 = dx * dx + dy * dy + dz * dz + eps2;
-          const dtype invr = (dtype) 1.0 / dtype_sqrt (r2);
-
-          sum -= (long double) g * (long double) m2 * (long double) invr;
-        }
-    }
-
-  return (dtype) sum;
-}
-
-/*
- * Total mechanical energy, returned together with kinetic and potential parts
- * for reporting.
- * The relative drift of this quantity is the main verification
- * metric 
- */
-static dtype total_energy (const particles_t *p,     // complete particle state, read-only
-                           dtype        g,           // gravitational constant
-                           dtype        eps,         // softening length
-                           dtype       *kinetic,     // output kinetic energy
-                           dtype       *potential    // output potential energy
-			   )
-{
-  *kinetic   = kinetic_energy (p);
-  *potential = potential_energy_naive (p, g, eps);
-
-  return *kinetic + *potential;
-}
-
-
-
-
-
-
-/* ========================================================================================
-
-   : ------------------------------------------------------ :
-   :  HELP & MAIN                                           :
-   : ------------------------------------------------------ :
- */ 
 
 /*
  * Print a compact command-line reference.
  * Defaults are chosen for > small test < runs
  */
-static void print_usage (const char *program    // argv[0]
-			 )
+static void print_usage (const char *program)
 {
   fprintf (stderr,
            "usage: %s --input FILE [options]\n"
@@ -911,42 +226,32 @@ static void print_usage (const char *program    // argv[0]
            program, NBODY_BINARY_VERSION_TEXT);
 }
 
-
-/* ======================================================================================== */
-
-
 int main (int argc, char **argv)
 {
-  const char  *input_path    = NULL;
-  const char  *output_path   = NULL;
-  size_t       nsteps        = 10u;
-  size_t       energy_every  = 1u;
-  dtype        dt            = (dtype) 1.0e-3;
-  dtype        eps           = (dtype) 1.0e-2;
-  dtype        g             = (dtype) 1.0;
-  dtype        mass          = (dtype) 1.0;
-  dtype        energy_tol    = (dtype) 1.0e-3;
-  bool         quiet         = false;
+  const char *input_path = NULL;
+  const char *output_path = NULL;
+  size_t nsteps = 10u;
+  size_t energy_every = 1u;
+  dtype dt = (dtype) 1.0e-3;
+  dtype eps = (dtype) 1.0e-2;
+  dtype g = (dtype) 1.0;
+  dtype mass = (dtype) 1.0;
+  dtype energy_tol = (dtype) 1.0e-3;
+  bool quiet = false;
   bool timing_enabled = false;
   integrator_t integrator = INTEGRATOR_KDK;
-  particles_t  particles;
-  timing_t     timing;
-  dtype        kinetic0;
-  dtype        potential0;
-  dtype        energy0;
-  double       total_start;
-  double       t0;
+  particles_t particles;
+  timing_t timing;
+  dtype kinetic0;
+  dtype potential0;
+  dtype energy0;
+  double total_start;
+  double t0;
 
   timing_init (&timing);
-  total_start = wall_seconds ();
-
-  // ·························································
-  // allocate particles container to an empty state
+  total_start = nbody_wall_seconds ();
   particles_init_empty (&particles);
 
-  
-  // ························································
-  // parse CLI
   for (int argi = 1; argi < argc; ++argi)
     {
       const char *value;
@@ -983,40 +288,35 @@ int main (int argc, char **argv)
       else
         {
           print_usage (argv[0]);
-          die ("unknown option: %s", argv[argi]);
+          nbody_die ("unknown option: %s", argv[argi]);
         }
     }
 
   if (input_path == NULL)
     {
       print_usage (argv[0]);
-      die ("missing required --input FILE");
+      nbody_die ("missing required --input FILE");
     }
   if (!(dt > (dtype) 0.0))
-    die ("--dt must be positive");
+    nbody_die ("--dt must be positive");
   if (!(eps >= (dtype) 0.0))
-    die ("--eps must be non-negative");
+    nbody_die ("--eps must be non-negative");
   if (!(g > (dtype) 0.0))
-    die ("--G must be positive");
+    nbody_die ("--G must be positive");
   if (!(mass > (dtype) 0.0))
-    die ("--mass must be positive");
+    nbody_die ("--mass must be positive");
   if (energy_every == 0u)
-    die ("--energy-every must be positive");
+    nbody_die ("--energy-every must be positive");
   if (!(energy_tol > (dtype) 0.0))
-    die ("--energy-tol must be positive");
+    nbody_die ("--energy-tol must be positive");
 
-
-  // ························································
-  // read particles from input file
-  t0 = wall_seconds ();
+  t0 = nbody_wall_seconds ();
   particles_read_binary (input_path, mass, &particles);
-  timing.read_seconds += wall_seconds () - t0;
+  timing.read_seconds += nbody_wall_seconds () - t0;
 
-  // ························································
-  // get energy baseline
-  t0 = wall_seconds ();
+  t0 = nbody_wall_seconds ();
   energy0 = total_energy (&particles, g, eps, &kinetic0, &potential0);
-  timing.initial_energy_seconds += wall_seconds () - t0;
+  timing.initial_energy_seconds += nbody_wall_seconds () - t0;
   timing.energy_seconds += timing.initial_energy_seconds;
 
   if (!quiet)
@@ -1026,7 +326,7 @@ int main (int argc, char **argv)
       printf ("# arithmetic_dtype=%s binary_storage=float32 format=%s\n",
               DTYPE_NAME, NBODY_BINARY_VERSION_TEXT);
       printf ("# openmp=%s max_threads=%d\n",
-              openmp_status (), openmp_max_threads ());
+              nbody_openmp_status (), nbody_openmp_max_threads ());
       printf ("# N=%zu nsteps=%zu dt=%.17g eps=%.17g G=%.17g mass=%.17g integrator=%s\n",
               particles.n, nsteps, (double) dt, (double) eps,
               (double) g, (double) mass, integrator_name (integrator));
@@ -1036,23 +336,19 @@ int main (int argc, char **argv)
               (double) energy0, 0.0);
     }
 
-
-  // ························································
-  // integration
-
   double max_rel_drift = 0.0;
 
   if ((nsteps > 0u) && (integrator == INTEGRATOR_KDK))
     {
-      t0 = wall_seconds ();
+      t0 = nbody_wall_seconds ();
       compute_accelerations_direct (particles.n, g, particles.mass, eps,
                                     particles.x, particles.y, particles.z,
                                     particles.ax, particles.ay, particles.az);
-      timing.initial_acceleration_seconds += wall_seconds () - t0;
+      timing.initial_acceleration_seconds += nbody_wall_seconds () - t0;
       timing.force_seconds += timing.initial_acceleration_seconds;
     }
-  
-  t0 = wall_seconds ();
+
+  t0 = nbody_wall_seconds ();
   for (size_t step = 1u; step <= nsteps; ++step)
     {
       if (integrator == INTEGRATOR_KDK)
@@ -1060,17 +356,15 @@ int main (int argc, char **argv)
       else
         leapfrog_dkd_step (&particles, g, eps, dt, timing_enabled ? &timing : NULL);
 
-      // once in a while, get diagnostics
-      //
       if (((step % energy_every) == 0u) || (step == nsteps))
         {
-          dtype         kinetic;
-          dtype         potential;
-          const double  energy_t0 = wall_seconds ();
-          const dtype   energy = total_energy (&particles, g, eps, &kinetic, &potential);
-          const double  energy_dt = wall_seconds () - energy_t0;
-          const double  denom = fmax (fabs ((double) energy0), (double) DTYPE_MIN_NORMAL);
-          const double  rel = fabs ((double) (energy - energy0)) / denom;
+          dtype kinetic;
+          dtype potential;
+          const double energy_t0 = nbody_wall_seconds ();
+          const dtype energy = total_energy (&particles, g, eps, &kinetic, &potential);
+          const double energy_dt = nbody_wall_seconds () - energy_t0;
+          const double denom = fmax (fabs ((double) energy0), (double) DTYPE_MIN_NORMAL);
+          const double rel = fabs ((double) (energy - energy0)) / denom;
 
           timing.energy_seconds += energy_dt;
 
@@ -1082,22 +376,16 @@ int main (int argc, char **argv)
                     (double) potential, (double) energy, rel);
         }
     }
-  timing.integration_seconds += wall_seconds () - t0;
-
-  // ························································
-  // write final file
+  timing.integration_seconds += nbody_wall_seconds () - t0;
 
   if (output_path != NULL)
     {
-      t0 = wall_seconds ();
+      t0 = nbody_wall_seconds ();
       particles_write_binary (output_path, &particles);
-      timing.write_seconds += wall_seconds () - t0;
+      timing.write_seconds += nbody_wall_seconds () - t0;
     }
 
-  // ························································
-  // say good-bye
-
-  timing.total_seconds = wall_seconds () - total_start;
+  timing.total_seconds = nbody_wall_seconds () - total_start;
 
   printf ("# final: N=%zu steps=%zu arithmetic_dtype=%s integrator=%s max_relative_energy_drift=%.17g tolerance=%.17g status=%s\n",
           particles.n, nsteps, DTYPE_NAME, integrator_name (integrator), max_rel_drift, (double) energy_tol,
@@ -1110,14 +398,9 @@ int main (int argc, char **argv)
              max_rel_drift, (double) energy_tol);
 
   if (timing_enabled)
-    print_timing (&timing);
-
-  
-  // ························································
-  // don't leave garbage behind you
+    timing_print (&timing);
 
   particles_free (&particles);
 
-  
   return EXIT_SUCCESS;
 }

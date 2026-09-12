@@ -9,7 +9,7 @@ OPENMP    ?= 0
 
 PROGRAMS := nbody_direct_serial generate_ic inspect_particles
 MPI_PROGRAMS := nbody_mpi_omp
-HEADERS  := nbody_common.h
+HEADERS  := nbody_common.h nbody_core.h
 BUILD_DIR := build
 COMMON_FLAGS_FILE := $(BUILD_DIR)/common.flags
 SOLVER_FLAGS_FILE := $(BUILD_DIR)/solver.flags
@@ -29,14 +29,14 @@ else ifneq ($(OPENMP),0)
 $(error OPENMP must be either 0 or 1)
 endif
 
-.PHONY: all clean run-smoke FORCE
+.PHONY: all mpi clean run-smoke FORCE
 
 all: $(PROGRAMS)
 
 mpi: $(MPI_PROGRAMS)
 
-nbody_direct_serial: nbody_direct_serial.c $(HEADERS) $(COMMON_FLAGS_FILE) $(SOLVER_FLAGS_FILE)
-	$(CC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) $(OPENMP_CFLAGS) -o $@ $< $(LDLIBS) $(OPENMP_LDLIBS)
+nbody_direct_serial: nbody_direct_serial.c nbody_core.c $(HEADERS) $(COMMON_FLAGS_FILE) $(SOLVER_FLAGS_FILE)
+	$(CC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) $(OPENMP_CFLAGS) -o $@ nbody_direct_serial.c nbody_core.c $(LDLIBS) $(OPENMP_LDLIBS)
 
 generate_ic: generate_ic.c $(HEADERS) $(COMMON_FLAGS_FILE)
 	$(CC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) -o $@ $< $(LDLIBS)
@@ -44,8 +44,8 @@ generate_ic: generate_ic.c $(HEADERS) $(COMMON_FLAGS_FILE)
 inspect_particles: inspect_particles.c $(HEADERS) $(COMMON_FLAGS_FILE)
 	$(CC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) -o $@ $< $(LDLIBS)
 
-nbody_mpi_omp: nbody_mpi_omp.c $(HEADERS) $(COMMON_FLAGS_FILE) $(SOLVER_FLAGS_FILE)
-	$(MPICC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) $(OPENMP_CFLAGS) -o $@ $< $(LDLIBS) $(OPENMP_LDLIBS)
+nbody_mpi_omp: nbody_mpi_omp.c nbody_core.c $(HEADERS) $(COMMON_FLAGS_FILE) $(SOLVER_FLAGS_FILE)
+	$(MPICC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) $(OPENMP_CFLAGS) -o $@ nbody_mpi_omp.c nbody_core.c $(LDLIBS) $(OPENMP_LDLIBS)
 
 $(BUILD_DIR):
 	mkdir -p $@
