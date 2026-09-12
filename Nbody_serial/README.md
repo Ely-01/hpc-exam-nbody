@@ -63,6 +63,14 @@ scripts/run_mpi_smoke.sh
 sbatch scripts/slurm_mpi_smoke.slurm
 ```
 
+After the smoke test, compare the serial KDK solver with MPI KDK runs on the
+same initial conditions:
+
+```sh
+scripts/compare_serial_mpi.sh
+sbatch scripts/slurm_compare_serial_mpi.slurm
+```
+
 Override the defaults with environment variables, for example:
 
 ```sh
