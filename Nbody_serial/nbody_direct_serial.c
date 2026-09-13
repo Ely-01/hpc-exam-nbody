@@ -29,6 +29,9 @@ typedef enum integrator_e
 typedef enum force_kernel_e
 {
   FORCE_KERNEL_DIRECT,
+  FORCE_KERNEL_DIRECT_SPLIT2,
+  FORCE_KERNEL_DIRECT_SPLIT4,
+  FORCE_KERNEL_DIRECT_SPLIT8,
   FORCE_KERNEL_NEWTON,
   FORCE_KERNEL_NEWTON_ATOMIC
 } force_kernel_t;
@@ -69,12 +72,18 @@ static force_kernel_t parse_force_kernel (const char *text)
 {
   if (strcmp (text, "direct") == 0)
     return FORCE_KERNEL_DIRECT;
+  if (strcmp (text, "direct-split2") == 0)
+    return FORCE_KERNEL_DIRECT_SPLIT2;
+  if (strcmp (text, "direct-split4") == 0)
+    return FORCE_KERNEL_DIRECT_SPLIT4;
+  if (strcmp (text, "direct-split8") == 0)
+    return FORCE_KERNEL_DIRECT_SPLIT8;
   if (strcmp (text, "newton") == 0)
     return FORCE_KERNEL_NEWTON;
   if (strcmp (text, "newton-atomic") == 0)
     return FORCE_KERNEL_NEWTON_ATOMIC;
 
-  nbody_die ("invalid force kernel '%s': expected direct, newton, or newton-atomic", text);
+  nbody_die ("invalid force kernel '%s': expected direct, direct-split2, direct-split4, direct-split8, newton, or newton-atomic", text);
   return FORCE_KERNEL_DIRECT;
 }
 
@@ -84,6 +93,12 @@ static const char *force_kernel_name (force_kernel_t kernel)
     {
     case FORCE_KERNEL_DIRECT:
       return "direct";
+    case FORCE_KERNEL_DIRECT_SPLIT2:
+      return "direct-split2";
+    case FORCE_KERNEL_DIRECT_SPLIT4:
+      return "direct-split4";
+    case FORCE_KERNEL_DIRECT_SPLIT8:
+      return "direct-split8";
     case FORCE_KERNEL_NEWTON:
       return "newton";
     case FORCE_KERNEL_NEWTON_ATOMIC:
@@ -245,6 +260,115 @@ static void compute_accelerations_direct (size_t n, dtype g, dtype mass, dtype e
 }
 
 /*
+ * Direct all-pairs variants with multiple partial accumulators.
+ *
+ * The baseline kernel updates the same axi/ayi/azi values for every j, creating
+ * a long floating-point dependency chain.  These variants split the reduction
+ * into independent lanes and combine them at the end of the i loop.  They keep
+ * exactly the same mathematical all-pairs formulation; only the local reduction
+ * order changes.  The split2/split4/split8 modes let us measure where the
+ * throughput gain saturates.
+ */
+#ifdef _OPENMP
+#define NBODY_OMP_PARALLEL_FOR _Pragma("omp parallel for schedule(static)")
+#else
+#define NBODY_OMP_PARALLEL_FOR
+#endif
+
+#define DEFINE_DIRECT_SPLIT(LANES)                                                    \
+static void compute_accelerations_direct_split##LANES (size_t n, dtype g, dtype mass, \
+                                                       dtype eps,                    \
+                                                       inv_sqrt_t inv_sqrt_mode,     \
+                                                       const dtype * restrict x,      \
+                                                       const dtype * restrict y,      \
+                                                       const dtype * restrict z,      \
+                                                       dtype * restrict ax,           \
+                                                       dtype * restrict ay,           \
+                                                       dtype * restrict az)           \
+{                                                                                     \
+  const dtype eps2 = eps * eps;                                                       \
+                                                                                      \
+  NBODY_OMP_PARALLEL_FOR                                                              \
+  for (size_t i = 0u; i < n; ++i)                                                     \
+    {                                                                                 \
+      const dtype xi = x[i];                                                          \
+      const dtype yi = y[i];                                                          \
+      const dtype zi = z[i];                                                          \
+      dtype axp[LANES];                                                               \
+      dtype ayp[LANES];                                                               \
+      dtype azp[LANES];                                                               \
+      dtype axi = (dtype) 0.0;                                                        \
+      dtype ayi = (dtype) 0.0;                                                        \
+      dtype azi = (dtype) 0.0;                                                        \
+      size_t j = 0u;                                                                  \
+                                                                                      \
+      for (size_t lane = 0u; lane < (size_t) LANES; ++lane)                           \
+        {                                                                             \
+          axp[lane] = (dtype) 0.0;                                                    \
+          ayp[lane] = (dtype) 0.0;                                                    \
+          azp[lane] = (dtype) 0.0;                                                    \
+        }                                                                             \
+                                                                                      \
+      for (; j + (size_t) LANES <= n; j += (size_t) LANES)                            \
+        {                                                                             \
+          for (size_t lane = 0u; lane < (size_t) LANES; ++lane)                       \
+            {                                                                         \
+              const size_t k = j + lane;                                              \
+                                                                                      \
+              if (k != i)                                                             \
+                {                                                                     \
+                  const dtype dx = x[k] - xi;                                         \
+                  const dtype dy = y[k] - yi;                                         \
+                  const dtype dz = z[k] - zi;                                         \
+                  const dtype r2 = dx * dx + dy * dy + dz * dz + eps2;                \
+                  const dtype invr = inv_sqrt_value (r2, inv_sqrt_mode);              \
+                  const dtype s = g * mass * invr * invr * invr;                     \
+                                                                                      \
+                  axp[lane] += dx * s;                                                \
+                  ayp[lane] += dy * s;                                                \
+                  azp[lane] += dz * s;                                                \
+                }                                                                     \
+            }                                                                         \
+        }                                                                             \
+                                                                                      \
+      for (; j < n; ++j)                                                              \
+        {                                                                             \
+          if (j != i)                                                                 \
+            {                                                                         \
+              const dtype dx = x[j] - xi;                                             \
+              const dtype dy = y[j] - yi;                                             \
+              const dtype dz = z[j] - zi;                                             \
+              const dtype r2 = dx * dx + dy * dy + dz * dz + eps2;                    \
+              const dtype invr = inv_sqrt_value (r2, inv_sqrt_mode);                  \
+              const dtype s = g * mass * invr * invr * invr;                         \
+                                                                                      \
+              axi += dx * s;                                                          \
+              ayi += dy * s;                                                          \
+              azi += dz * s;                                                          \
+            }                                                                         \
+        }                                                                             \
+                                                                                      \
+      for (size_t lane = 0u; lane < (size_t) LANES; ++lane)                           \
+        {                                                                             \
+          axi += axp[lane];                                                           \
+          ayi += ayp[lane];                                                           \
+          azi += azp[lane];                                                           \
+        }                                                                             \
+                                                                                      \
+      ax[i] = axi;                                                                    \
+      ay[i] = ayi;                                                                    \
+      az[i] = azi;                                                                    \
+    }                                                                                 \
+}
+
+DEFINE_DIRECT_SPLIT(2)
+DEFINE_DIRECT_SPLIT(4)
+DEFINE_DIRECT_SPLIT(8)
+
+#undef DEFINE_DIRECT_SPLIT
+#undef NBODY_OMP_PARALLEL_FOR
+
+/*
  * Newton-third-law variant for controlled serial comparisons.
  *
  * Each pair is visited once and contributes equal and opposite accelerations to
@@ -387,6 +511,27 @@ static void compute_accelerations (particles_t *p, dtype g, dtype eps,
                                    force_kernel_t kernel,
                                    inv_sqrt_t inv_sqrt_mode)
 {
+  if (kernel == FORCE_KERNEL_DIRECT_SPLIT2)
+    {
+      compute_accelerations_direct_split2 (p->n, g, p->mass, eps, inv_sqrt_mode,
+                                           p->x, p->y, p->z,
+                                           p->ax, p->ay, p->az);
+      return;
+    }
+  if (kernel == FORCE_KERNEL_DIRECT_SPLIT4)
+    {
+      compute_accelerations_direct_split4 (p->n, g, p->mass, eps, inv_sqrt_mode,
+                                           p->x, p->y, p->z,
+                                           p->ax, p->ay, p->az);
+      return;
+    }
+  if (kernel == FORCE_KERNEL_DIRECT_SPLIT8)
+    {
+      compute_accelerations_direct_split8 (p->n, g, p->mass, eps, inv_sqrt_mode,
+                                           p->x, p->y, p->z,
+                                           p->ax, p->ay, p->az);
+      return;
+    }
   if (kernel == FORCE_KERNEL_NEWTON)
     {
       compute_accelerations_newton (p->n, g, p->mass, eps, inv_sqrt_mode,
@@ -511,7 +656,8 @@ static void print_usage (const char *program)
            "  --G X                     gravitational constant (default: 1)\n"
            "  --mass X                  particle mass (default: 1)\n"
            "  --integrator NAME         leapfrog variant: kdk or dkd (default: kdk)\n"
-           "  --force-kernel NAME       force kernel: direct, newton, or newton-atomic (default: direct)\n"
+           "  --force-kernel NAME       force kernel: direct, direct-split2, direct-split4,\n"
+           "                            direct-split8, newton, or newton-atomic (default: direct)\n"
            "  --inv-sqrt NAME           inverse sqrt: libm, rsqrt1, rsqrt2, or rsqrt3 (default: libm)\n"
            "  --energy-every N          diagnostic period in steps (default: 1)\n"
            "  --energy-tol X            warning tolerance for max relative drift (default: 1e-3)\n"

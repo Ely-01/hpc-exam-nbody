@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="720" viewBox="0 0 1500 720">
+<rect width="1500" height="720" fill="white"/>
+<text x="750" y="38" text-anchor="middle" font-size="24" font-weight="700">Accumulator splitting and force-kernel critical path</text>
+<text x="750" y="66" text-anchor="middle" font-size="13">More independent partial sums shorten the dependency chain; the useful gain saturates once arithmetic throughput or overhead dominates.</text>
+<text x="390.0" y="117.0" text-anchor="middle" font-size="16" font-weight="700">Force speedup</text>
+<line x1="95" y1="555" x2="685" y2="555" stroke="#222"/>
+<line x1="95" y1="135" x2="95" y2="555" stroke="#222"/>
+<text x="43.0" y="345.0" transform="rotate(-90 43.0,345.0)" text-anchor="middle" font-size="12">x vs direct</text>
+<text x="390.0" y="597.0" text-anchor="middle" font-size="12">Partial accumulators</text>
+<line x1="95" y1="555.0" x2="685" y2="555.0" stroke="#e5e7eb"/>
+<text x="87.0" y="559.0" text-anchor="end" font-size="10">0</text>
+<line x1="95" y1="471.0" x2="685" y2="471.0" stroke="#e5e7eb"/>
+<text x="87.0" y="475.0" text-anchor="end" font-size="10">0.32</text>
+<line x1="95" y1="387.0" x2="685" y2="387.0" stroke="#e5e7eb"/>
+<text x="87.0" y="391.0" text-anchor="end" font-size="10">0.64</text>
+<line x1="95" y1="303.0" x2="685" y2="303.0" stroke="#e5e7eb"/>
+<text x="87.0" y="307.0" text-anchor="end" font-size="10">0.96</text>
+<line x1="95" y1="219.0" x2="685" y2="219.0" stroke="#e5e7eb"/>
+<text x="87.0" y="223.0" text-anchor="end" font-size="10">1.3</text>
+<line x1="95" y1="135.0" x2="685" y2="135.0" stroke="#e5e7eb"/>
+<text x="87.0" y="139.0" text-anchor="end" font-size="10">1.6</text>
+<text x="168.8" y="577.0" text-anchor="middle" font-size="11">1</text>
+<rect x="112.7" y="292.5" width="27.5" height="262.5" fill="#2563eb"/>
+<rect x="146.2" y="292.5" width="27.5" height="262.5" fill="#16a34a"/>
+<rect x="179.7" y="292.5" width="27.5" height="262.5" fill="#ca8a04"/>
+<text x="316.2" y="577.0" text-anchor="middle" font-size="11">2</text>
+<rect x="260.2" y="275.0" width="27.5" height="280.0" fill="#2563eb"/>
+<rect x="293.7" y="232.3" width="27.5" height="322.7" fill="#16a34a"/>
+<rect x="327.2" y="380.0" width="27.5" height="175.0" fill="#ca8a04"/>
+<text x="463.8" y="577.0" text-anchor="middle" font-size="11">4</text>
+<rect x="407.7" y="295.6" width="27.5" height="259.4" fill="#2563eb"/>
+<rect x="441.2" y="215.9" width="27.5" height="339.1" fill="#16a34a"/>
+<rect x="474.7" y="378.7" width="27.5" height="176.3" fill="#ca8a04"/>
+<text x="611.2" y="577.0" text-anchor="middle" font-size="11">8</text>
+<rect x="555.2" y="303.1" width="27.5" height="251.9" fill="#2563eb"/>
+<rect x="588.7" y="228.1" width="27.5" height="326.9" fill="#16a34a"/>
+<rect x="622.2" y="333.7" width="27.5" height="221.3" fill="#ca8a04"/>
+<rect x="589.0" y="143.0" width="10.0" height="10.0" fill="#2563eb"/>
+<text x="605.0" y="153.0" font-size="11">1 thread(s)</text>
+<rect x="589.0" y="161.0" width="10.0" height="10.0" fill="#16a34a"/>
+<text x="605.0" y="171.0" font-size="11">2 thread(s)</text>
+<rect x="589.0" y="179.0" width="10.0" height="10.0" fill="#ca8a04"/>
+<text x="605.0" y="189.0" font-size="11">4 thread(s)</text>
+<text x="1125.0" y="117.0" text-anchor="middle" font-size="16" font-weight="700">Nominal interaction throughput</text>
+<line x1="830" y1="555" x2="1420" y2="555" stroke="#222"/>
+<line x1="830" y1="135" x2="830" y2="555" stroke="#222"/>
+<text x="778.0" y="345.0" transform="rotate(-90 778.0,345.0)" text-anchor="middle" font-size="12">Gpair/s</text>
+<text x="1125.0" y="597.0" text-anchor="middle" font-size="12">Partial accumulators</text>
+<line x1="830" y1="555.0" x2="1420" y2="555.0" stroke="#e5e7eb"/>
+<text x="822.0" y="559.0" text-anchor="end" font-size="10">0</text>
+<line x1="830" y1="471.0" x2="1420" y2="471.0" stroke="#e5e7eb"/>
+<text x="822.0" y="475.0" text-anchor="end" font-size="10">0.3</text>
+<line x1="830" y1="387.0" x2="1420" y2="387.0" stroke="#e5e7eb"/>
+<text x="822.0" y="391.0" text-anchor="end" font-size="10">0.6</text>
+<line x1="830" y1="303.0" x2="1420" y2="303.0" stroke="#e5e7eb"/>
+<text x="822.0" y="307.0" text-anchor="end" font-size="10">0.9</text>
+<line x1="830" y1="219.0" x2="1420" y2="219.0" stroke="#e5e7eb"/>
+<text x="822.0" y="223.0" text-anchor="end" font-size="10">1.2</text>
+<line x1="830" y1="135.0" x2="1420" y2="135.0" stroke="#e5e7eb"/>
+<text x="822.0" y="139.0" text-anchor="end" font-size="10">1.5</text>
+<text x="903.8" y="577.0" text-anchor="middle" font-size="11">1</text>
+<rect x="847.7" y="469.9" width="27.5" height="85.1" fill="#2563eb"/>
+<rect x="881.2" y="428.9" width="27.5" height="126.1" fill="#16a34a"/>
+<rect x="914.7" y="207.8" width="27.5" height="347.2" fill="#ca8a04"/>
+<text x="1051.2" y="577.0" text-anchor="middle" font-size="11">2</text>
+<rect x="995.2" y="464.3" width="27.5" height="90.7" fill="#2563eb"/>
+<rect x="1028.7" y="400.0" width="27.5" height="155.0" fill="#16a34a"/>
+<rect x="1062.2" y="323.6" width="27.5" height="231.4" fill="#ca8a04"/>
+<text x="1198.8" y="577.0" text-anchor="middle" font-size="11">4</text>
+<rect x="1142.7" y="470.9" width="27.5" height="84.1" fill="#2563eb"/>
+<rect x="1176.2" y="392.1" width="27.5" height="162.9" fill="#16a34a"/>
+<rect x="1209.7" y="321.9" width="27.5" height="233.1" fill="#ca8a04"/>
+<text x="1346.2" y="577.0" text-anchor="middle" font-size="11">8</text>
+<rect x="1290.2" y="473.4" width="27.5" height="81.6" fill="#2563eb"/>
+<rect x="1323.7" y="398.0" width="27.5" height="157.0" fill="#16a34a"/>
+<rect x="1357.2" y="262.3" width="27.5" height="292.7" fill="#ca8a04"/>
+<rect x="1324.0" y="143.0" width="10.0" height="10.0" fill="#2563eb"/>
+<text x="1340.0" y="153.0" font-size="11">1 thread(s)</text>
+<rect x="1324.0" y="161.0" width="10.0" height="10.0" fill="#16a34a"/>
+<text x="1340.0" y="171.0" font-size="11">2 thread(s)</text>
+<rect x="1324.0" y="179.0" width="10.0" height="10.0" fill="#ca8a04"/>
+<text x="1340.0" y="189.0" font-size="11">4 thread(s)</text>
+</svg>

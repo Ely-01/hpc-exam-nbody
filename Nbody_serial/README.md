@@ -92,6 +92,32 @@ python3 scripts/analyze_layout_tradeoff.py results/layout_tradeoff.csv \
   --svg report/figures/layout_tradeoff.svg
 ```
 
+Run the accumulator-splitting force-kernel benchmark:
+
+```sh
+REPEATS=5 THREADS="1 2 4 8" N=4096 NSTEPS=10 sh scripts/benchmark_accumulator_tradeoff.sh
+python3 scripts/analyze_accumulator_tradeoff.py results/accumulator_tradeoff_YYYYMMDD_HHMMSS.csv \
+  --csv results/accumulator_tradeoff_summary.csv \
+  --markdown results/accumulator_tradeoff_summary.md \
+  --svg report/figures/accumulator_tradeoff.svg
+```
+
+For the final Orfeo run, prefer node-specific optimization flags so that the
+compiler can use the instruction set of the allocated CPU:
+
+```sh
+CFLAGS="-O3 -march=native -ffp-contract=fast -Wall -Wextra -Wpedantic" \
+  REPEATS=5 THREADS="1 2 4 8" N=8192 NSTEPS=20 \
+  sh scripts/benchmark_accumulator_tradeoff.sh
+```
+
+The `direct-split2`, `direct-split4`, and `direct-split8` kernels keep the same
+direct all-pairs force law but split the local `ax/ay/az` accumulation into
+multiple independent partial sums. This is the benchmark used to discuss the
+FMA-throughput/critical-path point from the assignment: fewer dependencies can
+increase throughput, but the gain eventually saturates because of extra loop
+bookkeeping, register pressure, and the remaining non-accumulation work.
+
 Run a repeated OpenMP benchmark and save a CSV under `results/`:
 
 ```sh
