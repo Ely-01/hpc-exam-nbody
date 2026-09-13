@@ -1,0 +1,34 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%labels
+    Author hpc-exam-nbody
+    Description Direct N-body MPI+OpenMP exam container
+
+%post
+    set -eu
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        make \
+        openmpi-bin \
+        libopenmpi-dev \
+        python3
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+
+%environment
+    export OMPI_MCA_btl_vader_single_copy_mechanism=none
+    export OMP_PROC_BIND=${OMP_PROC_BIND:-close}
+    export OMP_PLACES=${OMP_PLACES:-cores}
+
+%runscript
+    exec "$@"
+
+%test
+    cc --version
+    mpicc --version
+    mpirun --version
+    python3 --version

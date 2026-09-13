@@ -202,6 +202,102 @@ Override the defaults with environment variables, for example:
 MPI_RANKS=4 OMP_THREADS=2 N=128 NSTEPS=5 sh scripts/run_mpi_smoke.sh
 ```
 
+## Preliminary Apptainer container
+
+The container layer follows the assignment structure:
+
+- `container/Dockerfile` defines a Docker image with the build-time
+  dependencies;
+- `container/nbody.def` builds the Apptainer/Singularity `.sif` image used on
+  Orfeo.
+
+The base image is Ubuntu 22.04, because the assignment asks for a reproducible
+general-purpose Linux userspace rather than a vendor-specific HPC image.
+
+Build the Apptainer image directly on Orfeo:
+
+```sh
+module load apptainer
+apptainer build container/nbody_latest.sif container/nbody.def
+```
+
+Building directly on Orfeo is the preferred first attempt because it validates
+the same Apptainer version, filesystem behavior, and module environment used for
+the runs. If Orfeo requires fakeroot or a site-specific build workflow, use:
+
+```sh
+apptainer build --fakeroot container/nbody_latest.sif container/nbody.def
+```
+
+If a local Docker daemon is available outside the cluster, the equivalent Docker
+path is:
+
+```sh
+docker build -t nbody:latest -f container/Dockerfile .
+apptainer build container/nbody_latest.sif docker-daemon://nbody:latest
+```
+
+Keep the output image at `container/nbody_latest.sif`. The `.sif` image is a
+generated artifact and is not committed.
+
+Run a local smoke test inside the image:
+
+```sh
+BUILD_CFLAGS="-O3 -march=x86-64-v3 -ffp-contract=fast -Wall -Wextra -Wpedantic" \
+  sh scripts/run_container_smoke.sh
+```
+
+Or under SLURM, after loading the same MPI module used for native runs:
+
+```sh
+module load openMPI/4.1.6
+module load apptainer
+sbatch -A dssc -p EPYC --ntasks=4 --cpus-per-task=1 \
+  --export=ALL,MODULES="openMPI/4.1.6",CONTAINER_IMAGE=container/nbody_latest.sif \
+  scripts/slurm_container_smoke.slurm
+```
+
+For the final comparison, run native and container benchmarks with the same
+input files, rank/thread layout, partition, compiler flags, and number of
+repeats. The `.sif` image is a generated artifact and is not committed.
+
+The container installs OpenMPI to compile the MPI program with `mpicc`. On the
+cluster, Apptainer is expected to launch under the host MPI runtime and bind the
+host environment at execution time. This is why the container MPI is treated as
+a build-time dependency, while the final report must still check MPI linkage and
+runtime behavior on Orfeo.
+
+Check MPI library binding with `ldd`:
+
+```sh
+module load openMPI/4.1.6
+module load apptainer
+make mpi OPENMP=1 PRECISION=double
+CONTAINER_IMAGE=container/nbody_latest.sif sh scripts/check_container_mpi_binding.sh
+```
+
+The report should compare the MPI-related lines in:
+
+```text
+results/mpi_ldd_native.txt
+results/mpi_ldd_container_build_env.txt
+results/mpi_ldd_container_host_mpi.txt
+```
+
+Measure container launch overhead explicitly:
+
+```sh
+python3 scripts/measure_container_launch_overhead.py \
+  --image container/nbody_latest.sif \
+  --repeats 5 \
+  --output results/container_launch_overhead.csv
+```
+
+Use `-march=x86-64-v3` for portable container benchmark binaries. It targets a
+modern x86-64 baseline without hard-coding the exact CPU used during image
+creation. A native `-march=native` build can still be run separately to measure
+how much performance is left on the table by the portable choice.
+
 The equivalent manual switches are:
 
 ```sh
