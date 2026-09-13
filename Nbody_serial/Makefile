@@ -7,7 +7,7 @@ LDLIBS    ?= -lm
 PRECISION ?= double
 OPENMP    ?= 0
 
-PROGRAMS := nbody_direct_serial generate_ic inspect_particles
+PROGRAMS := nbody_direct_serial generate_ic inspect_particles benchmark_layout
 MPI_PROGRAMS := nbody_mpi_omp
 HEADERS  := nbody_common.h nbody_core.h
 BUILD_DIR := build
@@ -43,6 +43,9 @@ generate_ic: generate_ic.c $(HEADERS) $(COMMON_FLAGS_FILE)
 
 inspect_particles: inspect_particles.c $(HEADERS) $(COMMON_FLAGS_FILE)
 	$(CC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) -o $@ $< $(LDLIBS)
+
+benchmark_layout: benchmark_layout.c nbody_core.c $(HEADERS) $(COMMON_FLAGS_FILE) $(SOLVER_FLAGS_FILE)
+	$(CC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) $(OPENMP_CFLAGS) -o $@ benchmark_layout.c nbody_core.c $(LDLIBS) $(OPENMP_LDLIBS)
 
 nbody_mpi_omp: nbody_mpi_omp.c nbody_core.c $(HEADERS) $(COMMON_FLAGS_FILE) $(SOLVER_FLAGS_FILE)
 	$(MPICC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) $(OPENMP_CFLAGS) -o $@ nbody_mpi_omp.c nbody_core.c $(LDLIBS) $(OPENMP_LDLIBS)

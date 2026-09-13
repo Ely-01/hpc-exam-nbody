@@ -31,6 +31,7 @@ ehthumbs.db
 Nbody_serial/nbody_direct_serial
 Nbody_serial/generate_ic
 Nbody_serial/inspect_particles
+Nbody_serial/benchmark_layout
 Nbody_serial/build/
 Nbody_serial/results/
 

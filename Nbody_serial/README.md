@@ -5,6 +5,7 @@ This directory contains three stand-alone programs for the direct gravitational 
 - `nbody_direct_serial.c`: serial softened direct solver with selectable KDK
   or DKD leapfrog integration and selectable direct/Newton/Newton-atomic force
   kernels.
+- `benchmark_layout.c`: AoS-vs-SoA microbenchmark for the direct force kernel.
   step and a relative energy-drift verifier.
 - `gen_plummer_sphere.c`: Plummer-sphere initial-condition generator.
 - `gen_uniform_ball_maxwell.c`: uniform-ball generator with isotropic Maxwellian
@@ -55,6 +56,23 @@ python3 scripts/analyze_newton_tradeoff.py results/newton_tradeoff_YYYYMMDD_HHMM
   --csv results/newton_tradeoff_summary.csv \
   --markdown results/newton_tradeoff_summary.md \
   --svg report/figures/newton_tradeoff.svg
+```
+
+Run the AoS-vs-SoA force-kernel layout microbenchmark:
+
+```sh
+make OPENMP=1 PRECISION=double benchmark_layout
+./generate_ic --model 0 --n 4096 --seed 123 --scale 1.0 --mass 1.0 --output results/plummer_layout_4096.bin
+{
+  OMP_NUM_THREADS=1 ./benchmark_layout --input results/plummer_layout_4096.bin --repeats 5
+  OMP_NUM_THREADS=2 ./benchmark_layout --input results/plummer_layout_4096.bin --repeats 5 --no-header
+  OMP_NUM_THREADS=4 ./benchmark_layout --input results/plummer_layout_4096.bin --repeats 5 --no-header
+  OMP_NUM_THREADS=8 ./benchmark_layout --input results/plummer_layout_4096.bin --repeats 5 --no-header
+} > results/layout_tradeoff.csv
+python3 scripts/analyze_layout_tradeoff.py results/layout_tradeoff.csv \
+  --csv results/layout_tradeoff_summary.csv \
+  --markdown results/layout_tradeoff_summary.md \
+  --svg report/figures/layout_tradeoff.svg
 ```
 
 Run a repeated OpenMP benchmark and save a CSV under `results/`:
