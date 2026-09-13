@@ -33,6 +33,42 @@ printf '%s\n' \
   "mode,n,nlocal,nsteps,dt,eps,mass,ranks,threads,total_workers,repeat,total_seconds,force_seconds,communication_seconds,integration_seconds,energy_seconds,initial_acceleration_seconds,max_relative_energy_drift,status" \
   > "$CSV"
 
+max_ranks=0
+max_threads=0
+max_workers=0
+for config in $CONFIGS; do
+  ranks=${config%x*}
+  threads=${config#*x}
+
+  if [ "$ranks" = "$config" ] || [ -z "$ranks" ] || [ -z "$threads" ]; then
+    echo "error: invalid CONFIGS entry '$config', expected ranksxthreads" >&2
+    exit 1
+  fi
+
+  workers=$((ranks * threads))
+  if [ "$ranks" -gt "$max_ranks" ]; then
+    max_ranks=$ranks
+  fi
+  if [ "$threads" -gt "$max_threads" ]; then
+    max_threads=$threads
+  fi
+  if [ "$workers" -gt "$max_workers" ]; then
+    max_workers=$workers
+  fi
+done
+
+if [ -n "${SLURM_NTASKS:-}" ] && [ "$max_ranks" -gt "$SLURM_NTASKS" ]; then
+  echo "error: CONFIGS require up to $max_ranks MPI ranks, but SLURM_NTASKS=$SLURM_NTASKS" >&2
+  exit 1
+fi
+
+if [ -n "${SLURM_CPUS_PER_TASK:-}" ] && [ "$max_threads" -gt "$SLURM_CPUS_PER_TASK" ]; then
+  echo "error: CONFIGS require up to $max_threads OpenMP threads per rank, but SLURM_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK" >&2
+  exit 1
+fi
+
+echo "# scaling mode=$MODE configs=$CONFIGS max_ranks=$max_ranks max_threads=$max_threads max_workers=$max_workers"
+
 extract_final_field () {
   key=$1
   awk -v key="$key" '
@@ -179,4 +215,3 @@ for config in $CONFIGS; do
 done
 
 echo "# wrote $CSV"
-

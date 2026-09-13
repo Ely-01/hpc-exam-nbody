@@ -40,6 +40,7 @@ def draw_panel(
     x_values: list[float],
     y_values: list[float],
     ideal_values: list[float],
+    x_tick_labels: list[str],
     x_label: str,
     y_label: str,
     title: str,
@@ -67,7 +68,7 @@ def draw_panel(
         f'<text x="{x0 + width / 2:.1f}" y="{y0 - 16:.1f}" text-anchor="middle" font-size="16" font-weight="700">{title}</text>',
         f'<line x1="{x0}" y1="{y0 + height}" x2="{x0 + width}" y2="{y0 + height}" stroke="#222"/>',
         f'<line x1="{x0}" y1="{y0}" x2="{x0}" y2="{y0 + height}" stroke="#222"/>',
-        f'<text x="{x0 + width / 2:.1f}" y="{y0 + height + 42:.1f}" text-anchor="middle" font-size="13">{x_label}</text>',
+        f'<text x="{x0 + width / 2:.1f}" y="{y0 + height + 58:.1f}" text-anchor="middle" font-size="13">{x_label}</text>',
         f'<text x="{x0 - 48:.1f}" y="{y0 + height / 2:.1f}" transform="rotate(-90 {x0 - 48:.1f},{y0 + height / 2:.1f})" text-anchor="middle" font-size="13">{y_label}</text>',
     ]
 
@@ -77,10 +78,12 @@ def draw_panel(
         parts.append(f'<line x1="{x0}" y1="{py:.1f}" x2="{x0 + width}" y2="{py:.1f}" stroke="#e5e7eb"/>')
         parts.append(f'<text x="{x0 - 8:.1f}" y="{py + 4:.1f}" text-anchor="end" font-size="11">{y:.2g}</text>')
 
-    for x in x_values:
+    for index, x in enumerate(x_values):
         px = sx(x)
         parts.append(f'<line x1="{px:.1f}" y1="{y0 + height}" x2="{px:.1f}" y2="{y0 + height + 5}" stroke="#222"/>')
-        parts.append(f'<text x="{px:.1f}" y="{y0 + height + 22:.1f}" text-anchor="middle" font-size="11">{int(x)}</text>')
+        label_lines = x_tick_labels[index].split("\\n")
+        for line_index, label_line in enumerate(label_lines):
+            parts.append(f'<text x="{px:.1f}" y="{y0 + height + 22 + 14 * line_index:.1f}" text-anchor="middle" font-size="11">{label_line}</text>')
 
     parts.append(polyline(ideal, "#9ca3af"))
     parts.append(polyline(actual, "#2563eb"))
@@ -92,6 +95,8 @@ def draw_panel(
 
 def make_svg(rows: list[dict[str, str]], output: Path) -> None:
     mode = rows[0]["mode"]
+    ranks = [int(row["ranks"]) for row in rows]
+    threads = [int(row["threads"]) for row in rows]
     workers = [float(row["total_workers"]) for row in rows]
     speedup = [float(row["speedup"]) for row in rows]
     efficiency = [float(row["parallel_efficiency"]) for row in rows]
@@ -99,15 +104,35 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
         float(row.get("communication_fraction", "0")) for row in rows
     ]
     base_workers = workers[0]
+    has_mpi = any(rank > 1 for rank in ranks)
+    has_openmp = any(thread > 1 for thread in threads)
+
+    if has_mpi and has_openmp:
+        backend_label = "Hybrid MPI+OpenMP"
+    elif has_openmp:
+        backend_label = "OpenMP-only"
+    else:
+        backend_label = "MPI-only"
+
+    show_rank_thread = has_openmp or any(rank != int(worker) for rank, worker in zip(ranks, workers))
+    if show_rank_thread:
+        x_tick_labels = [
+            f"{int(worker)}\\n{rank}x{thread}"
+            for worker, rank, thread in zip(workers, ranks, threads)
+        ]
+        x_label = "Total workers (rank x thread)"
+    else:
+        x_tick_labels = [str(int(worker)) for worker in workers]
+        x_label = "Total workers"
 
     if mode == "strong":
         ideal_speedup = [w / base_workers for w in workers]
         note = "Strong scaling: fixed N. Amdahl effects appear as the measured curve bends below ideal speedup."
-        speedup_title = "Strong scaling speedup"
+        speedup_title = f"{backend_label} strong scaling speedup"
     else:
         ideal_speedup = [w / base_workers for w in workers]
         note = "Weak scaling: fixed Nlocal per MPI rank. Gustafson-style scaled speedup is shown; efficiency loss indicates communication and runtime overheads."
-        speedup_title = "Weak scaling scaled speedup"
+        speedup_title = f"{backend_label} weak scaling scaled speedup"
 
     ideal_efficiency = [1.0 for _ in workers]
     y_max_speedup = nice_max(max(max(speedup), max(ideal_speedup)) * 1.05)
@@ -130,7 +155,8 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
             workers,
             speedup,
             ideal_speedup,
-            "Total workers",
+            x_tick_labels,
+            x_label,
             "Speedup",
             "Speedup",
             82,
@@ -143,7 +169,8 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
             workers,
             efficiency,
             ideal_efficiency,
-            "Total workers",
+            x_tick_labels,
+            x_label,
             "Parallel efficiency",
             "Efficiency",
             622 if mode == "strong" else 570,
@@ -160,7 +187,8 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
                 workers,
                 communication_fraction,
                 [0.0 for _ in workers],
-                "Total workers",
+                x_tick_labels,
+                x_label,
                 "Communication / total",
                 "Communication fraction",
                 1058,
