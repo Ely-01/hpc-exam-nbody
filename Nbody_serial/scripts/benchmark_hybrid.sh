@@ -10,9 +10,10 @@ SEED=${SEED:-123}
 ENERGY_EVERY=${ENERGY_EVERY:-$NSTEPS}
 REPEATS=${REPEATS:-5}
 CONFIGS=${CONFIGS:-"1x4 2x2 4x1"}
+RING_MODE=${RING_MODE:-blocking}
 OUTPUT_DIR=${OUTPUT_DIR:-results}
 INPUT=${INPUT:-$OUTPUT_DIR/plummer_${N}.bin}
-CSV=${CSV:-$OUTPUT_DIR/hybrid_benchmark_$(date +%Y%m%d_%H%M%S).csv}
+CSV=${CSV:-$OUTPUT_DIR/hybrid_benchmark_${RING_MODE}_$(date +%Y%m%d_%H%M%S).csv}
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -86,6 +87,7 @@ run_mpi () {
         --eps "$EPS" \
         --mass "$MASS" \
         --energy-every "$ENERGY_EVERY" \
+        --ring-mode "$RING_MODE" \
         --timing \
         --quiet
   elif command -v mpirun >/dev/null 2>&1; then
@@ -97,6 +99,7 @@ run_mpi () {
         --eps "$EPS" \
         --mass "$MASS" \
         --energy-every "$ENERGY_EVERY" \
+        --ring-mode "$RING_MODE" \
         --timing \
         --quiet
   else
@@ -116,7 +119,7 @@ for config in $CONFIGS; do
   fi
 
   for repeat in $(seq 1 "$REPEATS"); do
-    echo "# hybrid run ranks=$ranks threads=$threads repeat=$repeat/$REPEATS"
+    echo "# hybrid run ring_mode=$RING_MODE ranks=$ranks threads=$threads repeat=$repeat/$REPEATS"
 
     output=$(
       OMP_NUM_THREADS="$threads" \
@@ -128,7 +131,7 @@ for config in $CONFIGS; do
     printf '%s\n' "$output"
 
     printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
-      "mpi_kdk" \
+      "mpi_kdk_${RING_MODE}" \
       "$N" \
       "$NSTEPS" \
       "$DT" \
@@ -151,4 +154,3 @@ for config in $CONFIGS; do
 done
 
 echo "# wrote $CSV"
-

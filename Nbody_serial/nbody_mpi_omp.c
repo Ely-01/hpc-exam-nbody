@@ -1,7 +1,7 @@
 /*
  * nbody_mpi_omp.c
  *
- * First hybrid MPI + OpenMP direct N-body implementation. Keeps
+ * First hybrid MPI + OpenMP direct N-body implementation.  This version keeps
  * the direct O(N^2) algorithm and uses an MPI ring-shift of source particles.
  * Each rank owns a fixed home block and accumulates accelerations only for that
  * block; OpenMP parallelizes the local home-particle loop.
@@ -29,6 +29,38 @@ static MPI_Datatype dtype_mpi_type (void)
 #endif
 }
 
+static void mpi_die (const char *format, ...);
+
+typedef enum ring_mode_e
+{
+  RING_MODE_BLOCKING,
+  RING_MODE_OVERLAP
+} ring_mode_t;
+
+static ring_mode_t parse_ring_mode (const char *text)
+{
+  if (strcmp (text, "blocking") == 0)
+    return RING_MODE_BLOCKING;
+  if (strcmp (text, "overlap") == 0)
+    return RING_MODE_OVERLAP;
+
+  mpi_die ("invalid ring mode '%s': expected blocking or overlap", text);
+  return RING_MODE_BLOCKING;
+}
+
+static const char *ring_mode_name (ring_mode_t mode)
+{
+  switch (mode)
+    {
+    case RING_MODE_BLOCKING:
+      return "blocking";
+    case RING_MODE_OVERLAP:
+      return "overlap";
+    }
+
+  return "unknown";
+}
+
 static void mpi_abort_handler (void)
 {
   MPI_Abort (MPI_COMM_WORLD, EXIT_FAILURE);
@@ -46,10 +78,12 @@ static void mpi_die (const char *format, ...)
 }
 
 static void print_timing_mpi (const timing_t *timing,
-                              int nranks)
+                              int nranks,
+                              ring_mode_t ring_mode)
 {
-  printf ("# timing mpi_ranks %d openmp %s max_threads %d\n",
-          nranks, nbody_openmp_status (), nbody_openmp_max_threads ());
+  printf ("# timing mpi_ranks %d openmp %s max_threads %d ring_mode %s\n",
+          nranks, nbody_openmp_status (), nbody_openmp_max_threads (),
+          ring_mode_name (ring_mode));
   printf ("# timing total_seconds %.9f\n", timing->total_seconds);
   printf ("# timing read_seconds %.9f\n", timing->read_seconds);
   printf ("# timing distribute_seconds %.9f\n", timing->distribute_seconds);
@@ -104,11 +138,121 @@ static void rotate_position_block (dtype **send_x,
   }
 }
 
-static void compute_accelerations_ring (particles_t *home,
-                                        dtype g,
-                                        dtype eps,
-                                        MPI_Comm comm,
-                                        timing_t *timing)
+static void start_position_block_rotation (dtype *send_x,
+                                           dtype *send_y,
+                                           dtype *send_z,
+                                           dtype *recv_x,
+                                           dtype *recv_y,
+                                           dtype *recv_z,
+                                           size_t nlocal,
+                                           int left,
+                                           int right,
+                                           int tag_base,
+                                           MPI_Comm comm,
+                                           MPI_Request requests[6],
+                                           timing_t *timing)
+{
+  double t0 = nbody_wall_seconds ();
+
+  MPI_Irecv (recv_x, (int) nlocal, dtype_mpi_type (), left, tag_base,
+             comm, &requests[0]);
+  MPI_Irecv (recv_y, (int) nlocal, dtype_mpi_type (), left, tag_base + 1,
+             comm, &requests[1]);
+  MPI_Irecv (recv_z, (int) nlocal, dtype_mpi_type (), left, tag_base + 2,
+             comm, &requests[2]);
+  MPI_Isend (send_x, (int) nlocal, dtype_mpi_type (), right, tag_base,
+             comm, &requests[3]);
+  MPI_Isend (send_y, (int) nlocal, dtype_mpi_type (), right, tag_base + 1,
+             comm, &requests[4]);
+  MPI_Isend (send_z, (int) nlocal, dtype_mpi_type (), right, tag_base + 2,
+             comm, &requests[5]);
+
+  timing->communication_seconds += nbody_wall_seconds () - t0;
+}
+
+static void finish_position_block_rotation (dtype **send_x,
+                                            dtype **send_y,
+                                            dtype **send_z,
+                                            dtype **recv_x,
+                                            dtype **recv_y,
+                                            dtype **recv_z,
+                                            MPI_Request requests[6],
+                                            timing_t *timing)
+{
+  double t0 = nbody_wall_seconds ();
+
+  MPI_Waitall (6, requests, MPI_STATUSES_IGNORE);
+  timing->communication_seconds += nbody_wall_seconds () - t0;
+
+  {
+    dtype *tmp;
+
+    tmp = *send_x;
+    *send_x = *recv_x;
+    *recv_x = tmp;
+    tmp = *send_y;
+    *send_y = *recv_y;
+    *recv_y = tmp;
+    tmp = *send_z;
+    *send_z = *recv_z;
+    *recv_z = tmp;
+  }
+}
+
+static void accumulate_accelerations_from_block (particles_t *home,
+                                                 const dtype * restrict source_x,
+                                                 const dtype * restrict source_y,
+                                                 const dtype * restrict source_z,
+                                                 dtype g,
+                                                 dtype eps2,
+                                                 int rank,
+                                                 int source_rank)
+{
+  const size_t nlocal = home->n;
+
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+  for (size_t i = 0u; i < nlocal; ++i)
+    {
+      const dtype xi = home->x[i];
+      const dtype yi = home->y[i];
+      const dtype zi = home->z[i];
+      const size_t global_i = (size_t) rank * nlocal + i;
+      dtype axi = home->ax[i];
+      dtype ayi = home->ay[i];
+      dtype azi = home->az[i];
+
+      for (size_t j = 0u; j < nlocal; ++j)
+        {
+          const size_t global_j = (size_t) source_rank * nlocal + j;
+
+          if (global_i != global_j)
+            {
+              const dtype dx = source_x[j] - xi;
+              const dtype dy = source_y[j] - yi;
+              const dtype dz = source_z[j] - zi;
+              const dtype r2 = dx * dx + dy * dy + dz * dz + eps2;
+              const dtype invr = (dtype) 1.0 / dtype_sqrt (r2);
+              const dtype s = g * home->mass * invr * invr * invr;
+
+              axi += dx * s;
+              ayi += dy * s;
+              azi += dz * s;
+            }
+        }
+
+      home->ax[i] = axi;
+      home->ay[i] = ayi;
+      home->az[i] = azi;
+    }
+}
+
+static void compute_accelerations_ring_blocking (particles_t *home,
+                                                 dtype g,
+                                                 dtype eps,
+                                                 MPI_Comm comm,
+                                                 timing_t *timing)
 {
   int rank;
   int nranks;
@@ -155,43 +299,8 @@ static void compute_accelerations_ring (particles_t *home,
       const int source_rank = (rank - phase + nranks) % nranks;
       double t0 = nbody_wall_seconds ();
 
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static)
-#endif
-      for (size_t i = 0u; i < nlocal; ++i)
-        {
-          const dtype xi = home->x[i];
-          const dtype yi = home->y[i];
-          const dtype zi = home->z[i];
-          const size_t global_i = (size_t) rank * nlocal + i;
-          dtype axi = home->ax[i];
-          dtype ayi = home->ay[i];
-          dtype azi = home->az[i];
-
-          for (size_t j = 0u; j < nlocal; ++j)
-            {
-              const size_t global_j = (size_t) source_rank * nlocal + j;
-
-              if (global_i != global_j)
-                {
-                  const dtype dx = send_x[j] - xi;
-                  const dtype dy = send_y[j] - yi;
-                  const dtype dz = send_z[j] - zi;
-                  const dtype r2 = dx * dx + dy * dy + dz * dz + eps2;
-                  const dtype invr = (dtype) 1.0 / dtype_sqrt (r2);
-                  const dtype s = g * home->mass * invr * invr * invr;
-
-                  axi += dx * s;
-                  ayi += dy * s;
-                  azi += dz * s;
-                }
-            }
-
-          home->ax[i] = axi;
-          home->ay[i] = ayi;
-          home->az[i] = azi;
-        }
-
+      accumulate_accelerations_from_block (home, send_x, send_y, send_z,
+                                           g, eps2, rank, source_rank);
       timing->force_seconds += nbody_wall_seconds () - t0;
 
       if (phase + 1 < nranks)
@@ -206,6 +315,100 @@ static void compute_accelerations_ring (particles_t *home,
   free (recv_x);
   free (recv_y);
   free (recv_z);
+}
+
+static void compute_accelerations_ring_overlap (particles_t *home,
+                                                dtype g,
+                                                dtype eps,
+                                                MPI_Comm comm,
+                                                timing_t *timing)
+{
+  int rank;
+  int nranks;
+  const size_t nlocal = home->n;
+  const dtype eps2 = eps * eps;
+  dtype *send_x;
+  dtype *send_y;
+  dtype *send_z;
+  dtype *recv_x;
+  dtype *recv_y;
+  dtype *recv_z;
+  int left;
+  int right;
+
+  MPI_Comm_rank (comm, &rank);
+  MPI_Comm_size (comm, &nranks);
+
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+  for (size_t i = 0u; i < nlocal; ++i)
+    {
+      home->ax[i] = (dtype) 0.0;
+      home->ay[i] = (dtype) 0.0;
+      home->az[i] = (dtype) 0.0;
+    }
+
+  send_x = nbody_aligned_alloc (nlocal * sizeof (dtype), NBODY_ALIGNMENT);
+  send_y = nbody_aligned_alloc (nlocal * sizeof (dtype), NBODY_ALIGNMENT);
+  send_z = nbody_aligned_alloc (nlocal * sizeof (dtype), NBODY_ALIGNMENT);
+  recv_x = nbody_aligned_alloc (nlocal * sizeof (dtype), NBODY_ALIGNMENT);
+  recv_y = nbody_aligned_alloc (nlocal * sizeof (dtype), NBODY_ALIGNMENT);
+  recv_z = nbody_aligned_alloc (nlocal * sizeof (dtype), NBODY_ALIGNMENT);
+
+  memcpy (send_x, home->x, nlocal * sizeof (dtype));
+  memcpy (send_y, home->y, nlocal * sizeof (dtype));
+  memcpy (send_z, home->z, nlocal * sizeof (dtype));
+
+  left = (rank - 1 + nranks) % nranks;
+  right = (rank + 1) % nranks;
+
+  for (int phase = 0; phase < nranks; ++phase)
+    {
+      const int source_rank = (rank - phase + nranks) % nranks;
+      MPI_Request requests[6];
+      const bool has_next_phase = (phase + 1 < nranks);
+      double t0;
+
+      if (has_next_phase)
+        start_position_block_rotation (send_x, send_y, send_z,
+                                       recv_x, recv_y, recv_z,
+                                       nlocal, left, right, 30, comm,
+                                       requests, timing);
+
+      t0 = nbody_wall_seconds ();
+      accumulate_accelerations_from_block (home, send_x, send_y, send_z,
+                                           g, eps2, rank, source_rank);
+      timing->force_seconds += nbody_wall_seconds () - t0;
+
+      if (has_next_phase)
+        finish_position_block_rotation (&send_x, &send_y, &send_z,
+                                        &recv_x, &recv_y, &recv_z,
+                                        requests, timing);
+    }
+
+  free (send_x);
+  free (send_y);
+  free (send_z);
+  free (recv_x);
+  free (recv_y);
+  free (recv_z);
+}
+
+static void compute_accelerations_ring (particles_t *home,
+                                        dtype g,
+                                        dtype eps,
+                                        MPI_Comm comm,
+                                        ring_mode_t ring_mode,
+                                        timing_t *timing)
+{
+  if (ring_mode == RING_MODE_OVERLAP)
+    {
+      compute_accelerations_ring_overlap (home, g, eps, comm, timing);
+      return;
+    }
+
+  compute_accelerations_ring_blocking (home, g, eps, comm, timing);
 }
 
 static dtype potential_energy_ring (const particles_t *home,
@@ -328,6 +531,7 @@ static void print_usage (const char *program)
            "  --mass X                  particle mass (default: 1)\n"
            "  --energy-every N          diagnostic period in steps (default: 1)\n"
            "  --energy-tol X            warning tolerance for max relative drift (default: 1e-3)\n"
+           "  --ring-mode NAME          MPI ring mode: blocking or overlap (default: blocking)\n"
            "  --timing                  print section timing summary\n"
            "  --quiet                   only rank 0 prints final summary\n"
            "  --help                    show this help message\n",
@@ -344,6 +548,7 @@ int main (int argc, char **argv)
   dtype g = (dtype) 1.0;
   dtype mass = (dtype) 1.0;
   dtype energy_tol = (dtype) 1.0e-3;
+  ring_mode_t ring_mode = RING_MODE_BLOCKING;
   bool timing_enabled = false;
   bool quiet = false;
   int rank;
@@ -389,6 +594,8 @@ int main (int argc, char **argv)
         mass = parse_dtype (value, "--mass");
       else if ((value = option_value (&argi, argc, argv, "--energy-tol")) != NULL)
         energy_tol = parse_dtype (value, "--energy-tol");
+      else if ((value = option_value (&argi, argc, argv, "--ring-mode")) != NULL)
+        ring_mode = parse_ring_mode (value);
       else if (strcmp (argv[argi], "--timing") == 0)
         timing_enabled = true;
       else if (strcmp (argv[argi], "--quiet") == 0)
@@ -479,8 +686,9 @@ int main (int argc, char **argv)
               DTYPE_NAME, NBODY_BINARY_VERSION_TEXT);
       printf ("# mpi_ranks=%d openmp=%s max_threads=%d\n",
               nranks, nbody_openmp_status (), nbody_openmp_max_threads ());
-      printf ("# N=%zu Nlocal=%zu nsteps=%zu dt=%.17g eps=%.17g G=%.17g mass=%.17g\n",
-              n, nlocal, nsteps, (double) dt, (double) eps, (double) g, (double) mass);
+      printf ("# N=%zu Nlocal=%zu nsteps=%zu dt=%.17g eps=%.17g G=%.17g mass=%.17g ring_mode=%s\n",
+              n, nlocal, nsteps, (double) dt, (double) eps, (double) g,
+              (double) mass, ring_mode_name (ring_mode));
       printf ("# step time total rel_energy_drift\n");
       printf ("%zu %.17g %.17g %.17g\n", (size_t) 0u, 0.0, (double) energy0, 0.0);
     }
@@ -488,7 +696,8 @@ int main (int argc, char **argv)
   if (nsteps > 0u)
     {
       t0 = nbody_wall_seconds ();
-      compute_accelerations_ring (&particles, g, eps, MPI_COMM_WORLD, &timing);
+      compute_accelerations_ring (&particles, g, eps, MPI_COMM_WORLD,
+                                  ring_mode, &timing);
       timing.initial_acceleration_seconds += nbody_wall_seconds () - t0;
     }
 
@@ -505,7 +714,8 @@ int main (int argc, char **argv)
       drift (&particles, dt);
       timing.drift_seconds += nbody_wall_seconds () - section_t0;
 
-      compute_accelerations_ring (&particles, g, eps, MPI_COMM_WORLD, &timing);
+      compute_accelerations_ring (&particles, g, eps, MPI_COMM_WORLD,
+                                  ring_mode, &timing);
 
       section_t0 = nbody_wall_seconds ();
       kick (&particles, (dtype) 0.5 * dt);
@@ -542,13 +752,13 @@ int main (int argc, char **argv)
 
     if (rank == 0)
       {
-        printf ("# final: N=%zu Nlocal=%zu ranks=%d steps=%zu arithmetic_dtype=%s integrator=kdk max_relative_energy_drift=%.17g tolerance=%.17g status=%s\n",
-                n, nlocal, nranks, nsteps, DTYPE_NAME, max_rel_drift,
-                (double) energy_tol,
+        printf ("# final: N=%zu Nlocal=%zu ranks=%d steps=%zu arithmetic_dtype=%s integrator=kdk ring_mode=%s max_relative_energy_drift=%.17g tolerance=%.17g status=%s\n",
+                n, nlocal, nranks, nsteps, DTYPE_NAME, ring_mode_name (ring_mode),
+                max_rel_drift, (double) energy_tol,
                 (max_rel_drift <= (double) energy_tol) ? "OK" : "WARNING");
 
         if (timing_enabled)
-          print_timing_mpi (&max_timing, nranks);
+          print_timing_mpi (&max_timing, nranks, ring_mode);
       }
   }
 

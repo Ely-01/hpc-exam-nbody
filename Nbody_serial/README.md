@@ -132,6 +132,18 @@ make mpi OPENMP=1
 mpirun -np 4 ./nbody_mpi_omp --input plummer_8192.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --timing
 ```
 
+The MPI ring communication mode is selectable:
+
+```sh
+mpirun -np 4 ./nbody_mpi_omp --input plummer_8192.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --ring-mode blocking --timing --quiet
+mpirun -np 4 ./nbody_mpi_omp --input plummer_8192.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --ring-mode overlap --timing --quiet
+```
+
+`blocking` uses the original `MPI_Sendrecv` ring shift. `overlap` posts
+`MPI_Irecv`/`MPI_Isend` for the next ring block before computing the current
+block, then waits only before swapping buffers. The force calculation is shared
+between the two modes, so the comparison isolates the communication strategy.
+
 On SLURM systems such as Leonardo or Orfeo, the launch command will usually be
 `srun` inside a batch script after loading the appropriate compiler and MPI
 modules.
@@ -155,16 +167,30 @@ sbatch scripts/slurm_compare_serial_mpi.slurm
 Run a first hybrid MPI + OpenMP benchmark over rank/thread combinations:
 
 ```sh
-CONFIGS="1x4 2x2 4x1" REPEATS=5 N=4096 NSTEPS=10 scripts/benchmark_hybrid.sh
+CONFIGS="1x4 2x2 4x1" REPEATS=5 N=4096 NSTEPS=10 sh scripts/benchmark_hybrid.sh
 sbatch scripts/slurm_hybrid_benchmark.slurm
 python3 scripts/summarize_hybrid_csv.py results/hybrid_benchmark_YYYYMMDD_HHMMSS.csv
+```
+
+To compare blocking versus overlap, run the same benchmark twice with a single
+ring mode per CSV:
+
+```sh
+RING_MODE=blocking CONFIGS="4x1 4x2 8x1" REPEATS=5 N=8192 NSTEPS=20 sh scripts/benchmark_hybrid.sh
+RING_MODE=overlap CONFIGS="4x1 4x2 8x1" REPEATS=5 N=8192 NSTEPS=20 sh scripts/benchmark_hybrid.sh
+python3 scripts/analyze_ring_overlap.py \
+  results/hybrid_benchmark_blocking_YYYYMMDD_HHMMSS.csv \
+  results/hybrid_benchmark_overlap_YYYYMMDD_HHMMSS.csv \
+  --csv results/ring_overlap_summary.csv \
+  --markdown results/ring_overlap_summary.md \
+  --svg report/figures/ring_overlap.svg
 ```
 
 Run strong or weak scaling benchmarks:
 
 ```sh
-MODE=strong N=32768 NSTEPS=20 REPEATS=5 CONFIGS="1x1 2x1 4x1 8x1" scripts/benchmark_scaling.sh
-MODE=weak NLOCAL=4096 NSTEPS=20 REPEATS=5 CONFIGS="1x1 2x1 4x1 8x1" scripts/benchmark_scaling.sh
+MODE=strong N=32768 NSTEPS=20 REPEATS=5 CONFIGS="1x1 2x1 4x1 8x1" sh scripts/benchmark_scaling.sh
+MODE=weak NLOCAL=4096 NSTEPS=20 REPEATS=5 CONFIGS="1x1 2x1 4x1 8x1" sh scripts/benchmark_scaling.sh
 sbatch scripts/slurm_scaling_benchmark.slurm
 python3 scripts/summarize_scaling_csv.py results/strong_scaling_YYYYMMDD_HHMMSS.csv --markdown results/strong_scaling_summary.md --csv results/strong_scaling_summary.csv
 python3 scripts/plot_scaling_svg.py results/strong_scaling_summary.csv --output results/strong_scaling.svg
@@ -173,7 +199,7 @@ python3 scripts/plot_scaling_svg.py results/strong_scaling_summary.csv --output 
 Override the defaults with environment variables, for example:
 
 ```sh
-MPI_RANKS=4 OMP_THREADS=2 N=128 NSTEPS=5 scripts/run_mpi_smoke.sh
+MPI_RANKS=4 OMP_THREADS=2 N=128 NSTEPS=5 sh scripts/run_mpi_smoke.sh
 ```
 
 The equivalent manual switches are:

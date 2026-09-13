@@ -12,8 +12,9 @@ SEED=${SEED:-123}
 ENERGY_EVERY=${ENERGY_EVERY:-$NSTEPS}
 REPEATS=${REPEATS:-5}
 CONFIGS=${CONFIGS:-"1x1 2x1 4x1 8x1"}
+RING_MODE=${RING_MODE:-blocking}
 OUTPUT_DIR=${OUTPUT_DIR:-results}
-CSV=${CSV:-$OUTPUT_DIR/${MODE}_scaling_$(date +%Y%m%d_%H%M%S).csv}
+CSV=${CSV:-$OUTPUT_DIR/${MODE}_scaling_${RING_MODE}_$(date +%Y%m%d_%H%M%S).csv}
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -67,7 +68,7 @@ if [ -n "${SLURM_CPUS_PER_TASK:-}" ] && [ "$max_threads" -gt "$SLURM_CPUS_PER_TA
   exit 1
 fi
 
-echo "# scaling mode=$MODE configs=$CONFIGS max_ranks=$max_ranks max_threads=$max_threads max_workers=$max_workers"
+echo "# scaling mode=$MODE ring_mode=$RING_MODE configs=$CONFIGS max_ranks=$max_ranks max_threads=$max_threads max_workers=$max_workers"
 
 extract_final_field () {
   key=$1
@@ -124,6 +125,7 @@ run_mpi () {
         --eps "$EPS" \
         --mass "$MASS" \
         --energy-every "$ENERGY_EVERY" \
+        --ring-mode "$RING_MODE" \
         --timing \
         --quiet
   elif command -v mpirun >/dev/null 2>&1; then
@@ -135,6 +137,7 @@ run_mpi () {
         --eps "$EPS" \
         --mass "$MASS" \
         --energy-every "$ENERGY_EVERY" \
+        --ring-mode "$RING_MODE" \
         --timing \
         --quiet
   else
@@ -179,7 +182,7 @@ for config in $CONFIGS; do
   make_input "$n_run" "$input"
 
   for repeat in $(seq 1 "$REPEATS"); do
-    echo "# $MODE scaling run n=$n_run ranks=$ranks threads=$threads repeat=$repeat/$REPEATS"
+    echo "# $MODE scaling run ring_mode=$RING_MODE n=$n_run ranks=$ranks threads=$threads repeat=$repeat/$REPEATS"
 
     output=$(
       OMP_NUM_THREADS="$threads" \
