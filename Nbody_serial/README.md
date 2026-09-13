@@ -58,6 +58,23 @@ python3 scripts/analyze_newton_tradeoff.py results/newton_tradeoff_YYYYMMDD_HHMM
   --svg report/figures/newton_tradeoff.svg
 ```
 
+Compare the reference `1/sqrt` path against approximate reciprocal-sqrt modes:
+
+```sh
+./nbody_direct_serial --input plummer_4096.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --inv-sqrt libm --timing --quiet
+./nbody_direct_serial --input plummer_4096.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --inv-sqrt rsqrt2 --timing --quiet
+```
+
+Run the repeated reciprocal-sqrt benchmark and generate a summary plus SVG:
+
+```sh
+THREADS="1 2 4 8" REPEATS=5 N=4096 NSTEPS=10 scripts/benchmark_rsqrt_tradeoff.sh
+python3 scripts/analyze_rsqrt_tradeoff.py results/rsqrt_tradeoff_YYYYMMDD_HHMMSS.csv \
+  --csv results/rsqrt_tradeoff_summary.csv \
+  --markdown results/rsqrt_tradeoff_summary.md \
+  --svg report/figures/rsqrt_tradeoff.svg
+```
+
 Run the AoS-vs-SoA force-kernel layout microbenchmark:
 
 ```sh

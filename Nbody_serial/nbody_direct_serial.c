@@ -16,6 +16,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined (__SSE__)
+#include <xmmintrin.h>
+#endif
+
 typedef enum integrator_e
 {
   INTEGRATOR_KDK,
@@ -28,6 +32,14 @@ typedef enum force_kernel_e
   FORCE_KERNEL_NEWTON,
   FORCE_KERNEL_NEWTON_ATOMIC
 } force_kernel_t;
+
+typedef enum inv_sqrt_e
+{
+  INV_SQRT_LIBM,
+  INV_SQRT_RSQRT1,
+  INV_SQRT_RSQRT2,
+  INV_SQRT_RSQRT3
+} inv_sqrt_t;
 
 static integrator_t parse_integrator (const char *text)
 {
@@ -81,6 +93,88 @@ static const char *force_kernel_name (force_kernel_t kernel)
   return "unknown";
 }
 
+static inv_sqrt_t parse_inv_sqrt (const char *text)
+{
+  if (strcmp (text, "libm") == 0)
+    return INV_SQRT_LIBM;
+  if (strcmp (text, "rsqrt1") == 0)
+    return INV_SQRT_RSQRT1;
+  if (strcmp (text, "rsqrt2") == 0)
+    return INV_SQRT_RSQRT2;
+  if (strcmp (text, "rsqrt3") == 0)
+    return INV_SQRT_RSQRT3;
+
+  nbody_die ("invalid inverse-sqrt mode '%s': expected libm, rsqrt1, rsqrt2, or rsqrt3", text);
+  return INV_SQRT_LIBM;
+}
+
+static const char *inv_sqrt_name (inv_sqrt_t mode)
+{
+  switch (mode)
+    {
+    case INV_SQRT_LIBM:
+      return "libm";
+    case INV_SQRT_RSQRT1:
+      return "rsqrt1";
+    case INV_SQRT_RSQRT2:
+      return "rsqrt2";
+    case INV_SQRT_RSQRT3:
+      return "rsqrt3";
+    }
+
+  return "unknown";
+}
+
+static int inv_sqrt_iterations (inv_sqrt_t mode)
+{
+  switch (mode)
+    {
+    case INV_SQRT_RSQRT1:
+      return 1;
+    case INV_SQRT_RSQRT2:
+      return 2;
+    case INV_SQRT_RSQRT3:
+      return 3;
+    case INV_SQRT_LIBM:
+      return 0;
+    }
+
+  return 0;
+}
+
+static dtype inv_sqrt_estimate (dtype r2)
+{
+#if defined (__SSE__)
+  const float r2f = (float) r2;
+
+  if ((r2f > 0.0f) && isfinite ((double) r2f))
+    {
+      const __m128 value = _mm_set_ss (r2f);
+      const __m128 estimate = _mm_rsqrt_ss (value);
+      return (dtype) _mm_cvtss_f32 (estimate);
+    }
+#endif
+
+  return (dtype) 1.0 / dtype_sqrt (r2);
+}
+
+static dtype inv_sqrt_value (dtype r2, inv_sqrt_t mode)
+{
+  dtype y;
+  int iterations;
+
+  if (mode == INV_SQRT_LIBM)
+    return (dtype) 1.0 / dtype_sqrt (r2);
+
+  y = inv_sqrt_estimate (r2);
+  iterations = inv_sqrt_iterations (mode);
+
+  for (int i = 0; i < iterations; ++i)
+    y = y * ((dtype) 1.5 - (dtype) 0.5 * r2 * y * y);
+
+  return y;
+}
+
 /*
  * Naive direct O(N^2) softened gravitational acceleration.
  *
@@ -105,6 +199,7 @@ static const char *force_kernel_name (force_kernel_t kernel)
  * ring-shift decomposition.
  */
 static void compute_accelerations_direct (size_t n, dtype g, dtype mass, dtype eps,
+                                          inv_sqrt_t inv_sqrt_mode,
                                           const dtype * restrict x,
                                           const dtype * restrict y,
                                           const dtype * restrict z,
@@ -134,7 +229,7 @@ static void compute_accelerations_direct (size_t n, dtype g, dtype mass, dtype e
               const dtype dy = y[j] - yi;
               const dtype dz = z[j] - zi;
               const dtype r2 = dx * dx + dy * dy + dz * dz + eps2;
-              const dtype invr = (dtype) 1.0 / dtype_sqrt (r2);
+              const dtype invr = inv_sqrt_value (r2, inv_sqrt_mode);
               const dtype s = g * mass * invr * invr * invr;
 
               axi += dx * s;
@@ -160,6 +255,7 @@ static void compute_accelerations_direct (size_t n, dtype g, dtype mass, dtype e
  * point for the report, not as the production MPI kernel.
  */
 static void compute_accelerations_newton (size_t n, dtype g, dtype mass, dtype eps,
+                                          inv_sqrt_t inv_sqrt_mode,
                                           const dtype * restrict x,
                                           const dtype * restrict y,
                                           const dtype * restrict z,
@@ -191,7 +287,7 @@ static void compute_accelerations_newton (size_t n, dtype g, dtype mass, dtype e
           const dtype dy = y[j] - yi;
           const dtype dz = z[j] - zi;
           const dtype r2 = dx * dx + dy * dy + dz * dz + eps2;
-          const dtype invr = (dtype) 1.0 / dtype_sqrt (r2);
+          const dtype invr = inv_sqrt_value (r2, inv_sqrt_mode);
           const dtype s = g * mass * invr * invr * invr;
           const dtype axij = dx * s;
           const dtype ayij = dy * s;
@@ -218,6 +314,7 @@ static void compute_accelerations_newton (size_t n, dtype g, dtype mass, dtype e
  * used only to measure the cost of conflict resolution.
  */
 static void compute_accelerations_newton_atomic (size_t n, dtype g, dtype mass, dtype eps,
+                                                 inv_sqrt_t inv_sqrt_mode,
                                                  const dtype * restrict x,
                                                  const dtype * restrict y,
                                                  const dtype * restrict z,
@@ -252,7 +349,7 @@ static void compute_accelerations_newton_atomic (size_t n, dtype g, dtype mass, 
           const dtype dy = y[j] - yi;
           const dtype dz = z[j] - zi;
           const dtype r2 = dx * dx + dy * dy + dz * dz + eps2;
-          const dtype invr = (dtype) 1.0 / dtype_sqrt (r2);
+          const dtype invr = inv_sqrt_value (r2, inv_sqrt_mode);
           const dtype s = g * mass * invr * invr * invr;
           const dtype axij = dx * s;
           const dtype ayij = dy * s;
@@ -287,24 +384,25 @@ static void compute_accelerations_newton_atomic (size_t n, dtype g, dtype mass, 
 }
 
 static void compute_accelerations (particles_t *p, dtype g, dtype eps,
-                                   force_kernel_t kernel)
+                                   force_kernel_t kernel,
+                                   inv_sqrt_t inv_sqrt_mode)
 {
   if (kernel == FORCE_KERNEL_NEWTON)
     {
-      compute_accelerations_newton (p->n, g, p->mass, eps,
+      compute_accelerations_newton (p->n, g, p->mass, eps, inv_sqrt_mode,
                                     p->x, p->y, p->z,
                                     p->ax, p->ay, p->az);
       return;
     }
   if (kernel == FORCE_KERNEL_NEWTON_ATOMIC)
     {
-      compute_accelerations_newton_atomic (p->n, g, p->mass, eps,
+      compute_accelerations_newton_atomic (p->n, g, p->mass, eps, inv_sqrt_mode,
                                            p->x, p->y, p->z,
                                            p->ax, p->ay, p->az);
       return;
     }
 
-  compute_accelerations_direct (p->n, g, p->mass, eps,
+  compute_accelerations_direct (p->n, g, p->mass, eps, inv_sqrt_mode,
                                 p->x, p->y, p->z,
                                 p->ax, p->ay, p->az);
 }
@@ -322,6 +420,7 @@ static void compute_accelerations (particles_t *p, dtype g, dtype eps,
  */
 static void leapfrog_kdk_step (particles_t *p, dtype g, dtype eps,
                                dtype dt, force_kernel_t kernel,
+                               inv_sqrt_t inv_sqrt_mode,
                                timing_t *timing)
 {
   double t0;
@@ -340,7 +439,7 @@ static void leapfrog_kdk_step (particles_t *p, dtype g, dtype eps,
 
   if (timing != NULL)
     t0 = nbody_wall_seconds ();
-  compute_accelerations (p, g, eps, kernel);
+  compute_accelerations (p, g, eps, kernel, inv_sqrt_mode);
   if (timing != NULL)
     timing->force_seconds += nbody_wall_seconds () - t0;
 
@@ -364,6 +463,7 @@ static void leapfrog_kdk_step (particles_t *p, dtype g, dtype eps,
  */
 static void leapfrog_dkd_step (particles_t *p, dtype g, dtype eps,
                                dtype dt, force_kernel_t kernel,
+                               inv_sqrt_t inv_sqrt_mode,
                                timing_t *timing)
 {
   double t0;
@@ -376,7 +476,7 @@ static void leapfrog_dkd_step (particles_t *p, dtype g, dtype eps,
 
   if (timing != NULL)
     t0 = nbody_wall_seconds ();
-  compute_accelerations (p, g, eps, kernel);
+  compute_accelerations (p, g, eps, kernel, inv_sqrt_mode);
   if (timing != NULL)
     timing->force_seconds += nbody_wall_seconds () - t0;
 
@@ -412,6 +512,7 @@ static void print_usage (const char *program)
            "  --mass X                  particle mass (default: 1)\n"
            "  --integrator NAME         leapfrog variant: kdk or dkd (default: kdk)\n"
            "  --force-kernel NAME       force kernel: direct, newton, or newton-atomic (default: direct)\n"
+           "  --inv-sqrt NAME           inverse sqrt: libm, rsqrt1, rsqrt2, or rsqrt3 (default: libm)\n"
            "  --energy-every N          diagnostic period in steps (default: 1)\n"
            "  --energy-tol X            warning tolerance for max relative drift (default: 1e-3)\n"
            "  --timing                  print section timing summary\n"
@@ -435,6 +536,7 @@ int main (int argc, char **argv)
   bool timing_enabled = false;
   integrator_t integrator = INTEGRATOR_KDK;
   force_kernel_t force_kernel = FORCE_KERNEL_DIRECT;
+  inv_sqrt_t inv_sqrt_mode = INV_SQRT_LIBM;
   particles_t particles;
   timing_t timing;
   dtype kinetic0;
@@ -471,6 +573,8 @@ int main (int argc, char **argv)
         integrator = parse_integrator (value);
       else if ((value = option_value (&argi, argc, argv, "--force-kernel")) != NULL)
         force_kernel = parse_force_kernel (value);
+      else if ((value = option_value (&argi, argc, argv, "--inv-sqrt")) != NULL)
+        inv_sqrt_mode = parse_inv_sqrt (value);
       else if ((value = option_value (&argi, argc, argv, "--energy-tol")) != NULL)
         energy_tol = parse_dtype (value, "--energy-tol");
       else if (strcmp (argv[argi], "--timing") == 0)
@@ -524,10 +628,10 @@ int main (int argc, char **argv)
               DTYPE_NAME, NBODY_BINARY_VERSION_TEXT);
       printf ("# openmp=%s max_threads=%d\n",
               nbody_openmp_status (), nbody_openmp_max_threads ());
-      printf ("# N=%zu nsteps=%zu dt=%.17g eps=%.17g G=%.17g mass=%.17g integrator=%s force_kernel=%s\n",
+      printf ("# N=%zu nsteps=%zu dt=%.17g eps=%.17g G=%.17g mass=%.17g integrator=%s force_kernel=%s inv_sqrt=%s\n",
               particles.n, nsteps, (double) dt, (double) eps,
               (double) g, (double) mass, integrator_name (integrator),
-              force_kernel_name (force_kernel));
+              force_kernel_name (force_kernel), inv_sqrt_name (inv_sqrt_mode));
       printf ("# step time kinetic potential total rel_energy_drift\n");
       printf ("%zu %.17g %.17g %.17g %.17g %.17g\n",
               (size_t) 0u, 0.0, (double) kinetic0, (double) potential0,
@@ -539,7 +643,7 @@ int main (int argc, char **argv)
   if ((nsteps > 0u) && (integrator == INTEGRATOR_KDK))
     {
       t0 = nbody_wall_seconds ();
-      compute_accelerations (&particles, g, eps, force_kernel);
+      compute_accelerations (&particles, g, eps, force_kernel, inv_sqrt_mode);
       timing.initial_acceleration_seconds += nbody_wall_seconds () - t0;
       timing.force_seconds += timing.initial_acceleration_seconds;
     }
@@ -549,9 +653,11 @@ int main (int argc, char **argv)
     {
       if (integrator == INTEGRATOR_KDK)
         leapfrog_kdk_step (&particles, g, eps, dt, force_kernel,
+                           inv_sqrt_mode,
                            timing_enabled ? &timing : NULL);
       else
         leapfrog_dkd_step (&particles, g, eps, dt, force_kernel,
+                           inv_sqrt_mode,
                            timing_enabled ? &timing : NULL);
 
       if (((step % energy_every) == 0u) || (step == nsteps))
@@ -585,9 +691,10 @@ int main (int argc, char **argv)
 
   timing.total_seconds = nbody_wall_seconds () - total_start;
 
-  printf ("# final: N=%zu steps=%zu arithmetic_dtype=%s integrator=%s force_kernel=%s max_relative_energy_drift=%.17g tolerance=%.17g status=%s\n",
+  printf ("# final: N=%zu steps=%zu arithmetic_dtype=%s integrator=%s force_kernel=%s inv_sqrt=%s max_relative_energy_drift=%.17g tolerance=%.17g status=%s\n",
           particles.n, nsteps, DTYPE_NAME, integrator_name (integrator),
-          force_kernel_name (force_kernel), max_rel_drift, (double) energy_tol,
+          force_kernel_name (force_kernel), inv_sqrt_name (inv_sqrt_mode),
+          max_rel_drift, (double) energy_tol,
           (max_rel_drift <= (double) energy_tol) ? "OK" : "WARNING");
 
   if (max_rel_drift > (double) energy_tol)
