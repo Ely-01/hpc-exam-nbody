@@ -29,6 +29,7 @@ ehthumbs.db
 # N-body generated binaries and data files
 *.bin
 Nbody_serial/nbody_direct_serial
+Nbody_serial/nbody_mpi_omp
 Nbody_serial/generate_ic
 Nbody_serial/inspect_particles
 Nbody_serial/benchmark_layout
