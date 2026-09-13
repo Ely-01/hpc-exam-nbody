@@ -22,6 +22,13 @@ typedef enum integrator_e
   INTEGRATOR_DKD
 } integrator_t;
 
+typedef enum force_kernel_e
+{
+  FORCE_KERNEL_DIRECT,
+  FORCE_KERNEL_NEWTON,
+  FORCE_KERNEL_NEWTON_ATOMIC
+} force_kernel_t;
+
 static integrator_t parse_integrator (const char *text)
 {
   if (strcmp (text, "kdk") == 0)
@@ -41,6 +48,34 @@ static const char *integrator_name (integrator_t integrator)
       return "kdk";
     case INTEGRATOR_DKD:
       return "dkd";
+    }
+
+  return "unknown";
+}
+
+static force_kernel_t parse_force_kernel (const char *text)
+{
+  if (strcmp (text, "direct") == 0)
+    return FORCE_KERNEL_DIRECT;
+  if (strcmp (text, "newton") == 0)
+    return FORCE_KERNEL_NEWTON;
+  if (strcmp (text, "newton-atomic") == 0)
+    return FORCE_KERNEL_NEWTON_ATOMIC;
+
+  nbody_die ("invalid force kernel '%s': expected direct, newton, or newton-atomic", text);
+  return FORCE_KERNEL_DIRECT;
+}
+
+static const char *force_kernel_name (force_kernel_t kernel)
+{
+  switch (kernel)
+    {
+    case FORCE_KERNEL_DIRECT:
+      return "direct";
+    case FORCE_KERNEL_NEWTON:
+      return "newton";
+    case FORCE_KERNEL_NEWTON_ATOMIC:
+      return "newton-atomic";
     }
 
   return "unknown";
@@ -115,6 +150,166 @@ static void compute_accelerations_direct (size_t n, dtype g, dtype mass, dtype e
 }
 
 /*
+ * Newton-third-law variant for controlled serial comparisons.
+ *
+ * Each pair is visited once and contributes equal and opposite accelerations to
+ * the two particles.  This halves the number of pair evaluations, but the
+ * in-place update of both i and j is not the kernel used by the OpenMP/MPI
+ * implementation: a parallel version would need atomics, locks, or private
+ * thread-local acceleration arrays.  We keep it as an explicit comparison
+ * point for the report, not as the production MPI kernel.
+ */
+static void compute_accelerations_newton (size_t n, dtype g, dtype mass, dtype eps,
+                                          const dtype * restrict x,
+                                          const dtype * restrict y,
+                                          const dtype * restrict z,
+                                          dtype * restrict ax,
+                                          dtype * restrict ay,
+                                          dtype * restrict az)
+{
+  const dtype eps2 = eps * eps;
+
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+  for (size_t i = 0u; i < n; ++i)
+    {
+      ax[i] = (dtype) 0.0;
+      ay[i] = (dtype) 0.0;
+      az[i] = (dtype) 0.0;
+    }
+
+  for (size_t i = 0u; i < n; ++i)
+    {
+      const dtype xi = x[i];
+      const dtype yi = y[i];
+      const dtype zi = z[i];
+
+      for (size_t j = i + 1u; j < n; ++j)
+        {
+          const dtype dx = x[j] - xi;
+          const dtype dy = y[j] - yi;
+          const dtype dz = z[j] - zi;
+          const dtype r2 = dx * dx + dy * dy + dz * dz + eps2;
+          const dtype invr = (dtype) 1.0 / dtype_sqrt (r2);
+          const dtype s = g * mass * invr * invr * invr;
+          const dtype axij = dx * s;
+          const dtype ayij = dy * s;
+          const dtype azij = dz * s;
+
+          ax[i] += axij;
+          ay[i] += ayij;
+          az[i] += azij;
+          ax[j] -= axij;
+          ay[j] -= ayij;
+          az[j] -= azij;
+        }
+    }
+}
+
+/*
+ * OpenMP Newton-third-law experiment with atomic accumulator updates.
+ *
+ * This is intentionally not the production kernel.  It exposes the conflict
+ * that appears when the Newton pair loop is parallelised over i: each pair
+ * writes both particles, so several threads can update the same ax/ay/az entry.
+ * The atomics make the race correct but quantify the synchronisation overhead.
+ * This kernel intentionally violates the no-atomics production guideline and is
+ * used only to measure the cost of conflict resolution.
+ */
+static void compute_accelerations_newton_atomic (size_t n, dtype g, dtype mass, dtype eps,
+                                                 const dtype * restrict x,
+                                                 const dtype * restrict y,
+                                                 const dtype * restrict z,
+                                                 dtype * restrict ax,
+                                                 dtype * restrict ay,
+                                                 dtype * restrict az)
+{
+  const dtype eps2 = eps * eps;
+
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+  for (size_t i = 0u; i < n; ++i)
+    {
+      ax[i] = (dtype) 0.0;
+      ay[i] = (dtype) 0.0;
+      az[i] = (dtype) 0.0;
+    }
+
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+  for (size_t i = 0u; i < n; ++i)
+    {
+      const dtype xi = x[i];
+      const dtype yi = y[i];
+      const dtype zi = z[i];
+
+      for (size_t j = i + 1u; j < n; ++j)
+        {
+          const dtype dx = x[j] - xi;
+          const dtype dy = y[j] - yi;
+          const dtype dz = z[j] - zi;
+          const dtype r2 = dx * dx + dy * dy + dz * dz + eps2;
+          const dtype invr = (dtype) 1.0 / dtype_sqrt (r2);
+          const dtype s = g * mass * invr * invr * invr;
+          const dtype axij = dx * s;
+          const dtype ayij = dy * s;
+          const dtype azij = dz * s;
+
+#ifdef _OPENMP
+#pragma omp atomic update
+#endif
+          ax[i] += axij;
+#ifdef _OPENMP
+#pragma omp atomic update
+#endif
+          ay[i] += ayij;
+#ifdef _OPENMP
+#pragma omp atomic update
+#endif
+          az[i] += azij;
+#ifdef _OPENMP
+#pragma omp atomic update
+#endif
+          ax[j] -= axij;
+#ifdef _OPENMP
+#pragma omp atomic update
+#endif
+          ay[j] -= ayij;
+#ifdef _OPENMP
+#pragma omp atomic update
+#endif
+          az[j] -= azij;
+        }
+    }
+}
+
+static void compute_accelerations (particles_t *p, dtype g, dtype eps,
+                                   force_kernel_t kernel)
+{
+  if (kernel == FORCE_KERNEL_NEWTON)
+    {
+      compute_accelerations_newton (p->n, g, p->mass, eps,
+                                    p->x, p->y, p->z,
+                                    p->ax, p->ay, p->az);
+      return;
+    }
+  if (kernel == FORCE_KERNEL_NEWTON_ATOMIC)
+    {
+      compute_accelerations_newton_atomic (p->n, g, p->mass, eps,
+                                           p->x, p->y, p->z,
+                                           p->ax, p->ay, p->az);
+      return;
+    }
+
+  compute_accelerations_direct (p->n, g, p->mass, eps,
+                                p->x, p->y, p->z,
+                                p->ax, p->ay, p->az);
+}
+
+/*
  * Compute one KDK leapfrog step:
  *
  *   1. kick velocities by dt/2 using a(t);
@@ -126,7 +321,8 @@ static void compute_accelerations_direct (size_t n, dtype g, dtype mass, dtype e
  * This keeps positions and velocities synchronised at integer time levels.
  */
 static void leapfrog_kdk_step (particles_t *p, dtype g, dtype eps,
-                               dtype dt, timing_t *timing)
+                               dtype dt, force_kernel_t kernel,
+                               timing_t *timing)
 {
   double t0;
 
@@ -144,9 +340,7 @@ static void leapfrog_kdk_step (particles_t *p, dtype g, dtype eps,
 
   if (timing != NULL)
     t0 = nbody_wall_seconds ();
-  compute_accelerations_direct (p->n, g, p->mass, eps,
-                                p->x, p->y, p->z,
-                                p->ax, p->ay, p->az);
+  compute_accelerations (p, g, eps, kernel);
   if (timing != NULL)
     timing->force_seconds += nbody_wall_seconds () - t0;
 
@@ -169,7 +363,8 @@ static void leapfrog_kdk_step (particles_t *p, dtype g, dtype eps,
  * by the project specification.
  */
 static void leapfrog_dkd_step (particles_t *p, dtype g, dtype eps,
-                               dtype dt, timing_t *timing)
+                               dtype dt, force_kernel_t kernel,
+                               timing_t *timing)
 {
   double t0;
 
@@ -181,9 +376,7 @@ static void leapfrog_dkd_step (particles_t *p, dtype g, dtype eps,
 
   if (timing != NULL)
     t0 = nbody_wall_seconds ();
-  compute_accelerations_direct (p->n, g, p->mass, eps,
-                                p->x, p->y, p->z,
-                                p->ax, p->ay, p->az);
+  compute_accelerations (p, g, eps, kernel);
   if (timing != NULL)
     timing->force_seconds += nbody_wall_seconds () - t0;
 
@@ -218,6 +411,7 @@ static void print_usage (const char *program)
            "  --G X                     gravitational constant (default: 1)\n"
            "  --mass X                  particle mass (default: 1)\n"
            "  --integrator NAME         leapfrog variant: kdk or dkd (default: kdk)\n"
+           "  --force-kernel NAME       force kernel: direct, newton, or newton-atomic (default: direct)\n"
            "  --energy-every N          diagnostic period in steps (default: 1)\n"
            "  --energy-tol X            warning tolerance for max relative drift (default: 1e-3)\n"
            "  --timing                  print section timing summary\n"
@@ -240,6 +434,7 @@ int main (int argc, char **argv)
   bool quiet = false;
   bool timing_enabled = false;
   integrator_t integrator = INTEGRATOR_KDK;
+  force_kernel_t force_kernel = FORCE_KERNEL_DIRECT;
   particles_t particles;
   timing_t timing;
   dtype kinetic0;
@@ -274,6 +469,8 @@ int main (int argc, char **argv)
         mass = parse_dtype (value, "--mass");
       else if ((value = option_value (&argi, argc, argv, "--integrator")) != NULL)
         integrator = parse_integrator (value);
+      else if ((value = option_value (&argi, argc, argv, "--force-kernel")) != NULL)
+        force_kernel = parse_force_kernel (value);
       else if ((value = option_value (&argi, argc, argv, "--energy-tol")) != NULL)
         energy_tol = parse_dtype (value, "--energy-tol");
       else if (strcmp (argv[argi], "--timing") == 0)
@@ -327,9 +524,10 @@ int main (int argc, char **argv)
               DTYPE_NAME, NBODY_BINARY_VERSION_TEXT);
       printf ("# openmp=%s max_threads=%d\n",
               nbody_openmp_status (), nbody_openmp_max_threads ());
-      printf ("# N=%zu nsteps=%zu dt=%.17g eps=%.17g G=%.17g mass=%.17g integrator=%s\n",
+      printf ("# N=%zu nsteps=%zu dt=%.17g eps=%.17g G=%.17g mass=%.17g integrator=%s force_kernel=%s\n",
               particles.n, nsteps, (double) dt, (double) eps,
-              (double) g, (double) mass, integrator_name (integrator));
+              (double) g, (double) mass, integrator_name (integrator),
+              force_kernel_name (force_kernel));
       printf ("# step time kinetic potential total rel_energy_drift\n");
       printf ("%zu %.17g %.17g %.17g %.17g %.17g\n",
               (size_t) 0u, 0.0, (double) kinetic0, (double) potential0,
@@ -341,9 +539,7 @@ int main (int argc, char **argv)
   if ((nsteps > 0u) && (integrator == INTEGRATOR_KDK))
     {
       t0 = nbody_wall_seconds ();
-      compute_accelerations_direct (particles.n, g, particles.mass, eps,
-                                    particles.x, particles.y, particles.z,
-                                    particles.ax, particles.ay, particles.az);
+      compute_accelerations (&particles, g, eps, force_kernel);
       timing.initial_acceleration_seconds += nbody_wall_seconds () - t0;
       timing.force_seconds += timing.initial_acceleration_seconds;
     }
@@ -352,9 +548,11 @@ int main (int argc, char **argv)
   for (size_t step = 1u; step <= nsteps; ++step)
     {
       if (integrator == INTEGRATOR_KDK)
-        leapfrog_kdk_step (&particles, g, eps, dt, timing_enabled ? &timing : NULL);
+        leapfrog_kdk_step (&particles, g, eps, dt, force_kernel,
+                           timing_enabled ? &timing : NULL);
       else
-        leapfrog_dkd_step (&particles, g, eps, dt, timing_enabled ? &timing : NULL);
+        leapfrog_dkd_step (&particles, g, eps, dt, force_kernel,
+                           timing_enabled ? &timing : NULL);
 
       if (((step % energy_every) == 0u) || (step == nsteps))
         {
@@ -387,8 +585,9 @@ int main (int argc, char **argv)
 
   timing.total_seconds = nbody_wall_seconds () - total_start;
 
-  printf ("# final: N=%zu steps=%zu arithmetic_dtype=%s integrator=%s max_relative_energy_drift=%.17g tolerance=%.17g status=%s\n",
-          particles.n, nsteps, DTYPE_NAME, integrator_name (integrator), max_rel_drift, (double) energy_tol,
+  printf ("# final: N=%zu steps=%zu arithmetic_dtype=%s integrator=%s force_kernel=%s max_relative_energy_drift=%.17g tolerance=%.17g status=%s\n",
+          particles.n, nsteps, DTYPE_NAME, integrator_name (integrator),
+          force_kernel_name (force_kernel), max_rel_drift, (double) energy_tol,
           (max_rel_drift <= (double) energy_tol) ? "OK" : "WARNING");
 
   if (max_rel_drift > (double) energy_tol)

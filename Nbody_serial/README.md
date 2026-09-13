@@ -3,14 +3,15 @@
 This directory contains three stand-alone programs for the direct gravitational N-body exercise:
 
 - `nbody_direct_serial.c`: serial softened direct solver with selectable KDK
-  or DKD leapfrog integration.
+  or DKD leapfrog integration and selectable direct/Newton/Newton-atomic force
+  kernels.
   step and a relative energy-drift verifier.
 - `gen_plummer_sphere.c`: Plummer-sphere initial-condition generator.
 - `gen_uniform_ball_maxwell.c`: uniform-ball generator with isotropic Maxwellian
   velocities.
 
-The codes are intended as *almost complete* exam skeletons. The direct force kernel is deliberately correct but naive. It uses an O(N^2) all-pairs loop, scalar `sqrt`, one accumulator per component, and no Newton-third-law reuse. 
-The comments in `compute_accelerations_direct` mark this as the kernel whose optimization is part of the assignment, along with the hybrid parallelization.
+The codes are intended as *almost complete* exam skeletons. The default direct force kernel is deliberately correct but naive. It uses an O(N^2) all-pairs loop, scalar `sqrt`, one accumulator per component, and no Newton-third-law reuse. 
+The comments in `compute_accelerations_direct` mark this as the kernel whose optimization is part of the assignment, along with the hybrid parallelization. A serial Newton-third-law kernel is available with `--force-kernel newton` as a controlled comparison point; `--force-kernel newton-atomic` parallelizes the Newton pair loop with atomic accumulator updates to measure write-conflict overhead. Neither Newton variant is the MPI production kernel because pair reuse introduces non-local acceleration updates.
 
 ## Arithmetic type
 
@@ -35,6 +36,25 @@ OpenMP force-kernel build:
 make clean
 make OPENMP=1
 OMP_NUM_THREADS=4 ./nbody_direct_serial --input plummer_1000.bin --nsteps 100 --dt 1e-4 --eps 0.05 --energy-every 10 --timing
+```
+
+Compare the default all-pairs force kernel with the serial Newton-third-law
+variant:
+
+```sh
+./nbody_direct_serial --input plummer_4096.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --force-kernel direct --timing --quiet
+./nbody_direct_serial --input plummer_4096.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --force-kernel newton --timing --quiet
+./nbody_direct_serial --input plummer_4096.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --force-kernel newton-atomic --timing --quiet
+```
+
+Run the repeated Newton trade-off benchmark and generate a summary plus SVG:
+
+```sh
+THREADS="1 2 4 8" REPEATS=5 N=4096 NSTEPS=10 scripts/benchmark_newton_tradeoff.sh
+python3 scripts/analyze_newton_tradeoff.py results/newton_tradeoff_YYYYMMDD_HHMMSS.csv \
+  --csv results/newton_tradeoff_summary.csv \
+  --markdown results/newton_tradeoff_summary.md \
+  --svg report/figures/newton_tradeoff.svg
 ```
 
 Run a repeated OpenMP benchmark and save a CSV under `results/`:
