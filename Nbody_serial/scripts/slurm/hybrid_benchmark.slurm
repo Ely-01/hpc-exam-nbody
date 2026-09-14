@@ -12,7 +12,7 @@ set -eu
 mkdir -p results
 
 # Optional: pass modules at submission time, for example:
-#   sbatch --export=ALL,MODULES="openMPI/4.1.6" scripts/slurm_hybrid_benchmark.slurm
+#   sbatch --export=ALL,MODULES="openMPI/4.1.6" scripts/slurm/hybrid_benchmark.slurm
 if [ -n "${MODULES:-}" ]; then
   # shellcheck disable=SC2086
   module load $MODULES
@@ -22,4 +22,4 @@ fi
 #   sbatch --export=ALL,MODULES="openMPI/4.1.6",N=8192,REPEATS=5,CONFIGS="1x8 2x4 4x2 8x1" ...
 CONFIGS=${CONFIGS:-"1x4 2x2 4x1"} \
 REPEATS=${REPEATS:-3} \
-scripts/benchmark_hybrid.sh
+sh scripts/benchmark/benchmark_hybrid.sh

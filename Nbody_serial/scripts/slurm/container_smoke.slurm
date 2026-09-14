@@ -18,4 +18,4 @@ fi
 
 MPI_RANKS=${SLURM_NTASKS:-4} \
 OMP_THREADS=${SLURM_CPUS_PER_TASK:-1} \
-sh scripts/run_container_smoke.sh
+sh scripts/smoke/run_container_smoke.sh

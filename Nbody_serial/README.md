@@ -14,6 +14,21 @@ This directory contains three stand-alone programs for the direct gravitational 
 The codes are intended as *almost complete* exam skeletons. The default direct force kernel is deliberately correct but naive. It uses an O(N^2) all-pairs loop, scalar `sqrt`, one accumulator per component, and no Newton-third-law reuse. 
 The comments in `compute_accelerations_direct` mark this as the kernel whose optimization is part of the assignment, along with the hybrid parallelization. A serial Newton-third-law kernel is available with `--force-kernel newton` as a controlled comparison point; `--force-kernel newton-atomic` parallelizes the Newton pair loop with atomic accumulator updates to measure write-conflict overhead. Neither Newton variant is the MPI production kernel because pair reuse introduces non-local acceleration updates.
 
+## Script layout
+
+Project scripts are grouped by role:
+
+```text
+scripts/benchmark/   repeated benchmark drivers
+scripts/analyze/     CSV summarizers, analyzers, and SVG plot generators
+scripts/slurm/       SLURM submission wrappers
+scripts/smoke/       short correctness and portability smoke tests
+scripts/utils/       environment, container, and system-information helpers
+```
+
+Generated raw outputs stay under `results/`, while report-ready figures live
+under `report/figures/`.
+
 ## Arithmetic type
 
 All physical quantities in the solver and generators use the typedef `dtype`, defined in `nbody_common.h`.
@@ -51,8 +66,8 @@ variant:
 Run the repeated Newton trade-off benchmark and generate a summary plus SVG:
 
 ```sh
-THREADS="1 2 4 8" REPEATS=5 N=4096 NSTEPS=10 scripts/benchmark_newton_tradeoff.sh
-python3 scripts/analyze_newton_tradeoff.py results/newton_tradeoff_YYYYMMDD_HHMMSS.csv \
+THREADS="1 2 4 8" REPEATS=5 N=4096 NSTEPS=10 sh scripts/benchmark/benchmark_newton_tradeoff.sh
+python3 scripts/analyze/analyze_newton_tradeoff.py results/newton_tradeoff_YYYYMMDD_HHMMSS.csv \
   --csv results/newton_tradeoff_summary.csv \
   --markdown results/newton_tradeoff_summary.md \
   --svg report/figures/newton_tradeoff.svg
@@ -68,8 +83,8 @@ Compare the reference `1/sqrt` path against approximate reciprocal-sqrt modes:
 Run the repeated reciprocal-sqrt benchmark and generate a summary plus SVG:
 
 ```sh
-THREADS="1 2 4 8" REPEATS=5 N=4096 NSTEPS=10 scripts/benchmark_rsqrt_tradeoff.sh
-python3 scripts/analyze_rsqrt_tradeoff.py results/rsqrt_tradeoff_YYYYMMDD_HHMMSS.csv \
+THREADS="1 2 4 8" REPEATS=5 N=4096 NSTEPS=10 sh scripts/benchmark/benchmark_rsqrt_tradeoff.sh
+python3 scripts/analyze/analyze_rsqrt_tradeoff.py results/rsqrt_tradeoff_YYYYMMDD_HHMMSS.csv \
   --csv results/rsqrt_tradeoff_summary.csv \
   --markdown results/rsqrt_tradeoff_summary.md \
   --svg report/figures/rsqrt_tradeoff.svg
@@ -86,7 +101,7 @@ make OPENMP=1 PRECISION=double benchmark_layout
   OMP_NUM_THREADS=4 ./benchmark_layout --input results/plummer_layout_4096.bin --repeats 5 --no-header
   OMP_NUM_THREADS=8 ./benchmark_layout --input results/plummer_layout_4096.bin --repeats 5 --no-header
 } > results/layout_tradeoff.csv
-python3 scripts/analyze_layout_tradeoff.py results/layout_tradeoff.csv \
+python3 scripts/analyze/analyze_layout_tradeoff.py results/layout_tradeoff.csv \
   --csv results/layout_tradeoff_summary.csv \
   --markdown results/layout_tradeoff_summary.md \
   --svg report/figures/layout_tradeoff.svg
@@ -95,8 +110,8 @@ python3 scripts/analyze_layout_tradeoff.py results/layout_tradeoff.csv \
 Run the accumulator-splitting force-kernel benchmark:
 
 ```sh
-REPEATS=5 THREADS="1 2 4 8" N=4096 NSTEPS=10 sh scripts/benchmark_accumulator_tradeoff.sh
-python3 scripts/analyze_accumulator_tradeoff.py results/accumulator_tradeoff_YYYYMMDD_HHMMSS.csv \
+REPEATS=5 THREADS="1 2 4 8" N=4096 NSTEPS=10 sh scripts/benchmark/benchmark_accumulator_tradeoff.sh
+python3 scripts/analyze/analyze_accumulator_tradeoff.py results/accumulator_tradeoff_YYYYMMDD_HHMMSS.csv \
   --csv results/accumulator_tradeoff_summary.csv \
   --markdown results/accumulator_tradeoff_summary.md \
   --svg report/figures/accumulator_tradeoff.svg
@@ -108,7 +123,7 @@ compiler can use the instruction set of the allocated CPU:
 ```sh
 CFLAGS="-O3 -march=native -ffp-contract=fast -Wall -Wextra -Wpedantic" \
   REPEATS=5 THREADS="1 2 4 8" N=8192 NSTEPS=20 \
-  sh scripts/benchmark_accumulator_tradeoff.sh
+  sh scripts/benchmark/benchmark_accumulator_tradeoff.sh
 ```
 
 The `direct-split2`, `direct-split4`, and `direct-split8` kernels keep the same
@@ -121,7 +136,7 @@ bookkeeping, register pressure, and the remaining non-accumulation work.
 Run a repeated OpenMP benchmark and save a CSV under `results/`:
 
 ```sh
-REPEATS=5 THREADS="1 2 4 8" N=4096 NSTEPS=10 scripts/benchmark_openmp.sh
+REPEATS=5 THREADS="1 2 4 8" N=4096 NSTEPS=10 sh scripts/benchmark/benchmark_openmp.sh
 ```
 
 Build the first MPI + OpenMP ring-shift solver when an MPI compiler wrapper is
@@ -152,33 +167,33 @@ The repository also includes a conservative MPI smoke test for the first
 cluster validation:
 
 ```sh
-scripts/run_mpi_smoke.sh
-sbatch scripts/slurm_mpi_smoke.slurm
+sh scripts/smoke/run_mpi_smoke.sh
+sbatch scripts/slurm/mpi_smoke.slurm
 ```
 
 After the smoke test, compare the serial KDK solver with MPI KDK runs on the
 same initial conditions:
 
 ```sh
-scripts/compare_serial_mpi.sh
-sbatch scripts/slurm_compare_serial_mpi.slurm
+sh scripts/smoke/compare_serial_mpi.sh
+sbatch scripts/slurm/compare_serial_mpi.slurm
 ```
 
 Run a first hybrid MPI + OpenMP benchmark over rank/thread combinations:
 
 ```sh
-CONFIGS="1x4 2x2 4x1" REPEATS=5 N=4096 NSTEPS=10 sh scripts/benchmark_hybrid.sh
-sbatch scripts/slurm_hybrid_benchmark.slurm
-python3 scripts/summarize_hybrid_csv.py results/hybrid_benchmark_YYYYMMDD_HHMMSS.csv
+CONFIGS="1x4 2x2 4x1" REPEATS=5 N=4096 NSTEPS=10 sh scripts/benchmark/benchmark_hybrid.sh
+sbatch scripts/slurm/hybrid_benchmark.slurm
+python3 scripts/analyze/summarize_hybrid_csv.py results/hybrid_benchmark_YYYYMMDD_HHMMSS.csv
 ```
 
 To compare blocking versus overlap, run the same benchmark twice with a single
 ring mode per CSV:
 
 ```sh
-RING_MODE=blocking CONFIGS="4x1 4x2 8x1" REPEATS=5 N=8192 NSTEPS=20 sh scripts/benchmark_hybrid.sh
-RING_MODE=overlap CONFIGS="4x1 4x2 8x1" REPEATS=5 N=8192 NSTEPS=20 sh scripts/benchmark_hybrid.sh
-python3 scripts/analyze_ring_overlap.py \
+RING_MODE=blocking CONFIGS="4x1 4x2 8x1" REPEATS=5 N=8192 NSTEPS=20 sh scripts/benchmark/benchmark_hybrid.sh
+RING_MODE=overlap CONFIGS="4x1 4x2 8x1" REPEATS=5 N=8192 NSTEPS=20 sh scripts/benchmark/benchmark_hybrid.sh
+python3 scripts/analyze/analyze_ring_overlap.py \
   results/hybrid_benchmark_blocking_YYYYMMDD_HHMMSS.csv \
   results/hybrid_benchmark_overlap_YYYYMMDD_HHMMSS.csv \
   --csv results/ring_overlap_summary.csv \
@@ -189,17 +204,17 @@ python3 scripts/analyze_ring_overlap.py \
 Run strong or weak scaling benchmarks:
 
 ```sh
-MODE=strong N=32768 NSTEPS=20 REPEATS=5 CONFIGS="1x1 2x1 4x1 8x1" sh scripts/benchmark_scaling.sh
-MODE=weak NLOCAL=4096 NSTEPS=20 REPEATS=5 CONFIGS="1x1 2x1 4x1 8x1" sh scripts/benchmark_scaling.sh
-sbatch scripts/slurm_scaling_benchmark.slurm
-python3 scripts/summarize_scaling_csv.py results/strong_scaling_YYYYMMDD_HHMMSS.csv --markdown results/strong_scaling_summary.md --csv results/strong_scaling_summary.csv
-python3 scripts/plot_scaling_svg.py results/strong_scaling_summary.csv --output results/strong_scaling.svg
+MODE=strong N=32768 NSTEPS=20 REPEATS=5 CONFIGS="1x1 2x1 4x1 8x1" sh scripts/benchmark/benchmark_scaling.sh
+MODE=weak NLOCAL=4096 NSTEPS=20 REPEATS=5 CONFIGS="1x1 2x1 4x1 8x1" sh scripts/benchmark/benchmark_scaling.sh
+sbatch scripts/slurm/scaling_benchmark.slurm
+python3 scripts/analyze/summarize_scaling_csv.py results/strong_scaling_YYYYMMDD_HHMMSS.csv --markdown results/strong_scaling_summary.md --csv results/strong_scaling_summary.csv
+python3 scripts/analyze/plot_scaling_svg.py results/strong_scaling_summary.csv --output results/strong_scaling.svg
 ```
 
 Override the defaults with environment variables, for example:
 
 ```sh
-MPI_RANKS=4 OMP_THREADS=2 N=128 NSTEPS=5 sh scripts/run_mpi_smoke.sh
+MPI_RANKS=4 OMP_THREADS=2 N=128 NSTEPS=5 sh scripts/smoke/run_mpi_smoke.sh
 ```
 
 ## Preliminary Apptainer container
@@ -246,7 +261,7 @@ Run a local smoke test inside the image:
 
 ```sh
 BUILD_CFLAGS="-O3 -march=x86-64-v3 -ffp-contract=fast -Wall -Wextra -Wpedantic" \
-  sh scripts/run_container_smoke.sh
+  sh scripts/smoke/run_container_smoke.sh
 ```
 
 Or under SLURM, after loading the same MPI module used for native runs:
@@ -256,7 +271,7 @@ module load openMPI/4.1.6
 module load apptainer
 sbatch -A dssc -p EPYC --ntasks=4 --cpus-per-task=1 \
   --export=ALL,MODULES="openMPI/4.1.6",CONTAINER_IMAGE=container/nbody_latest.sif \
-  scripts/slurm_container_smoke.slurm
+  scripts/slurm/container_smoke.slurm
 ```
 
 For the final comparison, run native and container benchmarks with the same
@@ -275,7 +290,7 @@ Check MPI library binding with `ldd`:
 module load openMPI/4.1.6
 module load apptainer
 make mpi OPENMP=1 PRECISION=double
-CONTAINER_IMAGE=container/nbody_latest.sif sh scripts/check_container_mpi_binding.sh
+CONTAINER_IMAGE=container/nbody_latest.sif sh scripts/utils/check_container_mpi_binding.sh
 ```
 
 The report should compare the MPI-related lines in:
@@ -289,7 +304,7 @@ results/mpi_ldd_container_host_mpi.txt
 Measure container launch overhead explicitly:
 
 ```sh
-python3 scripts/measure_container_launch_overhead.py \
+python3 scripts/utils/measure_container_launch_overhead.py \
   --image container/nbody_latest.sif \
   --repeats 5 \
   --output results/container_launch_overhead.csv
