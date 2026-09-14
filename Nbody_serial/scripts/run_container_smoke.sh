@@ -2,6 +2,7 @@
 set -eu
 
 CONTAINER_IMAGE=${CONTAINER_IMAGE:-container/nbody_latest.sif}
+CONTAINER_RUNTIME=${CONTAINER_RUNTIME:-}
 N=${N:-128}
 NSTEPS=${NSTEPS:-5}
 DT=${DT:-1e-4}
@@ -21,10 +22,21 @@ if [ ! -f "$CONTAINER_IMAGE" ]; then
   exit 1
 fi
 
+if [ -z "$CONTAINER_RUNTIME" ]; then
+  if command -v apptainer >/dev/null 2>&1; then
+    CONTAINER_RUNTIME=apptainer
+  elif command -v singularity >/dev/null 2>&1; then
+    CONTAINER_RUNTIME=singularity
+  else
+    echo "error: neither apptainer nor singularity was found" >&2
+    exit 1
+  fi
+fi
+
 mkdir -p "$OUTPUT_DIR"
 
 container_exec () {
-  apptainer exec \
+  "$CONTAINER_RUNTIME" exec \
     --bind "$PWD:$PWD" \
     --pwd "$PWD" \
     "$CONTAINER_IMAGE" \
@@ -39,14 +51,14 @@ runtime_container_exec () {
   if [ -n "$HOST_MPI_HOME" ] && [ -d "$HOST_MPI_HOME" ]; then
     APPTAINERENV_LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} \
     APPTAINERENV_PATH=${PATH:-} \
-    apptainer exec \
+    "$CONTAINER_RUNTIME" exec \
       --bind "$PWD:$PWD" \
       --bind "$HOST_MPI_HOME:$HOST_MPI_HOME" \
       --pwd "$PWD" \
       "$CONTAINER_IMAGE" \
       "$@"
   else
-    apptainer exec \
+    "$CONTAINER_RUNTIME" exec \
       --bind "$PWD:$PWD" \
       --pwd "$PWD" \
       "$CONTAINER_IMAGE" \
@@ -56,10 +68,15 @@ runtime_container_exec () {
 
 echo "# container smoke"
 echo "# image=$CONTAINER_IMAGE"
+echo "# runtime=$CONTAINER_RUNTIME"
 echo "# ranks=$MPI_RANKS omp_threads=$OMP_THREADS"
 echo "# n=$N nsteps=$NSTEPS dt=$DT eps=$EPS mass=$MASS"
 echo "# build_cflags=$BUILD_CFLAGS"
 echo "# host_mpi_home=${HOST_MPI_HOME:-not-set}"
+
+export OMP_NUM_THREADS="$OMP_THREADS"
+export OMP_PROC_BIND="${OMP_PROC_BIND:-close}"
+export OMP_PLACES="${OMP_PLACES:-cores}"
 
 container_exec make clean
 container_exec make OPENMP=1 PRECISION=double CFLAGS="$BUILD_CFLAGS"
@@ -87,16 +104,13 @@ runtime_container_exec ./nbody_direct_serial \
   --quiet
 
 echo "# mpi container smoke"
-export OMP_NUM_THREADS="$OMP_THREADS"
-export OMP_PROC_BIND="${OMP_PROC_BIND:-close}"
-export OMP_PLACES="${OMP_PLACES:-cores}"
 
 if [ -n "${SLURM_JOB_ID:-}" ] && command -v srun >/dev/null 2>&1; then
   if [ -n "$HOST_MPI_HOME" ] && [ -d "$HOST_MPI_HOME" ]; then
     srun -n "$MPI_RANKS" -c "$OMP_THREADS" \
       env APPTAINERENV_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
         APPTAINERENV_PATH="${PATH:-}" \
-        apptainer exec \
+        "$CONTAINER_RUNTIME" exec \
           --bind "$PWD:$PWD" \
           --bind "$HOST_MPI_HOME:$HOST_MPI_HOME" \
           --pwd "$PWD" \
@@ -112,7 +126,7 @@ if [ -n "${SLURM_JOB_ID:-}" ] && command -v srun >/dev/null 2>&1; then
             --quiet
   else
     srun -n "$MPI_RANKS" -c "$OMP_THREADS" \
-      apptainer exec \
+      "$CONTAINER_RUNTIME" exec \
         --bind "$PWD:$PWD" \
         --pwd "$PWD" \
         "$CONTAINER_IMAGE" \
@@ -131,7 +145,7 @@ elif command -v mpirun >/dev/null 2>&1; then
     mpirun -np "$MPI_RANKS" \
       env APPTAINERENV_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
         APPTAINERENV_PATH="${PATH:-}" \
-        apptainer exec \
+        "$CONTAINER_RUNTIME" exec \
           --bind "$PWD:$PWD" \
           --bind "$HOST_MPI_HOME:$HOST_MPI_HOME" \
           --pwd "$PWD" \
@@ -147,7 +161,7 @@ elif command -v mpirun >/dev/null 2>&1; then
             --quiet
   else
     mpirun -np "$MPI_RANKS" \
-      apptainer exec \
+      "$CONTAINER_RUNTIME" exec \
         --bind "$PWD:$PWD" \
         --pwd "$PWD" \
         "$CONTAINER_IMAGE" \
