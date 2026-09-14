@@ -2,12 +2,24 @@
 set -eu
 
 CONTAINER_IMAGE=${CONTAINER_IMAGE:-container/nbody_latest.sif}
+CONTAINER_RUNTIME=${CONTAINER_RUNTIME:-}
 OUTPUT_DIR=${OUTPUT_DIR:-results}
 HOST_MPI_HOME=${HOST_MPI_HOME:-}
 
 if [ ! -f "$CONTAINER_IMAGE" ]; then
   echo "error: container image '$CONTAINER_IMAGE' not found" >&2
   exit 1
+fi
+
+if [ -z "$CONTAINER_RUNTIME" ]; then
+  if command -v apptainer >/dev/null 2>&1; then
+    CONTAINER_RUNTIME=apptainer
+  elif command -v singularity >/dev/null 2>&1; then
+    CONTAINER_RUNTIME=singularity
+  else
+    echo "error: neither apptainer nor singularity was found" >&2
+    exit 1
+  fi
 fi
 
 if [ ! -x ./nbody_mpi_omp ]; then
@@ -29,7 +41,7 @@ echo "# native executable ldd -> $native_out"
 ldd ./nbody_mpi_omp > "$native_out"
 
 echo "# container build-time MPI ldd -> $container_build_out"
-apptainer exec \
+"$CONTAINER_RUNTIME" exec \
   --bind "$PWD:$PWD" \
   --pwd "$PWD" \
   "$CONTAINER_IMAGE" \
@@ -43,7 +55,9 @@ else
   echo "# container runtime host MPI ldd -> $container_host_out"
   APPTAINERENV_LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} \
   APPTAINERENV_PATH=${PATH:-} \
-  apptainer exec \
+  SINGULARITYENV_LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} \
+  SINGULARITYENV_PATH=${PATH:-} \
+  "$CONTAINER_RUNTIME" exec \
     --bind "$PWD:$PWD" \
     --bind "$HOST_MPI_HOME:$HOST_MPI_HOME" \
     --pwd "$PWD" \

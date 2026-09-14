@@ -51,6 +51,8 @@ runtime_container_exec () {
   if [ -n "$HOST_MPI_HOME" ] && [ -d "$HOST_MPI_HOME" ]; then
     APPTAINERENV_LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} \
     APPTAINERENV_PATH=${PATH:-} \
+    SINGULARITYENV_LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} \
+    SINGULARITYENV_PATH=${PATH:-} \
     "$CONTAINER_RUNTIME" exec \
       --bind "$PWD:$PWD" \
       --bind "$HOST_MPI_HOME:$HOST_MPI_HOME" \
@@ -110,6 +112,8 @@ if [ -n "${SLURM_JOB_ID:-}" ] && command -v srun >/dev/null 2>&1; then
     srun -n "$MPI_RANKS" -c "$OMP_THREADS" \
       env APPTAINERENV_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
         APPTAINERENV_PATH="${PATH:-}" \
+        SINGULARITYENV_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
+        SINGULARITYENV_PATH="${PATH:-}" \
         "$CONTAINER_RUNTIME" exec \
           --bind "$PWD:$PWD" \
           --bind "$HOST_MPI_HOME:$HOST_MPI_HOME" \
@@ -145,6 +149,8 @@ elif command -v mpirun >/dev/null 2>&1; then
     mpirun -np "$MPI_RANKS" \
       env APPTAINERENV_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
         APPTAINERENV_PATH="${PATH:-}" \
+        SINGULARITYENV_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
+        SINGULARITYENV_PATH="${PATH:-}" \
         "$CONTAINER_RUNTIME" exec \
           --bind "$PWD:$PWD" \
           --bind "$HOST_MPI_HOME:$HOST_MPI_HOME" \
