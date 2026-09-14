@@ -106,6 +106,7 @@ def draw_panel_multi(
     width: float,
     height: float,
     y_max: float,
+    ideal_label: str | None = "ideal",
 ) -> str:
     x_min = min(x_values)
     x_max = max(x_values)
@@ -141,7 +142,8 @@ def draw_panel_multi(
         for line_index, label_line in enumerate(label_lines):
             parts.append(f'<text x="{px:.1f}" y="{y0 + height + 22 + 14 * line_index:.1f}" text-anchor="middle" font-size="11">{label_line}</text>')
 
-    parts.append(polyline(ideal, "#9ca3af"))
+    if ideal_label is not None:
+        parts.append(polyline(ideal, "#9ca3af"))
     for label, color, values_by_x in series:
         points = [
             (sx(x), sy(values_by_x[x]))
@@ -154,11 +156,88 @@ def draw_panel_multi(
 
     legend_x = x0 + width - 104
     legend_y = y0 + 20
-    parts.append(f'<text x="{legend_x:.1f}" y="{legend_y:.1f}" font-size="12" fill="#6b7280">ideal</text>')
+    legend_offset = 0
+    if ideal_label is not None:
+        parts.append(f'<text x="{legend_x:.1f}" y="{legend_y:.1f}" font-size="12" fill="#6b7280">{ideal_label}</text>')
+        legend_offset = 1
     for index, (label, color, _) in enumerate(series):
-        y = legend_y + 18 * (index + 1)
+        y = legend_y + 18 * (index + legend_offset)
         parts.append(f'<circle cx="{legend_x - 10:.1f}" cy="{y - 4:.1f}" r="4" fill="{color}"/>')
         parts.append(f'<text x="{legend_x:.1f}" y="{y:.1f}" font-size="12" fill="{color}">{label}</text>')
+
+    return "\n".join(parts)
+
+
+def draw_overhead_panel(
+    x_values: list[float],
+    overhead_by_x: dict[float, float],
+    x_tick_labels: list[str],
+    x_label: str,
+    x0: float,
+    y0: float,
+    width: float,
+    height: float,
+) -> str:
+    x_min = min(x_values)
+    x_max = max(x_values)
+    if x_min == x_max:
+        x_max = x_min + 1.0
+
+    max_abs = max([abs(value) for value in overhead_by_x.values()] + [1.0])
+    y_limit = max(2.0, max_abs * 1.35)
+    y_min = -y_limit
+    y_max = y_limit
+
+    def sx(x: float) -> float:
+        return x0 + (x - x_min) / (x_max - x_min) * width
+
+    def sy(y: float) -> float:
+        return y0 + height - (y - y_min) / (y_max - y_min) * height
+
+    zero_y = sy(0.0)
+    bar_width = min(30.0, width / max(1, len(x_values)) * 0.22)
+
+    parts = [
+        f'<text x="{x0 + width / 2:.1f}" y="{y0 - 16:.1f}" text-anchor="middle" font-size="16" font-weight="700">Container overhead</text>',
+        f'<line x1="{x0}" y1="{y0 + height}" x2="{x0 + width}" y2="{y0 + height}" stroke="#222"/>',
+        f'<line x1="{x0}" y1="{y0}" x2="{x0}" y2="{y0 + height}" stroke="#222"/>',
+        f'<line x1="{x0}" y1="{zero_y:.1f}" x2="{x0 + width}" y2="{zero_y:.1f}" stroke="#6b7280" stroke-width="1.5"/>',
+        f'<text x="{x0 + width / 2:.1f}" y="{y0 + height + 58:.1f}" text-anchor="middle" font-size="13">{x_label}</text>',
+        f'<text x="{x0 - 48:.1f}" y="{y0 + height / 2:.1f}" transform="rotate(-90 {x0 - 48:.1f},{y0 + height / 2:.1f})" text-anchor="middle" font-size="13">Container vs native (%)</text>',
+    ]
+
+    for i in range(5):
+        y = y_min + (y_max - y_min) * i / 4
+        py = sy(y)
+        parts.append(f'<line x1="{x0}" y1="{py:.1f}" x2="{x0 + width}" y2="{py:.1f}" stroke="#e5e7eb"/>')
+        parts.append(f'<text x="{x0 - 8:.1f}" y="{py + 4:.1f}" text-anchor="end" font-size="11">{y:.1f}%</text>')
+
+    for index, x in enumerate(x_values):
+        px = sx(x)
+        parts.append(f'<line x1="{px:.1f}" y1="{y0 + height}" x2="{px:.1f}" y2="{y0 + height + 5}" stroke="#222"/>')
+        label_lines = x_tick_labels[index].split("\\n")
+        for line_index, label_line in enumerate(label_lines):
+            parts.append(f'<text x="{px:.1f}" y="{y0 + height + 22 + 14 * line_index:.1f}" text-anchor="middle" font-size="11">{label_line}</text>')
+
+        if x not in overhead_by_x:
+            continue
+
+        value = overhead_by_x[x]
+        py = sy(value)
+        y_top = min(py, zero_y)
+        bar_height = abs(zero_y - py)
+        color = "#dc2626" if value >= 0 else "#16a34a"
+        label_y = y_top - 7 if value >= 0 else y_top + bar_height + 16
+        parts.append(
+            f'<rect x="{px - bar_width / 2:.1f}" y="{y_top:.1f}" width="{bar_width:.1f}" height="{bar_height:.1f}" fill="{color}" opacity="0.85"/>'
+        )
+        parts.append(
+            f'<text x="{px:.1f}" y="{label_y:.1f}" text-anchor="middle" font-size="11" fill="{color}">{value:+.1f}%</text>'
+        )
+
+    parts.append(
+        f'<text x="{x0 + width / 2:.1f}" y="{y0 + height + 88:.1f}" text-anchor="middle" font-size="11" fill="#4b5563">positive means container slower</text>'
+    )
 
     return "\n".join(parts)
 
@@ -223,6 +302,24 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
             output_series.append((backend, colors.get(backend, "#16a34a"), values))
         return output_series
 
+    has_overhead = {"native", "container"}.issubset(set(backends))
+    overhead_by_worker = {}
+    if has_overhead:
+        native_totals = {
+            float(row["total_workers"]): float(row["total_median_s"])
+            for row in rows
+            if row.get("backend", "native") == "native"
+        }
+        container_totals = {
+            float(row["total_workers"]): float(row["total_median_s"])
+            for row in rows
+            if row.get("backend", "native") == "container"
+        }
+        for worker in sorted(set(native_totals) & set(container_totals)):
+            overhead_by_worker[worker] = (
+                container_totals[worker] / native_totals[worker] - 1.0
+            ) * 100.0
+
     if mode == "strong":
         ideal_speedup = [w / base_workers for w in all_workers]
         note = "Strong scaling: fixed N. Amdahl effects appear as the measured curve bends below ideal speedup."
@@ -242,11 +339,11 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
     y_max_eff = 1.1
 
     if mode == "weak":
-        svg_width = 1560
+        svg_width = 2040 if has_overhead else 1560
         panel_width = 390
     else:
-        svg_width = 1100
-        panel_width = 430
+        svg_width = 1560 if has_overhead else 1100
+        panel_width = 390 if has_overhead else 430
     svg_height = 560
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{svg_width}" height="{svg_height}" viewBox="0 0 {svg_width} {svg_height}">',
@@ -276,7 +373,7 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
             x_label,
             "Parallel efficiency",
             "Efficiency",
-            622 if mode == "strong" else 570,
+            570 if has_overhead else (622 if mode == "strong" else 570),
             112,
             panel_width,
             330,
@@ -299,6 +396,22 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
                 panel_width,
                 330,
                 max(0.15, nice_max(max(communication_fraction) * 1.15)),
+                ideal_label=None,
+            )
+        )
+
+    if has_overhead:
+        overhead_x0 = 1546 if mode == "weak" else 1058
+        parts.append(
+            draw_overhead_panel(
+                all_workers,
+                overhead_by_worker,
+                x_tick_labels,
+                x_label,
+                overhead_x0,
+                112,
+                panel_width,
+                330,
             )
         )
 
