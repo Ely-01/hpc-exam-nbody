@@ -5,6 +5,7 @@ CONTAINER_IMAGE=${CONTAINER_IMAGE:-container/nbody_latest.sif}
 CONTAINER_RUNTIME=${CONTAINER_RUNTIME:-}
 OUTPUT_DIR=${OUTPUT_DIR:-results}
 HOST_MPI_HOME=${HOST_MPI_HOME:-}
+HOST_MPI_BIND=${HOST_MPI_BIND:-/opt/programs:/opt/programs}
 
 if [ ! -f "$CONTAINER_IMAGE" ]; then
   echo "error: container image '$CONTAINER_IMAGE' not found" >&2
@@ -53,14 +54,13 @@ if [ -z "$HOST_MPI_HOME" ] || [ ! -d "$HOST_MPI_HOME" ]; then
 else
   echo "# host MPI prefix: $HOST_MPI_HOME"
   echo "# container runtime host MPI ldd -> $container_host_out"
-  APPTAINERENV_LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} \
-  APPTAINERENV_PATH=${PATH:-} \
-  SINGULARITYENV_LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} \
-  SINGULARITYENV_PATH=${PATH:-} \
   "$CONTAINER_RUNTIME" exec \
     --bind "$PWD:$PWD" \
+    --bind "$HOST_MPI_BIND" \
     --bind "$HOST_MPI_HOME:$HOST_MPI_HOME" \
     --pwd "$PWD" \
+    --env LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
+    --env PATH="${PATH:-}" \
     "$CONTAINER_IMAGE" \
     ldd ./nbody_mpi_omp > "$container_host_out"
 fi

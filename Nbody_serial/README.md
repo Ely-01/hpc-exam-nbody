@@ -211,8 +211,10 @@ The container layer follows the assignment structure:
 - `container/nbody.def` builds the Apptainer/Singularity `.sif` image used on
   Orfeo.
 
-The base image is Ubuntu 22.04, because the assignment asks for a reproducible
-general-purpose Linux userspace rather than a vendor-specific HPC image.
+The base image is Ubuntu 24.04. The assignment examples discuss Ubuntu 22.04,
+but on Orfeo the host OpenMPI module is built against a newer glibc than the one
+available in Ubuntu 22.04. Ubuntu 24.04 keeps a general-purpose Linux userspace
+while allowing the containerized executable to bind the host MPI libraries.
 
 Build the Apptainer image directly on Orfeo:
 
