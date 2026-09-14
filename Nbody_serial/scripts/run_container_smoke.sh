@@ -16,6 +16,10 @@ INPUT=${INPUT:-$OUTPUT_DIR/plummer_container_${N}.bin}
 BUILD_CFLAGS=${BUILD_CFLAGS:-"-O3 -march=x86-64-v3 -ffp-contract=fast -Wall -Wextra -Wpedantic"}
 HOST_MPI_HOME=${HOST_MPI_HOME:-}
 HOST_MPI_BIND=${HOST_MPI_BIND:-/opt/programs:/opt/programs}
+OMPI_MCA_pml=${OMPI_MCA_pml:-^ucx}
+OMPI_MCA_btl=${OMPI_MCA_btl:-self,tcp}
+OMPI_MCA_osc=${OMPI_MCA_osc:-^ucx}
+OMPI_MCA_btl_vader_single_copy_mechanism=${OMPI_MCA_btl_vader_single_copy_mechanism:-none}
 
 if [ ! -f "$CONTAINER_IMAGE" ]; then
   echo "error: container image '$CONTAINER_IMAGE' not found" >&2
@@ -57,6 +61,10 @@ runtime_container_exec () {
       --pwd "$PWD" \
       --env LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
       --env PATH="${PATH:-}" \
+      --env OMPI_MCA_pml="$OMPI_MCA_pml" \
+      --env OMPI_MCA_btl="$OMPI_MCA_btl" \
+      --env OMPI_MCA_osc="$OMPI_MCA_osc" \
+      --env OMPI_MCA_btl_vader_single_copy_mechanism="$OMPI_MCA_btl_vader_single_copy_mechanism" \
       "$CONTAINER_IMAGE" \
       "$@"
   else
@@ -75,6 +83,9 @@ echo "# ranks=$MPI_RANKS omp_threads=$OMP_THREADS"
 echo "# n=$N nsteps=$NSTEPS dt=$DT eps=$EPS mass=$MASS"
 echo "# build_cflags=$BUILD_CFLAGS"
 echo "# host_mpi_home=${HOST_MPI_HOME:-not-set}"
+echo "# ompi_mca_pml=$OMPI_MCA_pml"
+echo "# ompi_mca_btl=$OMPI_MCA_btl"
+echo "# ompi_mca_osc=$OMPI_MCA_osc"
 
 export OMP_NUM_THREADS="$OMP_THREADS"
 export OMP_PROC_BIND="${OMP_PROC_BIND:-close}"
@@ -117,6 +128,10 @@ if [ -n "${SLURM_JOB_ID:-}" ] && command -v srun >/dev/null 2>&1; then
           --pwd "$PWD" \
           --env LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
           --env PATH="${PATH:-}" \
+          --env OMPI_MCA_pml="$OMPI_MCA_pml" \
+          --env OMPI_MCA_btl="$OMPI_MCA_btl" \
+          --env OMPI_MCA_osc="$OMPI_MCA_osc" \
+          --env OMPI_MCA_btl_vader_single_copy_mechanism="$OMPI_MCA_btl_vader_single_copy_mechanism" \
           "$CONTAINER_IMAGE" \
           ./nbody_mpi_omp \
             --input "$INPUT" \
@@ -153,6 +168,10 @@ elif command -v mpirun >/dev/null 2>&1; then
           --pwd "$PWD" \
           --env LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
           --env PATH="${PATH:-}" \
+          --env OMPI_MCA_pml="$OMPI_MCA_pml" \
+          --env OMPI_MCA_btl="$OMPI_MCA_btl" \
+          --env OMPI_MCA_osc="$OMPI_MCA_osc" \
+          --env OMPI_MCA_btl_vader_single_copy_mechanism="$OMPI_MCA_btl_vader_single_copy_mechanism" \
           "$CONTAINER_IMAGE" \
           ./nbody_mpi_omp \
             --input "$INPUT" \
