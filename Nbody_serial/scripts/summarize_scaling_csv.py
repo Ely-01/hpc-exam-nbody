@@ -38,12 +38,13 @@ def read_rows(path: Path) -> list[dict[str, str]]:
 
 
 def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
-    groups: dict[tuple[int, int], list[dict[str, str]]] = defaultdict(list)
+    groups: dict[tuple[str, int, int], list[dict[str, str]]] = defaultdict(list)
 
     for row in rows:
-      ranks = int(row["ranks"])
-      threads = int(row["threads"])
-      groups[(ranks, threads)].append(row)
+        backend = row.get("backend") or "native"
+        ranks = int(row["ranks"])
+        threads = int(row["threads"])
+        groups[(backend, ranks, threads)].append(row)
 
     if not groups:
         raise ValueError("input CSV does not contain benchmark rows")
@@ -55,16 +56,40 @@ def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
     if mode not in {"strong", "weak"}:
         raise ValueError(f"unknown scaling mode: {mode}")
 
-    base_key = min(groups, key=lambda key: (key[0] * key[1], key[0], key[1]))
-    base_ranks, base_threads = base_key
-    base_workers = base_ranks * base_threads
-    base_total = median([float(row["total_seconds"]) for row in groups[base_key]])
-    base_force = median([float(row["force_seconds"]) for row in groups[base_key]])
+    base_by_backend = {}
+    for backend in sorted({key[0] for key in groups}):
+        backend_keys = [key for key in groups if key[0] == backend]
+        base_key = min(
+            backend_keys,
+            key=lambda key: (key[1] * key[2], key[1], key[2]),
+        )
+        _, base_ranks, base_threads = base_key
+        base_workers = base_ranks * base_threads
+        base_total = median(
+            [float(row["total_seconds"]) for row in groups[base_key]]
+        )
+        base_force = median(
+            [float(row["force_seconds"]) for row in groups[base_key]]
+        )
+        base_by_backend[backend] = {
+            "key": base_key,
+            "ranks": base_ranks,
+            "threads": base_threads,
+            "workers": base_workers,
+            "total": base_total,
+            "force": base_force,
+        }
 
     summary = []
-    for ranks, threads in sorted(groups, key=lambda key: (key[0] * key[1], key[0], key[1])):
-        group = groups[(ranks, threads)]
+    for backend, ranks, threads in sorted(
+        groups, key=lambda key: (key[0], key[1] * key[2], key[1], key[2])
+    ):
+        group = groups[(backend, ranks, threads)]
         workers = ranks * threads
+        base = base_by_backend[backend]
+        base_workers = int(base["workers"])
+        base_total = float(base["total"])
+        base_force = float(base["force"])
         totals = [float(row["total_seconds"]) for row in group]
         forces = [float(row["force_seconds"]) for row in group]
         communications = [float(row["communication_seconds"]) for row in group]
@@ -87,7 +112,7 @@ def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
             # Direct N-body weak scaling keeps Nlocal fixed per MPI rank, so the
             # ideal runtime grows linearly with ranks.  The scaled speedup below
             # is throughput-based: total work grows approximately as ranks^2.
-            rank_ratio = ranks / base_ranks
+            rank_ratio = ranks / int(base["ranks"])
             speedup = (rank_ratio * rank_ratio) * base_total / total_median
             force_speedup = (rank_ratio * rank_ratio) * base_force / force_median
             efficiency = speedup / (workers / base_workers)
@@ -98,6 +123,7 @@ def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
 
         summary.append(
             {
+                "backend": backend,
                 "mode": mode,
                 "n": int(group[0]["n"]),
                 "nlocal": int(group[0]["nlocal"]),
@@ -121,7 +147,7 @@ def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
                 "force_efficiency": force_speedup / (workers / base_workers),
                 "max_relative_energy_drift": max_drift,
                 "statuses": statuses,
-                "baseline": "yes" if (ranks, threads) == base_key else "no",
+                "baseline": "yes" if (backend, ranks, threads) == base["key"] else "no",
             }
         )
 
@@ -132,13 +158,14 @@ def markdown_table(summary: list[dict[str, object]]) -> str:
     mode = str(summary[0]["mode"]) if summary else "scaling"
     speedup_label = "Speedup" if mode == "strong" else "Scaled speedup"
     lines = [
-        f"| Ranks | Threads | Workers | N | Nlocal | Repeats | Total median s | Total stdev s | Force median s | Comm median s | Comm fraction | Runtime/ideal | {speedup_label} | Efficiency | Max drift | Status |",
-        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---|",
+        f"| Backend | Ranks | Threads | Workers | N | Nlocal | Repeats | Total median s | Total stdev s | Force median s | Comm median s | Comm fraction | Runtime/ideal | {speedup_label} | Efficiency | Max drift | Status |",
+        "|:---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---|",
     ]
 
     for row in summary:
         lines.append(
-            "| {ranks} | {threads} | {workers} | {n} | {nlocal} | {repeats} | {total} | {total_std} | {force} | {comm} | {comm_frac} | {runtime_over_ideal} | {speedup} | {efficiency} | {drift} | {statuses} |".format(
+            "| {backend} | {ranks} | {threads} | {workers} | {n} | {nlocal} | {repeats} | {total} | {total_std} | {force} | {comm} | {comm_frac} | {runtime_over_ideal} | {speedup} | {efficiency} | {drift} | {statuses} |".format(
+                backend=row["backend"],
                 ranks=row["ranks"],
                 threads=row["threads"],
                 workers=row["total_workers"],
@@ -163,6 +190,7 @@ def markdown_table(summary: list[dict[str, object]]) -> str:
 
 def write_summary_csv(path: Path, summary: list[dict[str, object]]) -> None:
     fieldnames = [
+        "backend",
         "mode",
         "n",
         "nlocal",
@@ -200,7 +228,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Summarize strong/weak scaling benchmark CSV files."
     )
-    parser.add_argument("input_csv", type=Path, help="scaling benchmark CSV")
+    parser.add_argument(
+        "input_csv",
+        type=Path,
+        nargs="+",
+        help="one or more scaling benchmark CSV files",
+    )
     parser.add_argument("--markdown", type=Path, help="optional Markdown output")
     parser.add_argument("--csv", type=Path, help="optional summary CSV output")
     return parser.parse_args()
@@ -208,7 +241,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    summary = summarize(read_rows(args.input_csv))
+    rows = []
+    for input_csv in args.input_csv:
+        rows.extend(read_rows(input_csv))
+    summary = summarize(rows)
     table = markdown_table(summary)
     print(table)
 

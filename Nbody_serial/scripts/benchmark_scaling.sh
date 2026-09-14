@@ -2,6 +2,7 @@
 set -eu
 
 MODE=${MODE:-strong}
+BACKEND=${BACKEND:-native}
 N=${N:-32768}
 NLOCAL=${NLOCAL:-4096}
 NSTEPS=${NSTEPS:-20}
@@ -14,12 +15,19 @@ REPEATS=${REPEATS:-5}
 CONFIGS=${CONFIGS:-"1x1 2x1 4x1 8x1"}
 RING_MODE=${RING_MODE:-blocking}
 OUTPUT_DIR=${OUTPUT_DIR:-results}
-CSV=${CSV:-$OUTPUT_DIR/${MODE}_scaling_${RING_MODE}_$(date +%Y%m%d_%H%M%S).csv}
+CSV=${CSV:-$OUTPUT_DIR/${MODE}_scaling_${BACKEND}_${RING_MODE}_$(date +%Y%m%d_%H%M%S).csv}
+NATIVE_CFLAGS=${NATIVE_CFLAGS:-"-O3 -march=native -ffp-contract=fast -Wall -Wextra -Wpedantic"}
+CONTAINER_CFLAGS=${CONTAINER_CFLAGS:-"-O3 -march=x86-64-v3 -ffp-contract=fast -Wall -Wextra -Wpedantic"}
+CONTAINER_IMAGE=${CONTAINER_IMAGE:-container/nbody_latest.sif}
+CONTAINER_RUNTIME=${CONTAINER_RUNTIME:-}
+HOST_MPI_HOME=${HOST_MPI_HOME:-}
+HOST_MPI_BIND=${HOST_MPI_BIND:-/opt/programs:/opt/programs}
+OMPI_MCA_pml=${OMPI_MCA_pml:-^ucx}
+OMPI_MCA_btl=${OMPI_MCA_btl:-^ofi,usnic,openib}
+OMPI_MCA_osc=${OMPI_MCA_osc:-^ucx}
+OMPI_MCA_btl_vader_single_copy_mechanism=${OMPI_MCA_btl_vader_single_copy_mechanism:-none}
 
 mkdir -p "$OUTPUT_DIR"
-
-make OPENMP=1 PRECISION=double
-make mpi OPENMP=1 PRECISION=double
 
 case "$MODE" in
   strong|weak)
@@ -30,8 +38,55 @@ case "$MODE" in
     ;;
 esac
 
+case "$BACKEND" in
+  native|container)
+    ;;
+  *)
+    echo "error: BACKEND must be either native or container" >&2
+    exit 1
+    ;;
+esac
+
+if [ "$BACKEND" = "container" ]; then
+  if [ ! -f "$CONTAINER_IMAGE" ]; then
+    echo "error: container image '$CONTAINER_IMAGE' not found" >&2
+    exit 1
+  fi
+
+  if [ -z "$CONTAINER_RUNTIME" ]; then
+    if command -v singularity >/dev/null 2>&1; then
+      CONTAINER_RUNTIME=singularity
+    elif command -v apptainer >/dev/null 2>&1; then
+      CONTAINER_RUNTIME=apptainer
+    else
+      echo "error: neither singularity nor apptainer was found" >&2
+      exit 1
+    fi
+  fi
+
+  if [ -z "$HOST_MPI_HOME" ] && command -v mpicc >/dev/null 2>&1; then
+    HOST_MPI_HOME=$(dirname "$(dirname "$(readlink -f "$(command -v mpicc)")")")
+  fi
+fi
+
+container_exec () {
+  "$CONTAINER_RUNTIME" exec \
+    --bind "$PWD:$PWD" \
+    --pwd "$PWD" \
+    "$CONTAINER_IMAGE" \
+    "$@"
+}
+
+if [ "$BACKEND" = "native" ]; then
+  make OPENMP=1 PRECISION=double CFLAGS="$NATIVE_CFLAGS"
+  make mpi OPENMP=1 PRECISION=double CFLAGS="$NATIVE_CFLAGS"
+else
+  container_exec make OPENMP=1 PRECISION=double CFLAGS="$CONTAINER_CFLAGS"
+  container_exec make mpi OPENMP=1 PRECISION=double CFLAGS="$CONTAINER_CFLAGS"
+fi
+
 printf '%s\n' \
-  "mode,n,nlocal,nsteps,dt,eps,mass,ranks,threads,total_workers,repeat,total_seconds,force_seconds,communication_seconds,integration_seconds,energy_seconds,initial_acceleration_seconds,max_relative_energy_drift,status" \
+  "backend,mode,n,nlocal,nsteps,dt,eps,mass,ranks,threads,total_workers,repeat,total_seconds,force_seconds,communication_seconds,integration_seconds,energy_seconds,initial_acceleration_seconds,max_relative_energy_drift,status" \
   > "$CSV"
 
 max_ranks=0
@@ -68,7 +123,7 @@ if [ -n "${SLURM_CPUS_PER_TASK:-}" ] && [ "$max_threads" -gt "$SLURM_CPUS_PER_TA
   exit 1
 fi
 
-echo "# scaling mode=$MODE ring_mode=$RING_MODE configs=$CONFIGS max_ranks=$max_ranks max_threads=$max_threads max_workers=$max_workers"
+echo "# scaling backend=$BACKEND mode=$MODE ring_mode=$RING_MODE configs=$CONFIGS max_ranks=$max_ranks max_threads=$max_threads max_workers=$max_workers"
 
 extract_final_field () {
   key=$1
@@ -105,7 +160,7 @@ extract_timing () {
   '
 }
 
-run_mpi () {
+run_mpi_native () {
   ranks=$1
   threads=$2
   input=$3
@@ -146,18 +201,142 @@ run_mpi () {
   fi
 }
 
+run_mpi_container () {
+  ranks=$1
+  threads=$2
+  input=$3
+  n_for_run=$4
+
+  if [ $((n_for_run % ranks)) -ne 0 ]; then
+    echo "error: N=$n_for_run must be divisible by ranks=$ranks" >&2
+    exit 1
+  fi
+
+  export OMPI_MCA_pml
+  export OMPI_MCA_btl
+  export OMPI_MCA_osc
+  export OMPI_MCA_btl_vader_single_copy_mechanism
+
+  if command -v srun >/dev/null 2>&1; then
+    if [ -n "$HOST_MPI_HOME" ] && [ -d "$HOST_MPI_HOME" ]; then
+      srun -n "$ranks" -c "$threads" \
+        "$CONTAINER_RUNTIME" exec \
+          --bind "$PWD:$PWD" \
+          --bind "$HOST_MPI_BIND" \
+          --bind "$HOST_MPI_HOME:$HOST_MPI_HOME" \
+          --pwd "$PWD" \
+          --env LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
+          --env PATH="${PATH:-}" \
+          --env OMPI_MCA_pml="$OMPI_MCA_pml" \
+          --env OMPI_MCA_btl="$OMPI_MCA_btl" \
+          --env OMPI_MCA_osc="$OMPI_MCA_osc" \
+          --env OMPI_MCA_btl_vader_single_copy_mechanism="$OMPI_MCA_btl_vader_single_copy_mechanism" \
+          "$CONTAINER_IMAGE" \
+          ./nbody_mpi_omp \
+            --input "$input" \
+            --nsteps "$NSTEPS" \
+            --dt "$DT" \
+            --eps "$EPS" \
+            --mass "$MASS" \
+            --energy-every "$ENERGY_EVERY" \
+            --ring-mode "$RING_MODE" \
+            --timing \
+            --quiet
+    else
+      srun -n "$ranks" -c "$threads" \
+        "$CONTAINER_RUNTIME" exec \
+          --bind "$PWD:$PWD" \
+          --pwd "$PWD" \
+          "$CONTAINER_IMAGE" \
+          ./nbody_mpi_omp \
+            --input "$input" \
+            --nsteps "$NSTEPS" \
+            --dt "$DT" \
+            --eps "$EPS" \
+            --mass "$MASS" \
+            --energy-every "$ENERGY_EVERY" \
+            --ring-mode "$RING_MODE" \
+            --timing \
+            --quiet
+    fi
+  elif command -v mpirun >/dev/null 2>&1; then
+    if [ -n "$HOST_MPI_HOME" ] && [ -d "$HOST_MPI_HOME" ]; then
+      mpirun -np "$ranks" \
+        "$CONTAINER_RUNTIME" exec \
+          --bind "$PWD:$PWD" \
+          --bind "$HOST_MPI_BIND" \
+          --bind "$HOST_MPI_HOME:$HOST_MPI_HOME" \
+          --pwd "$PWD" \
+          --env LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
+          --env PATH="${PATH:-}" \
+          --env OMPI_MCA_pml="$OMPI_MCA_pml" \
+          --env OMPI_MCA_btl="$OMPI_MCA_btl" \
+          --env OMPI_MCA_osc="$OMPI_MCA_osc" \
+          --env OMPI_MCA_btl_vader_single_copy_mechanism="$OMPI_MCA_btl_vader_single_copy_mechanism" \
+          "$CONTAINER_IMAGE" \
+          ./nbody_mpi_omp \
+            --input "$input" \
+            --nsteps "$NSTEPS" \
+            --dt "$DT" \
+            --eps "$EPS" \
+            --mass "$MASS" \
+            --energy-every "$ENERGY_EVERY" \
+            --ring-mode "$RING_MODE" \
+            --timing \
+            --quiet
+    else
+      mpirun -np "$ranks" \
+        "$CONTAINER_RUNTIME" exec \
+          --bind "$PWD:$PWD" \
+          --pwd "$PWD" \
+          "$CONTAINER_IMAGE" \
+          ./nbody_mpi_omp \
+            --input "$input" \
+            --nsteps "$NSTEPS" \
+            --dt "$DT" \
+            --eps "$EPS" \
+            --mass "$MASS" \
+            --energy-every "$ENERGY_EVERY" \
+            --ring-mode "$RING_MODE" \
+            --timing \
+            --quiet
+    fi
+  else
+    echo "error: neither srun nor mpirun was found" >&2
+    exit 1
+  fi
+}
+
+run_mpi () {
+  if [ "$BACKEND" = "native" ]; then
+    run_mpi_native "$@"
+  else
+    run_mpi_container "$@"
+  fi
+}
+
 make_input () {
   n_for_input=$1
   input=$2
 
   if [ ! -f "$input" ]; then
-    ./generate_ic \
-      --model 0 \
-      --n "$n_for_input" \
-      --seed "$SEED" \
-      --scale 1.0 \
-      --mass "$MASS" \
-      --output "$input"
+    if [ "$BACKEND" = "native" ]; then
+      ./generate_ic \
+        --model 0 \
+        --n "$n_for_input" \
+        --seed "$SEED" \
+        --scale 1.0 \
+        --mass "$MASS" \
+        --output "$input"
+    else
+      container_exec ./generate_ic \
+        --model 0 \
+        --n "$n_for_input" \
+        --seed "$SEED" \
+        --scale 1.0 \
+        --mass "$MASS" \
+        --output "$input"
+    fi
   fi
 }
 
@@ -193,7 +372,8 @@ for config in $CONFIGS; do
 
     printf '%s\n' "$output"
 
-    printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
+    printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
+      "$BACKEND" \
       "$MODE" \
       "$n_run" \
       "$nlocal_run" \

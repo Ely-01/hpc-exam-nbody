@@ -93,21 +93,104 @@ def draw_panel(
     return "\n".join(parts)
 
 
+def draw_panel_multi(
+    x_values: list[float],
+    series: list[tuple[str, str, dict[float, float]]],
+    ideal_values: list[float],
+    x_tick_labels: list[str],
+    x_label: str,
+    y_label: str,
+    title: str,
+    x0: float,
+    y0: float,
+    width: float,
+    height: float,
+    y_max: float,
+) -> str:
+    x_min = min(x_values)
+    x_max = max(x_values)
+    if x_min == x_max:
+        x_max = x_min + 1.0
+
+    def sx(x: float) -> float:
+        return x0 + (x - x_min) / (x_max - x_min) * width
+
+    def sy(y: float) -> float:
+        return y0 + height - y / y_max * height
+
+    ideal = [(sx(x), sy(y)) for x, y in zip(x_values, ideal_values)]
+
+    parts = [
+        f'<text x="{x0 + width / 2:.1f}" y="{y0 - 16:.1f}" text-anchor="middle" font-size="16" font-weight="700">{title}</text>',
+        f'<line x1="{x0}" y1="{y0 + height}" x2="{x0 + width}" y2="{y0 + height}" stroke="#222"/>',
+        f'<line x1="{x0}" y1="{y0}" x2="{x0}" y2="{y0 + height}" stroke="#222"/>',
+        f'<text x="{x0 + width / 2:.1f}" y="{y0 + height + 58:.1f}" text-anchor="middle" font-size="13">{x_label}</text>',
+        f'<text x="{x0 - 48:.1f}" y="{y0 + height / 2:.1f}" transform="rotate(-90 {x0 - 48:.1f},{y0 + height / 2:.1f})" text-anchor="middle" font-size="13">{y_label}</text>',
+    ]
+
+    for i in range(6):
+        y = y_max * i / 5
+        py = sy(y)
+        parts.append(f'<line x1="{x0}" y1="{py:.1f}" x2="{x0 + width}" y2="{py:.1f}" stroke="#e5e7eb"/>')
+        parts.append(f'<text x="{x0 - 8:.1f}" y="{py + 4:.1f}" text-anchor="end" font-size="11">{y:.2g}</text>')
+
+    for index, x in enumerate(x_values):
+        px = sx(x)
+        parts.append(f'<line x1="{px:.1f}" y1="{y0 + height}" x2="{px:.1f}" y2="{y0 + height + 5}" stroke="#222"/>')
+        label_lines = x_tick_labels[index].split("\\n")
+        for line_index, label_line in enumerate(label_lines):
+            parts.append(f'<text x="{px:.1f}" y="{y0 + height + 22 + 14 * line_index:.1f}" text-anchor="middle" font-size="11">{label_line}</text>')
+
+    parts.append(polyline(ideal, "#9ca3af"))
+    for label, color, values_by_x in series:
+        points = [
+            (sx(x), sy(values_by_x[x]))
+            for x in x_values
+            if x in values_by_x
+        ]
+        if points:
+            parts.append(polyline(points, color))
+            parts.append(circles(points, color))
+
+    legend_x = x0 + width - 104
+    legend_y = y0 + 20
+    parts.append(f'<text x="{legend_x:.1f}" y="{legend_y:.1f}" font-size="12" fill="#6b7280">ideal</text>')
+    for index, (label, color, _) in enumerate(series):
+        y = legend_y + 18 * (index + 1)
+        parts.append(f'<circle cx="{legend_x - 10:.1f}" cy="{y - 4:.1f}" r="4" fill="{color}"/>')
+        parts.append(f'<text x="{legend_x:.1f}" y="{y:.1f}" font-size="12" fill="{color}">{label}</text>')
+
+    return "\n".join(parts)
+
+
 def make_svg(rows: list[dict[str, str]], output: Path) -> None:
     mode = rows[0]["mode"]
+    rows = sorted(
+        rows,
+        key=lambda row: (
+            row.get("backend", "native"),
+            float(row["total_workers"]),
+            int(row["ranks"]),
+            int(row["threads"]),
+        ),
+    )
+    all_workers = sorted({float(row["total_workers"]) for row in rows})
+    base_workers = min(all_workers)
+    backends = sorted({row.get("backend", "native") for row in rows})
+    colors = {
+        "native": "#2563eb",
+        "container": "#dc2626",
+    }
+
     ranks = [int(row["ranks"]) for row in rows]
     threads = [int(row["threads"]) for row in rows]
     workers = [float(row["total_workers"]) for row in rows]
-    speedup = [float(row["speedup"]) for row in rows]
-    efficiency = [float(row["parallel_efficiency"]) for row in rows]
-    communication_fraction = [
-        float(row.get("communication_fraction", "0")) for row in rows
-    ]
-    base_workers = workers[0]
     has_mpi = any(rank > 1 for rank in ranks)
     has_openmp = any(thread > 1 for thread in threads)
 
-    if has_mpi and has_openmp:
+    if len(backends) > 1:
+        backend_label = "Native vs container"
+    elif has_mpi and has_openmp:
         backend_label = "Hybrid MPI+OpenMP"
     elif has_openmp:
         backend_label = "OpenMP-only"
@@ -116,26 +199,46 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
 
     show_rank_thread = has_openmp or any(rank != int(worker) for rank, worker in zip(ranks, workers))
     if show_rank_thread:
-        x_tick_labels = [
-            f"{int(worker)}\\n{rank}x{thread}"
-            for worker, rank, thread in zip(workers, ranks, threads)
-        ]
+        labels_by_worker = {}
+        for row in rows:
+            worker = float(row["total_workers"])
+            labels_by_worker.setdefault(
+                worker,
+                f"{int(worker)}\\n{int(row['ranks'])}x{int(row['threads'])}",
+            )
+        x_tick_labels = [labels_by_worker[worker] for worker in all_workers]
         x_label = "Total workers (rank x thread)"
     else:
-        x_tick_labels = [str(int(worker)) for worker in workers]
+        x_tick_labels = [str(int(worker)) for worker in all_workers]
         x_label = "Total workers"
 
+    def series_for(metric: str) -> list[tuple[str, str, dict[float, float]]]:
+        output_series = []
+        for backend in backends:
+            values = {
+                float(row["total_workers"]): float(row[metric])
+                for row in rows
+                if row.get("backend", "native") == backend
+            }
+            output_series.append((backend, colors.get(backend, "#16a34a"), values))
+        return output_series
+
     if mode == "strong":
-        ideal_speedup = [w / base_workers for w in workers]
+        ideal_speedup = [w / base_workers for w in all_workers]
         note = "Strong scaling: fixed N. Amdahl effects appear as the measured curve bends below ideal speedup."
         speedup_title = f"{backend_label} strong scaling speedup"
     else:
-        ideal_speedup = [w / base_workers for w in workers]
+        ideal_speedup = [w / base_workers for w in all_workers]
         note = "Weak scaling: fixed Nlocal per MPI rank. Gustafson-style scaled speedup is shown; efficiency loss indicates communication and runtime overheads."
         speedup_title = f"{backend_label} weak scaling scaled speedup"
 
-    ideal_efficiency = [1.0 for _ in workers]
-    y_max_speedup = nice_max(max(max(speedup), max(ideal_speedup)) * 1.05)
+    ideal_efficiency = [1.0 for _ in all_workers]
+    speedup_values = [float(row["speedup"]) for row in rows]
+    efficiency_values = [float(row["parallel_efficiency"]) for row in rows]
+    communication_fraction = [
+        float(row.get("communication_fraction", "0")) for row in rows
+    ]
+    y_max_speedup = nice_max(max(max(speedup_values), max(ideal_speedup)) * 1.05)
     y_max_eff = 1.1
 
     if mode == "weak":
@@ -151,9 +254,9 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
         '<style>text{font-family:Arial, Helvetica, sans-serif; fill:#111827;}</style>',
         f'<text x="{svg_width / 2}" y="34" text-anchor="middle" font-size="21" font-weight="700">{speedup_title}</text>',
         f'<text x="{svg_width / 2}" y="58" text-anchor="middle" font-size="12" fill="#4b5563">{note}</text>',
-        draw_panel(
-            workers,
-            speedup,
+        draw_panel_multi(
+            all_workers,
+            series_for("speedup"),
             ideal_speedup,
             x_tick_labels,
             x_label,
@@ -165,9 +268,9 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
             330,
             y_max_speedup,
         ),
-        draw_panel(
-            workers,
-            efficiency,
+        draw_panel_multi(
+            all_workers,
+            series_for("parallel_efficiency"),
             ideal_efficiency,
             x_tick_labels,
             x_label,
@@ -183,10 +286,10 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
 
     if mode == "weak":
         parts.append(
-            draw_panel(
-                workers,
-                communication_fraction,
-                [0.0 for _ in workers],
+            draw_panel_multi(
+                all_workers,
+                series_for("communication_fraction"),
+                [0.0 for _ in all_workers],
                 x_tick_labels,
                 x_label,
                 "Communication / total",
