@@ -320,37 +320,71 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
                 container_totals[worker] / native_totals[worker] - 1.0
             ) * 100.0
 
+    baseline_backend = "native" if "native" in backends else backends[0]
+    baseline_rows = [
+        row
+        for row in rows
+        if row.get("backend", "native") == baseline_backend
+        and float(row["total_workers"]) == base_workers
+    ]
+    baseline_time = float(baseline_rows[0]["total_median_s"])
+
     if mode == "strong":
         ideal_speedup = [w / base_workers for w in all_workers]
-        note = "Strong scaling: fixed N. Amdahl effects appear as the measured curve bends below ideal speedup."
-        speedup_title = f"{backend_label} strong scaling speedup"
+        ideal_runtime = [baseline_time / (w / base_workers) for w in all_workers]
+        runtime_ideal_label = "ideal T1/P"
+        note = "Strong scaling: fixed N. Runtime ideally falls as T1/P; Amdahl effects bend speedup below ideal."
+        plot_title = f"{backend_label} strong scaling"
+        speedup_panel_title = "Speedup"
     else:
         ideal_speedup = [w / base_workers for w in all_workers]
-        note = "Weak scaling: fixed Nlocal per MPI rank. Gustafson-style scaled speedup is shown; efficiency loss indicates communication and runtime overheads."
-        speedup_title = f"{backend_label} weak scaling scaled speedup"
+        ideal_runtime = [baseline_time * (w / base_workers) for w in all_workers]
+        runtime_ideal_label = "ideal P*T1"
+        note = "Weak scaling for direct all-pairs N-body: fixed Nlocal, so ideal runtime grows as P*T1."
+        plot_title = f"{backend_label} weak scaling"
+        speedup_panel_title = "Scaled speedup"
 
     ideal_efficiency = [1.0 for _ in all_workers]
     speedup_values = [float(row["speedup"]) for row in rows]
     efficiency_values = [float(row["parallel_efficiency"]) for row in rows]
+    runtime_values = [float(row["total_median_s"]) for row in rows]
     communication_fraction = [
         float(row.get("communication_fraction", "0")) for row in rows
     ]
+    y_max_runtime = nice_max(max(max(runtime_values), max(ideal_runtime)) * 1.05)
     y_max_speedup = nice_max(max(max(speedup_values), max(ideal_speedup)) * 1.05)
     y_max_eff = 1.1
 
     if mode == "weak":
-        svg_width = 2040 if has_overhead else 1560
-        panel_width = 390
+        panel_width = 320 if has_overhead else 350
+        x_positions = [72, 464, 856, 1248, 1640] if has_overhead else [72, 474, 876, 1278]
+        svg_width = 2020 if has_overhead else 1660
     else:
-        svg_width = 1560 if has_overhead else 1100
-        panel_width = 390 if has_overhead else 430
+        panel_width = 350 if has_overhead else 390
+        x_positions = [72, 534, 996, 1458] if has_overhead else [82, 570, 1058]
+        svg_width = 1880 if has_overhead else 1500
     svg_height = 560
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{svg_width}" height="{svg_height}" viewBox="0 0 {svg_width} {svg_height}">',
         '<rect width="100%" height="100%" fill="white"/>',
         '<style>text{font-family:Arial, Helvetica, sans-serif; fill:#111827;}</style>',
-        f'<text x="{svg_width / 2}" y="34" text-anchor="middle" font-size="21" font-weight="700">{speedup_title}</text>',
+        f'<text x="{svg_width / 2}" y="34" text-anchor="middle" font-size="21" font-weight="700">{plot_title}</text>',
         f'<text x="{svg_width / 2}" y="58" text-anchor="middle" font-size="12" fill="#4b5563">{note}</text>',
+        draw_panel_multi(
+            all_workers,
+            series_for("total_median_s"),
+            ideal_runtime,
+            x_tick_labels,
+            x_label,
+            "Runtime (s)",
+            "Runtime",
+            x_positions[0],
+            112,
+            panel_width,
+            330,
+            y_max_runtime,
+            ideal_label=runtime_ideal_label,
+        ),
         draw_panel_multi(
             all_workers,
             series_for("speedup"),
@@ -358,8 +392,8 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
             x_tick_labels,
             x_label,
             "Speedup",
-            "Speedup",
-            82,
+            speedup_panel_title,
+            x_positions[1],
             112,
             panel_width,
             330,
@@ -373,7 +407,7 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
             x_label,
             "Parallel efficiency",
             "Efficiency",
-            570 if has_overhead else (622 if mode == "strong" else 570),
+            x_positions[2],
             112,
             panel_width,
             330,
@@ -391,7 +425,7 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
                 x_label,
                 "Communication / total",
                 "Communication fraction",
-                1058,
+                x_positions[3],
                 112,
                 panel_width,
                 330,
@@ -401,14 +435,14 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
         )
 
     if has_overhead:
-        overhead_x0 = 1546 if mode == "weak" else 1058
+        overhead_index = 4 if mode == "weak" else 3
         parts.append(
             draw_overhead_panel(
                 all_workers,
                 overhead_by_worker,
                 x_tick_labels,
                 x_label,
-                overhead_x0,
+                x_positions[overhead_index],
                 112,
                 panel_width,
                 330,
