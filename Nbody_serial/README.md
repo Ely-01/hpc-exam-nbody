@@ -211,6 +211,24 @@ python3 scripts/analyze/summarize_scaling_csv.py results/strong_scaling_YYYYMMDD
 python3 scripts/analyze/plot_scaling_svg.py results/strong_scaling_summary.csv --output results/strong_scaling.svg
 ```
 
+Run the dedicated energy-conservation validation used in the report:
+
+```sh
+N=10000 NSTEPS=100 DT=1e-4 EPS=0.05 ENERGY_EVERY=10 THREADS=8 \
+  sh scripts/benchmark/benchmark_validation.sh
+```
+
+On Orfeo, submit the same validation through SLURM:
+
+```sh
+sbatch -A dssc -p GENOA --ntasks=1 --cpus-per-task=8 \
+  --export=ALL,MODULES="openMPI/4.1.6",THREADS=8 \
+  scripts/slurm/validation.slurm
+```
+
+The script writes `report/tables/validation_energy_summary.{csv,md}` and keeps
+the full solver log under `results/`.
+
 Override the defaults with environment variables, for example:
 
 ```sh
