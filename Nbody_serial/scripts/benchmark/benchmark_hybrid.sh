@@ -14,11 +14,12 @@ RING_MODE=${RING_MODE:-blocking}
 OUTPUT_DIR=${OUTPUT_DIR:-results}
 INPUT=${INPUT:-$OUTPUT_DIR/plummer_${N}.bin}
 CSV=${CSV:-$OUTPUT_DIR/hybrid_benchmark_${RING_MODE}_$(date +%Y%m%d_%H%M%S).csv}
+CFLAGS=${CFLAGS:-"-O3 -march=native -ffp-contract=fast -Wall -Wextra -Wpedantic"}
 
 mkdir -p "$OUTPUT_DIR"
 
-make OPENMP=1 PRECISION=double
-make mpi OPENMP=1 PRECISION=double
+make OPENMP=1 PRECISION=double CFLAGS="$CFLAGS"
+make mpi OPENMP=1 PRECISION=double CFLAGS="$CFLAGS"
 
 if [ ! -f "$INPUT" ]; then
   ./generate_ic \

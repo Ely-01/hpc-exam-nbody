@@ -32,9 +32,12 @@ def stdev(values: list[float]) -> float:
     return statistics.stdev(values)
 
 
-def read_rows(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="") as handle:
-        return list(csv.DictReader(handle))
+def read_rows(paths: list[Path]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for path in paths:
+        with path.open(newline="") as handle:
+            rows.extend(csv.DictReader(handle))
+    return rows
 
 
 def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
@@ -161,7 +164,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Summarize hybrid MPI+OpenMP benchmark CSV files."
     )
-    parser.add_argument("input_csv", type=Path, help="hybrid benchmark CSV")
+    parser.add_argument("input_csv", type=Path, nargs="+", help="hybrid benchmark CSV file(s)")
     parser.add_argument(
         "--markdown",
         type=Path,
