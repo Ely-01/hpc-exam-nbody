@@ -229,6 +229,17 @@ sbatch -A dssc -p GENOA --ntasks=1 --cpus-per-task=8 \
 The script writes `report/tables/validation_energy_summary.{csv,md}` and keeps
 the full solver log under `results/`.
 
+The same validation driver can measure the direct `O(N^2)` growth check used
+to answer the "what if N increases by 10?" report question:
+
+```sh
+VALIDATION_MODE=growth N_BASE=1000 N_FACTOR=10 NSTEPS=50 ENERGY_EVERY=50 THREADS=8 \
+  sh scripts/benchmark/benchmark_validation.sh
+```
+
+This writes `report/tables/n_growth_summary.{csv,md}` and reports both the
+expected pair-count ratio and the measured force-time-per-step ratio.
+
 Override the defaults with environment variables, for example:
 
 ```sh
