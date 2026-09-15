@@ -1,0 +1,5 @@
+n,nsteps,dt,eps,threads,total_seconds,force_seconds,force_seconds_per_step,max_relative_energy_drift,status
+1000,50,1e-4,0.05,1,0.184769797,0.180951655,0.003619033100,2.1213367864647853e-07,OK
+10000,50,1e-4,0.05,1,18.464801690,18.124287060,0.362485741200,2.3881698780949804e-08,OK
+# expected_pair_ratio,100.090090
+# measured_force_per_step_ratio,100.160936
