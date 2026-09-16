@@ -188,39 +188,78 @@ def draw_panel(
 
 
 def write_svg(path: Path, summary: list[dict[str, object]]) -> None:
-    time_max = max(float(row["seconds_median"]) for row in summary) * 1.15
-    speedup_max = max(1.25, max(float(row["speedup_vs_aos"]) for row in summary) * 1.15)
+    soa_rows = [row for row in summary if row["layout"] == "soa"]
+    speedups = [float(row["speedup_vs_aos"]) for row in soa_rows]
+    y_min = min(speedups + [1.0])
+    y_max = max(speedups + [1.0])
+    y_pad = max(0.015, (y_max - y_min) * 0.35)
+    y_min = max(0.0, y_min - y_pad)
+    y_max = y_max + y_pad
+
+    # Keep the ratio plot visibly centered around the AoS baseline even when
+    # the measured effect is small. This figure is meant to show whether SoA
+    # actually moves away from 1x, not to hide small differences on a 0-based
+    # bar chart.
+    y_min = min(y_min, 0.97)
+    y_max = max(y_max, 1.03)
+
+    threads = [int(row["threads"]) for row in soa_rows]
+    row_by_thread = {int(row["threads"]): row for row in soa_rows}
+    x0 = 120.0
+    y0 = 120.0
+    width = 760.0
+    height = 300.0
+    group_width = width / len(threads)
+    bar_width = group_width * 0.36
+
+    def sy(value: float) -> float:
+        return y0 + height - (value - y_min) / (y_max - y_min) * height
+
+    baseline_y = sy(1.0)
 
     parts = [
-        '<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="530" viewBox="0 0 1040 530">',
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="520" viewBox="0 0 1040 520">',
         '<rect width="100%" height="100%" fill="white"/>',
         '<style>text{font-family:Arial, Helvetica, sans-serif; fill:#111827;}</style>',
         '<text x="520" y="34" text-anchor="middle" font-size="21" font-weight="700">AoS vs SoA force-kernel layout trade-off</text>',
-        '<text x="520" y="58" text-anchor="middle" font-size="12" fill="#4b5563">Same direct all-pairs arithmetic, different memory layout. SoA is the production layout.</text>',
-        draw_panel(
-            summary,
-            "seconds_median",
-            "Force time",
-            "seconds",
-            86,
-            116,
-            390,
-            300,
-            time_max,
-        ),
-        draw_panel(
-            summary,
-            "speedup_vs_aos",
-            "Speedup vs AoS",
-            "x",
-            596,
-            116,
-            360,
-            300,
-            speedup_max,
-        ),
-        "</svg>",
+        '<text x="520" y="58" text-anchor="middle" font-size="12" fill="#4b5563">Ratio plot: values above 1 favor SoA; values below 1 favor AoS. Same arithmetic, different memory layout.</text>',
+        f'<text x="{x0 + width / 2:.1f}" y="{y0 - 18:.1f}" text-anchor="middle" font-size="16" font-weight="700">SoA speedup relative to AoS</text>',
+        f'<line x1="{x0}" y1="{y0 + height}" x2="{x0 + width}" y2="{y0 + height}" stroke="#222"/>',
+        f'<line x1="{x0}" y1="{y0}" x2="{x0}" y2="{y0 + height}" stroke="#222"/>',
+        f'<text x="{x0 - 58:.1f}" y="{y0 + height / 2:.1f}" transform="rotate(-90 {x0 - 58:.1f},{y0 + height / 2:.1f})" text-anchor="middle" font-size="12">Speedup factor = T_AoS / T_SoA</text>',
+        f'<text x="{x0 + width / 2:.1f}" y="{y0 + height + 48:.1f}" text-anchor="middle" font-size="12">OpenMP threads</text>',
+        f'<line x1="{x0}" y1="{baseline_y:.1f}" x2="{x0 + width}" y2="{baseline_y:.1f}" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="6 5"/>',
+        f'<text x="{x0 + width - 2:.1f}" y="{baseline_y - 8:.1f}" text-anchor="end" font-size="11" fill="#dc2626">AoS baseline 1x</text>',
     ]
+
+    for i in range(6):
+        value = y_min + (y_max - y_min) * i / 5
+        py = sy(value)
+        parts.append(f'<line x1="{x0}" y1="{py:.1f}" x2="{x0 + width}" y2="{py:.1f}" stroke="#e5e7eb"/>')
+        parts.append(f'<text x="{x0 - 8:.1f}" y="{py + 4:.1f}" text-anchor="end" font-size="10">{value:.3f}</text>')
+
+    for group_index, thread in enumerate(threads):
+        row = row_by_thread[thread]
+        speedup = float(row["speedup_vs_aos"])
+        center = x0 + group_index * group_width + group_width / 2
+        bar_x = center - bar_width / 2
+        bar_y = min(sy(speedup), baseline_y)
+        bar_h = abs(sy(speedup) - baseline_y)
+        color = "#2563eb" if speedup >= 1.0 else "#f59e0b"
+        parts.append(bar(bar_x, bar_y, bar_width, bar_h, color))
+        parts.append(f'<text x="{center:.1f}" y="{y0 + height + 24:.1f}" text-anchor="middle" font-size="11">{thread}</text>')
+        label_y = bar_y - 8 if speedup >= 1.0 else bar_y + bar_h + 16
+        parts.append(f'<text x="{center:.1f}" y="{label_y:.1f}" text-anchor="middle" font-size="10">{speedup:.3f}x</text>')
+
+    parts.extend(
+        [
+            '<rect x="690" y="88" width="10" height="10" fill="#2563eb"/>',
+            '<text x="706" y="98" font-size="11">SoA faster</text>',
+            '<rect x="690" y="108" width="10" height="10" fill="#f59e0b"/>',
+            '<text x="706" y="118" font-size="11">AoS faster</text>',
+            "</svg>",
+        ]
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(parts) + "\n")
 
