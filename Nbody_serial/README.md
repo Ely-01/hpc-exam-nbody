@@ -93,18 +93,19 @@ python3 scripts/analyze/analyze_rsqrt_tradeoff.py results/rsqrt_tradeoff_YYYYMMD
 Run the AoS-vs-SoA force-kernel layout microbenchmark:
 
 ```sh
-make OPENMP=1 PRECISION=double benchmark_layout
-./generate_ic --model 0 --n 4096 --seed 123 --scale 1.0 --mass 1.0 --output results/plummer_layout_4096.bin
-{
-  OMP_NUM_THREADS=1 ./benchmark_layout --input results/plummer_layout_4096.bin --repeats 5
-  OMP_NUM_THREADS=2 ./benchmark_layout --input results/plummer_layout_4096.bin --repeats 5 --no-header
-  OMP_NUM_THREADS=4 ./benchmark_layout --input results/plummer_layout_4096.bin --repeats 5 --no-header
-  OMP_NUM_THREADS=8 ./benchmark_layout --input results/plummer_layout_4096.bin --repeats 5 --no-header
-} > results/layout_tradeoff.csv
-python3 scripts/analyze/analyze_layout_tradeoff.py results/layout_tradeoff.csv \
+THREADS="1 2 4 8" REPEATS=5 N=8192 sh scripts/benchmark/benchmark_layout_tradeoff.sh
+python3 scripts/analyze/analyze_layout_tradeoff.py results/layout_tradeoff_final.csv \
   --csv results/layout_tradeoff_summary.csv \
   --markdown results/layout_tradeoff_summary.md \
   --svg report/figures/layout_tradeoff.svg
+```
+
+On SLURM:
+
+```sh
+sbatch -A dssc -p GENOA --ntasks=1 --cpus-per-task=8 \
+  --export=ALL,MODULES="openMPI/4.1.6",THREADS="1 2 4 8",N=8192,REPEATS=5 \
+  scripts/slurm/layout_tradeoff.slurm
 ```
 
 Run the accumulator-splitting force-kernel benchmark:
@@ -185,6 +186,15 @@ Run a first hybrid MPI + OpenMP benchmark over rank/thread combinations:
 CONFIGS="1x4 2x2 4x1" REPEATS=5 N=4096 NSTEPS=10 sh scripts/benchmark/benchmark_hybrid.sh
 sbatch scripts/slurm/hybrid_benchmark.slurm
 python3 scripts/analyze/summarize_hybrid_csv.py results/hybrid_benchmark_YYYYMMDD_HHMMSS.csv
+```
+
+For the final native mapping study on a 64-core GENOA node, submit one layout
+per job and then summarize the resulting CSV files together:
+
+```sh
+python3 scripts/analyze/summarize_hybrid_csv.py results/hybrid_benchmark_blocking_*.csv \
+  --csv report/tables/hybrid_mapping_summary.csv \
+  --markdown report/tables/hybrid_mapping_summary.md
 ```
 
 To compare blocking versus overlap, run the same benchmark twice with a single
