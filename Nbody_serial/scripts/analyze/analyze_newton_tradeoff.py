@@ -72,9 +72,11 @@ def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
         ideal_half_time = direct_force / 2.0 if direct_force else force_median
         overhead_seconds = 0.0
         overhead_percent = 0.0
+        half_time_ratio = 0.0
         if kernel != "direct":
+            half_time_ratio = force_median / ideal_half_time
             overhead_seconds = force_median - ideal_half_time
-            overhead_percent = 100.0 * (force_median / ideal_half_time - 1.0)
+            overhead_percent = 100.0 * (half_time_ratio - 1.0)
 
         summary.append(
             {
@@ -96,6 +98,7 @@ def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
                 "approx_mflop_s": approx_flops / force_median / 1.0e6,
                 "speedup_vs_direct": speedup_vs_direct,
                 "ideal_half_time_s": ideal_half_time if kernel != "direct" else 0.0,
+                "half_time_ratio": half_time_ratio,
                 "overhead_vs_half_time_s": overhead_seconds,
                 "overhead_vs_half_time_percent": overhead_percent,
                 "max_relative_energy_drift": max(
@@ -128,6 +131,7 @@ def write_csv(path: Path, summary: list[dict[str, object]]) -> None:
         "approx_mflop_s",
         "speedup_vs_direct",
         "ideal_half_time_s",
+        "half_time_ratio",
         "overhead_vs_half_time_s",
         "overhead_vs_half_time_percent",
         "max_relative_energy_drift",
@@ -180,17 +184,19 @@ def draw_grouped_bars(
     title: str,
     y_label: str,
     y_max: float,
+    kernels: list[str] | None = None,
 ) -> str:
     colors = {
         "direct": "#2563eb",
         "newton": "#16a34a",
         "newton-atomic": "#dc2626",
     }
-    kernels = ["direct", "newton", "newton-atomic"]
+    if kernels is None:
+        kernels = ["direct", "newton", "newton-atomic"]
     threads = sorted({int(row["threads"]) for row in rows})
     row_by_key = {(int(row["threads"]), str(row["kernel"])): row for row in rows}
     group_width = width / len(threads)
-    bar_width = group_width / 4.2
+    bar_width = group_width / (len(kernels) + 1.2)
 
     def sy(value: float) -> float:
         return y0 + height - value / y_max * height
@@ -210,7 +216,8 @@ def draw_grouped_bars(
         parts.append(f'<text x="{x0 - 8:.1f}" y="{py + 4:.1f}" text-anchor="end" font-size="10">{value:.2g}</text>')
 
     for group_index, thread in enumerate(threads):
-        base_x = x0 + group_index * group_width + group_width * 0.18
+        used_width = len(kernels) * bar_width
+        base_x = x0 + group_index * group_width + (group_width - used_width) / 2
         center = x0 + group_index * group_width + group_width / 2
         parts.append(f'<text x="{center:.1f}" y="{y0 + height + 22:.1f}" text-anchor="middle" font-size="11">{thread}</text>')
         for kernel_index, kernel in enumerate(kernels):
@@ -242,35 +249,22 @@ def write_svg(path: Path, summary: list[dict[str, object]]) -> None:
     force_max = max(float(row["force_median_s"]) for row in summary) * 1.15
     speedup_max = max(2.1, max(float(row["speedup_vs_direct"]) for row in summary) * 1.15)
     ideal_speedup_y = 118 + 310 - 2.0 / speedup_max * 310
-    overhead_rows = [
+    direct_baseline_y = 118 + 310 - 1.0 / speedup_max * 310
+    newton_rows = [
         row for row in summary if str(row["kernel"]) != "direct"
     ]
-    overhead_max = max(
-        10.0,
-        max(abs(float(row["overhead_vs_half_time_percent"])) for row in overhead_rows) * 1.2,
-    )
-    overhead_plot_rows = []
-    for row in summary:
-        copied = dict(row)
-        if copied["kernel"] == "direct":
-            copied["overhead_vs_half_time_percent"] = 0.0
-        else:
-            copied["overhead_vs_half_time_percent"] = abs(
-                float(copied["overhead_vs_half_time_percent"])
-            )
-        overhead_plot_rows.append(copied)
 
     parts = [
-        '<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="560" viewBox="0 0 1500 560">',
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="560" viewBox="0 0 1120 560">',
         '<rect width="100%" height="100%" fill="white"/>',
         '<style>text{font-family:Arial, Helvetica, sans-serif; fill:#111827;}</style>',
-        '<text x="750" y="34" text-anchor="middle" font-size="21" font-weight="700">Newton-third-law force-kernel trade-off</text>',
-        '<text x="750" y="58" text-anchor="middle" font-size="12" fill="#4b5563">Direct does more pair work but avoids write conflicts; Newton halves pair evaluations but needs conflict resolution when parallelised.</text>',
+        '<text x="560" y="34" text-anchor="middle" font-size="21" font-weight="700">Newton-third-law force-kernel trade-off</text>',
+        '<text x="560" y="58" text-anchor="middle" font-size="12" fill="#4b5563">Direct does more pair work but parallelises cleanly; Newton halves pair evaluations but needs conflict resolution when parallelised.</text>',
         draw_grouped_bars(
             summary,
             88,
             118,
-            370,
+            420,
             310,
             "force_median_s",
             "Force time",
@@ -278,29 +272,21 @@ def write_svg(path: Path, summary: list[dict[str, object]]) -> None:
             force_max,
         ),
         draw_grouped_bars(
-            summary,
-            570,
+            newton_rows,
+            622,
             118,
-            370,
+            420,
             310,
             "speedup_vs_direct",
-            "Speedup vs direct",
-            "x",
+            "Speedup relative to direct",
+            "Speedup factor = T_direct / T_kernel",
             speedup_max,
+            kernels=["newton", "newton-atomic"],
         ),
-        draw_grouped_bars(
-            overhead_plot_rows,
-            1052,
-            118,
-            370,
-            310,
-            "overhead_vs_half_time_percent",
-            "Overhead over ideal half-time",
-            "percent",
-            overhead_max,
-        ),
-        f'<line x1="570" y1="{ideal_speedup_y:.1f}" x2="940" y2="{ideal_speedup_y:.1f}" stroke="#9ca3af" stroke-dasharray="5 5"/>',
-        f'<text x="848" y="{ideal_speedup_y - 8:.1f}" font-size="11" fill="#6b7280">ideal 2x</text>',
+        f'<line x1="622" y1="{ideal_speedup_y:.1f}" x2="1042" y2="{ideal_speedup_y:.1f}" stroke="#9ca3af" stroke-dasharray="5 5"/>',
+        f'<text x="930" y="{ideal_speedup_y - 8:.1f}" font-size="11" fill="#6b7280">ideal Newton 2x</text>',
+        f'<line x1="622" y1="{direct_baseline_y:.1f}" x2="1042" y2="{direct_baseline_y:.1f}" stroke="#6b7280" stroke-dasharray="4 4"/>',
+        f'<text x="910" y="{direct_baseline_y - 8:.1f}" font-size="11" fill="#4b5563">direct baseline 1x</text>',
         "</svg>",
     ]
     path.parent.mkdir(parents=True, exist_ok=True)
