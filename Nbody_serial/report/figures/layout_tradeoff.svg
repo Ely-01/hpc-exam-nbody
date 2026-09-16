@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="520" viewBox="0 0 1040 520">
+<rect width="100%" height="100%" fill="white"/>
+<style>text{font-family:Arial, Helvetica, sans-serif; fill:#111827;}</style>
+<text x="520" y="34" text-anchor="middle" font-size="21" font-weight="700">AoS vs SoA force-kernel layout trade-off</text>
+<text x="520" y="58" text-anchor="middle" font-size="12" fill="#4b5563">Ratio plot: values above 1 favor SoA; values below 1 favor AoS. Same arithmetic, different memory layout.</text>
+<text x="500.0" y="102.0" text-anchor="middle" font-size="16" font-weight="700">SoA speedup relative to AoS</text>
+<line x1="120.0" y1="420.0" x2="880.0" y2="420.0" stroke="#222"/>
+<line x1="120.0" y1="120.0" x2="120.0" y2="420.0" stroke="#222"/>
+<text x="62.0" y="270.0" transform="rotate(-90 62.0,270.0)" text-anchor="middle" font-size="12">Speedup factor = T_AoS / T_SoA</text>
+<text x="500.0" y="468.0" text-anchor="middle" font-size="12">OpenMP threads</text>
+<line x1="120.0" y1="270.0" x2="880.0" y2="270.0" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="6 5"/>
+<text x="878.0" y="262.0" text-anchor="end" font-size="11" fill="#dc2626">AoS baseline 1x</text>
+<line x1="120.0" y1="420.0" x2="880.0" y2="420.0" stroke="#e5e7eb"/>
+<text x="112.0" y="424.0" text-anchor="end" font-size="10">0.970</text>
+<line x1="120.0" y1="360.0" x2="880.0" y2="360.0" stroke="#e5e7eb"/>
+<text x="112.0" y="364.0" text-anchor="end" font-size="10">0.982</text>
+<line x1="120.0" y1="300.0" x2="880.0" y2="300.0" stroke="#e5e7eb"/>
+<text x="112.0" y="304.0" text-anchor="end" font-size="10">0.994</text>
+<line x1="120.0" y1="240.0" x2="880.0" y2="240.0" stroke="#e5e7eb"/>
+<text x="112.0" y="244.0" text-anchor="end" font-size="10">1.006</text>
+<line x1="120.0" y1="180.0" x2="880.0" y2="180.0" stroke="#e5e7eb"/>
+<text x="112.0" y="184.0" text-anchor="end" font-size="10">1.018</text>
+<line x1="120.0" y1="120.0" x2="880.0" y2="120.0" stroke="#e5e7eb"/>
+<text x="112.0" y="124.0" text-anchor="end" font-size="10">1.030</text>
+<rect x="180.8" y="270.0" width="68.4" height="43.2" fill="#f59e0b"/>
+<text x="215.0" y="444.0" text-anchor="middle" font-size="11">1</text>
+<text x="215.0" y="329.2" text-anchor="middle" font-size="10">0.991x</text>
+<rect x="370.8" y="270.0" width="68.4" height="42.8" fill="#f59e0b"/>
+<text x="405.0" y="444.0" text-anchor="middle" font-size="11">2</text>
+<text x="405.0" y="328.8" text-anchor="middle" font-size="10">0.991x</text>
+<rect x="560.8" y="270.0" width="68.4" height="34.8" fill="#f59e0b"/>
+<text x="595.0" y="444.0" text-anchor="middle" font-size="11">4</text>
+<text x="595.0" y="320.8" text-anchor="middle" font-size="10">0.993x</text>
+<rect x="750.8" y="270.0" width="68.4" height="22.0" fill="#f59e0b"/>
+<text x="785.0" y="444.0" text-anchor="middle" font-size="11">8</text>
+<text x="785.0" y="308.0" text-anchor="middle" font-size="10">0.996x</text>
+<rect x="690" y="88" width="10" height="10" fill="#2563eb"/>
+<text x="706" y="98" font-size="11">SoA faster</text>
+<rect x="690" y="108" width="10" height="10" fill="#f59e0b"/>
+<text x="706" y="118" font-size="11">AoS faster</text>
+</svg>
