@@ -1,125 +1,82 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="560" viewBox="0 0 1500 560">
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="560" viewBox="0 0 1120 560">
 <rect width="100%" height="100%" fill="white"/>
 <style>text{font-family:Arial, Helvetica, sans-serif; fill:#111827;}</style>
-<text x="750" y="34" text-anchor="middle" font-size="21" font-weight="700">Newton-third-law force-kernel trade-off</text>
-<text x="750" y="58" text-anchor="middle" font-size="12" fill="#4b5563">Direct does more pair work but avoids write conflicts; Newton halves pair evaluations but needs conflict resolution when parallelised.</text>
-<text x="273.0" y="100.0" text-anchor="middle" font-size="16" font-weight="700">Force time</text>
-<line x1="88" y1="428" x2="458" y2="428" stroke="#222"/>
+<text x="560" y="34" text-anchor="middle" font-size="21" font-weight="700">Newton-third-law force-kernel trade-off</text>
+<text x="560" y="58" text-anchor="middle" font-size="12" fill="#4b5563">Direct does more pair work but parallelises cleanly; Newton halves pair evaluations but needs conflict resolution when parallelised.</text>
+<text x="298.0" y="100.0" text-anchor="middle" font-size="16" font-weight="700">Force time</text>
+<line x1="88" y1="428" x2="508" y2="428" stroke="#222"/>
 <line x1="88" y1="118" x2="88" y2="428" stroke="#222"/>
 <text x="40.0" y="273.0" transform="rotate(-90 40.0,273.0)" text-anchor="middle" font-size="12">seconds</text>
-<text x="273.0" y="472.0" text-anchor="middle" font-size="12">OpenMP threads</text>
-<line x1="88" y1="428.0" x2="458" y2="428.0" stroke="#e5e7eb"/>
+<text x="298.0" y="472.0" text-anchor="middle" font-size="12">OpenMP threads</text>
+<line x1="88" y1="428.0" x2="508" y2="428.0" stroke="#e5e7eb"/>
 <text x="80.0" y="432.0" text-anchor="end" font-size="10">0</text>
-<line x1="88" y1="366.0" x2="458" y2="366.0" stroke="#e5e7eb"/>
-<text x="80.0" y="370.0" text-anchor="end" font-size="10">0.58</text>
-<line x1="88" y1="304.0" x2="458" y2="304.0" stroke="#e5e7eb"/>
-<text x="80.0" y="308.0" text-anchor="end" font-size="10">1.2</text>
-<line x1="88" y1="242.0" x2="458" y2="242.0" stroke="#e5e7eb"/>
-<text x="80.0" y="246.0" text-anchor="end" font-size="10">1.8</text>
-<line x1="88" y1="180.0" x2="458" y2="180.0" stroke="#e5e7eb"/>
-<text x="80.0" y="184.0" text-anchor="end" font-size="10">2.3</text>
-<line x1="88" y1="118.0" x2="458" y2="118.0" stroke="#e5e7eb"/>
-<text x="80.0" y="122.0" text-anchor="end" font-size="10">2.9</text>
-<text x="134.2" y="450.0" text-anchor="middle" font-size="11">1</text>
-<rect x="104.7" y="369.8" width="18.1" height="58.2" fill="#2563eb"/>
-<rect x="126.7" y="394.9" width="18.1" height="33.1" fill="#16a34a"/>
-<rect x="148.7" y="158.4" width="18.1" height="269.6" fill="#dc2626"/>
-<text x="226.8" y="450.0" text-anchor="middle" font-size="11">2</text>
-<rect x="197.2" y="401.7" width="18.1" height="26.3" fill="#2563eb"/>
-<rect x="219.2" y="396.3" width="18.1" height="31.7" fill="#16a34a"/>
-<rect x="241.2" y="229.1" width="18.1" height="198.9" fill="#dc2626"/>
-<text x="319.2" y="450.0" text-anchor="middle" font-size="11">4</text>
-<rect x="289.6" y="412.0" width="18.1" height="16.0" fill="#2563eb"/>
-<rect x="311.7" y="393.0" width="18.1" height="35.0" fill="#16a34a"/>
-<rect x="333.7" y="301.3" width="18.1" height="126.7" fill="#dc2626"/>
-<text x="411.8" y="450.0" text-anchor="middle" font-size="11">8</text>
-<rect x="382.1" y="414.5" width="18.1" height="13.5" fill="#2563eb"/>
-<rect x="404.2" y="390.5" width="18.1" height="37.5" fill="#16a34a"/>
-<rect x="426.2" y="339.1" width="18.1" height="88.9" fill="#dc2626"/>
-<rect x="308.0" y="126.0" width="10.0" height="10.0" fill="#2563eb"/>
-<text x="324.0" y="136.0" font-size="11">direct</text>
-<rect x="308.0" y="144.0" width="10.0" height="10.0" fill="#16a34a"/>
-<text x="324.0" y="154.0" font-size="11">newton</text>
-<rect x="308.0" y="162.0" width="10.0" height="10.0" fill="#dc2626"/>
-<text x="324.0" y="172.0" font-size="11">newton-atomic</text>
-<text x="755.0" y="100.0" text-anchor="middle" font-size="16" font-weight="700">Speedup vs direct</text>
-<line x1="570" y1="428" x2="940" y2="428" stroke="#222"/>
-<line x1="570" y1="118" x2="570" y2="428" stroke="#222"/>
-<text x="522.0" y="273.0" transform="rotate(-90 522.0,273.0)" text-anchor="middle" font-size="12">x</text>
-<text x="755.0" y="472.0" text-anchor="middle" font-size="12">OpenMP threads</text>
-<line x1="570" y1="428.0" x2="940" y2="428.0" stroke="#e5e7eb"/>
-<text x="562.0" y="432.0" text-anchor="end" font-size="10">0</text>
-<line x1="570" y1="366.0" x2="940" y2="366.0" stroke="#e5e7eb"/>
-<text x="562.0" y="370.0" text-anchor="end" font-size="10">0.42</text>
-<line x1="570" y1="304.0" x2="940" y2="304.0" stroke="#e5e7eb"/>
-<text x="562.0" y="308.0" text-anchor="end" font-size="10">0.84</text>
-<line x1="570" y1="242.0" x2="940" y2="242.0" stroke="#e5e7eb"/>
-<text x="562.0" y="246.0" text-anchor="end" font-size="10">1.3</text>
-<line x1="570" y1="180.0" x2="940" y2="180.0" stroke="#e5e7eb"/>
-<text x="562.0" y="184.0" text-anchor="end" font-size="10">1.7</text>
-<line x1="570" y1="118.0" x2="940" y2="118.0" stroke="#e5e7eb"/>
-<text x="562.0" y="122.0" text-anchor="end" font-size="10">2.1</text>
-<text x="616.2" y="450.0" text-anchor="middle" font-size="11">1</text>
-<rect x="586.6" y="280.4" width="18.1" height="147.6" fill="#2563eb"/>
-<rect x="608.7" y="168.4" width="18.1" height="259.6" fill="#16a34a"/>
-<rect x="630.7" y="396.1" width="18.1" height="31.9" fill="#dc2626"/>
-<text x="708.8" y="450.0" text-anchor="middle" font-size="11">2</text>
-<rect x="679.1" y="280.4" width="18.1" height="147.6" fill="#2563eb"/>
-<rect x="701.2" y="305.5" width="18.1" height="122.5" fill="#16a34a"/>
-<rect x="723.2" y="408.5" width="18.1" height="19.5" fill="#dc2626"/>
-<text x="801.2" y="450.0" text-anchor="middle" font-size="11">4</text>
-<rect x="771.6" y="280.4" width="18.1" height="147.6" fill="#2563eb"/>
-<rect x="793.7" y="360.7" width="18.1" height="67.3" fill="#16a34a"/>
-<rect x="815.7" y="409.4" width="18.1" height="18.6" fill="#dc2626"/>
-<text x="893.8" y="450.0" text-anchor="middle" font-size="11">8</text>
-<rect x="864.1" y="280.4" width="18.1" height="147.6" fill="#2563eb"/>
-<rect x="886.2" y="374.7" width="18.1" height="53.3" fill="#16a34a"/>
-<rect x="908.2" y="405.5" width="18.1" height="22.5" fill="#dc2626"/>
-<rect x="790.0" y="126.0" width="10.0" height="10.0" fill="#2563eb"/>
-<text x="806.0" y="136.0" font-size="11">direct</text>
-<rect x="790.0" y="144.0" width="10.0" height="10.0" fill="#16a34a"/>
-<text x="806.0" y="154.0" font-size="11">newton</text>
-<rect x="790.0" y="162.0" width="10.0" height="10.0" fill="#dc2626"/>
-<text x="806.0" y="172.0" font-size="11">newton-atomic</text>
-<text x="1237.0" y="100.0" text-anchor="middle" font-size="16" font-weight="700">Overhead over ideal half-time</text>
-<line x1="1052" y1="428" x2="1422" y2="428" stroke="#222"/>
-<line x1="1052" y1="118" x2="1052" y2="428" stroke="#222"/>
-<text x="1004.0" y="273.0" transform="rotate(-90 1004.0,273.0)" text-anchor="middle" font-size="12">percent</text>
-<text x="1237.0" y="472.0" text-anchor="middle" font-size="12">OpenMP threads</text>
-<line x1="1052" y1="428.0" x2="1422" y2="428.0" stroke="#e5e7eb"/>
-<text x="1044.0" y="432.0" text-anchor="end" font-size="10">0</text>
-<line x1="1052" y1="366.0" x2="1422" y2="366.0" stroke="#e5e7eb"/>
-<text x="1044.0" y="370.0" text-anchor="end" font-size="10">3.6e+02</text>
-<line x1="1052" y1="304.0" x2="1422" y2="304.0" stroke="#e5e7eb"/>
-<text x="1044.0" y="308.0" text-anchor="end" font-size="10">7.1e+02</text>
-<line x1="1052" y1="242.0" x2="1422" y2="242.0" stroke="#e5e7eb"/>
-<text x="1044.0" y="246.0" text-anchor="end" font-size="10">1.1e+03</text>
-<line x1="1052" y1="180.0" x2="1422" y2="180.0" stroke="#e5e7eb"/>
-<text x="1044.0" y="184.0" text-anchor="end" font-size="10">1.4e+03</text>
-<line x1="1052" y1="118.0" x2="1422" y2="118.0" stroke="#e5e7eb"/>
-<text x="1044.0" y="122.0" text-anchor="end" font-size="10">1.8e+03</text>
-<text x="1098.2" y="450.0" text-anchor="middle" font-size="11">1</text>
-<rect x="1068.7" y="428.0" width="18.1" height="0.0" fill="#2563eb"/>
-<rect x="1090.7" y="425.6" width="18.1" height="2.4" fill="#16a34a"/>
-<rect x="1112.7" y="284.4" width="18.1" height="143.6" fill="#dc2626"/>
-<text x="1190.8" y="450.0" text-anchor="middle" font-size="11">2</text>
-<rect x="1161.2" y="428.0" width="18.1" height="0.0" fill="#2563eb"/>
-<rect x="1183.2" y="403.5" width="18.1" height="24.5" fill="#16a34a"/>
-<rect x="1205.2" y="182.6" width="18.1" height="245.4" fill="#dc2626"/>
-<text x="1283.2" y="450.0" text-anchor="middle" font-size="11">4</text>
-<rect x="1253.7" y="428.0" width="18.1" height="0.0" fill="#2563eb"/>
-<rect x="1275.7" y="369.1" width="18.1" height="58.9" fill="#16a34a"/>
-<rect x="1297.7" y="169.7" width="18.1" height="258.3" fill="#dc2626"/>
-<text x="1375.8" y="450.0" text-anchor="middle" font-size="11">8</text>
-<rect x="1346.2" y="428.0" width="18.1" height="0.0" fill="#2563eb"/>
-<rect x="1368.2" y="349.1" width="18.1" height="78.9" fill="#16a34a"/>
-<rect x="1390.2" y="217.0" width="18.1" height="211.0" fill="#dc2626"/>
-<rect x="1272.0" y="126.0" width="10.0" height="10.0" fill="#2563eb"/>
-<text x="1288.0" y="136.0" font-size="11">direct</text>
-<rect x="1272.0" y="144.0" width="10.0" height="10.0" fill="#16a34a"/>
-<text x="1288.0" y="154.0" font-size="11">newton</text>
-<rect x="1272.0" y="162.0" width="10.0" height="10.0" fill="#dc2626"/>
-<text x="1288.0" y="172.0" font-size="11">newton-atomic</text>
-<line x1="570" y1="132.8" x2="940" y2="132.8" stroke="#9ca3af" stroke-dasharray="5 5"/>
-<text x="848" y="124.8" font-size="11" fill="#6b7280">ideal 2x</text>
+<line x1="88" y1="366.0" x2="508" y2="366.0" stroke="#e5e7eb"/>
+<text x="80.0" y="370.0" text-anchor="end" font-size="10">2</text>
+<line x1="88" y1="304.0" x2="508" y2="304.0" stroke="#e5e7eb"/>
+<text x="80.0" y="308.0" text-anchor="end" font-size="10">4</text>
+<line x1="88" y1="242.0" x2="508" y2="242.0" stroke="#e5e7eb"/>
+<text x="80.0" y="246.0" text-anchor="end" font-size="10">5.9</text>
+<line x1="88" y1="180.0" x2="508" y2="180.0" stroke="#e5e7eb"/>
+<text x="80.0" y="184.0" text-anchor="end" font-size="10">7.9</text>
+<line x1="88" y1="118.0" x2="508" y2="118.0" stroke="#e5e7eb"/>
+<text x="80.0" y="122.0" text-anchor="end" font-size="10">9.9</text>
+<text x="140.5" y="450.0" text-anchor="middle" font-size="11">1</text>
+<rect x="103.0" y="243.9" width="20.5" height="184.1" fill="#2563eb"/>
+<rect x="128.0" y="317.8" width="20.5" height="110.2" fill="#16a34a"/>
+<rect x="153.0" y="164.1" width="20.5" height="263.9" fill="#dc2626"/>
+<text x="245.5" y="450.0" text-anchor="middle" font-size="11">2</text>
+<rect x="208.0" y="330.1" width="20.5" height="97.9" fill="#2563eb"/>
+<rect x="233.0" y="316.5" width="20.5" height="111.5" fill="#16a34a"/>
+<rect x="258.0" y="158.4" width="20.5" height="269.6" fill="#dc2626"/>
+<text x="350.5" y="450.0" text-anchor="middle" font-size="11">4</text>
+<rect x="313.0" y="373.5" width="20.5" height="54.5" fill="#2563eb"/>
+<rect x="338.0" y="317.8" width="20.5" height="110.2" fill="#16a34a"/>
+<rect x="363.0" y="201.6" width="20.5" height="226.4" fill="#dc2626"/>
+<text x="455.5" y="450.0" text-anchor="middle" font-size="11">8</text>
+<rect x="418.0" y="399.9" width="20.5" height="28.1" fill="#2563eb"/>
+<rect x="443.0" y="317.5" width="20.5" height="110.5" fill="#16a34a"/>
+<rect x="468.0" y="231.3" width="20.5" height="196.7" fill="#dc2626"/>
+<rect x="358.0" y="126.0" width="10.0" height="10.0" fill="#2563eb"/>
+<text x="374.0" y="136.0" font-size="11">direct</text>
+<rect x="358.0" y="144.0" width="10.0" height="10.0" fill="#16a34a"/>
+<text x="374.0" y="154.0" font-size="11">newton</text>
+<rect x="358.0" y="162.0" width="10.0" height="10.0" fill="#dc2626"/>
+<text x="374.0" y="172.0" font-size="11">newton-atomic</text>
+<text x="832.0" y="100.0" text-anchor="middle" font-size="16" font-weight="700">Speedup relative to direct</text>
+<line x1="622" y1="428" x2="1042" y2="428" stroke="#222"/>
+<line x1="622" y1="118" x2="622" y2="428" stroke="#222"/>
+<text x="574.0" y="273.0" transform="rotate(-90 574.0,273.0)" text-anchor="middle" font-size="12">Speedup factor = T_direct / T_kernel</text>
+<text x="832.0" y="472.0" text-anchor="middle" font-size="12">OpenMP threads</text>
+<line x1="622" y1="428.0" x2="1042" y2="428.0" stroke="#e5e7eb"/>
+<text x="614.0" y="432.0" text-anchor="end" font-size="10">0</text>
+<line x1="622" y1="366.0" x2="1042" y2="366.0" stroke="#e5e7eb"/>
+<text x="614.0" y="370.0" text-anchor="end" font-size="10">0.42</text>
+<line x1="622" y1="304.0" x2="1042" y2="304.0" stroke="#e5e7eb"/>
+<text x="614.0" y="308.0" text-anchor="end" font-size="10">0.84</text>
+<line x1="622" y1="242.0" x2="1042" y2="242.0" stroke="#e5e7eb"/>
+<text x="614.0" y="246.0" text-anchor="end" font-size="10">1.3</text>
+<line x1="622" y1="180.0" x2="1042" y2="180.0" stroke="#e5e7eb"/>
+<text x="614.0" y="184.0" text-anchor="end" font-size="10">1.7</text>
+<line x1="622" y1="118.0" x2="1042" y2="118.0" stroke="#e5e7eb"/>
+<text x="614.0" y="122.0" text-anchor="end" font-size="10">2.1</text>
+<text x="674.5" y="450.0" text-anchor="middle" font-size="11">1</text>
+<rect x="641.7" y="181.4" width="26.9" height="246.6" fill="#16a34a"/>
+<rect x="674.5" y="325.0" width="26.9" height="103.0" fill="#dc2626"/>
+<text x="779.5" y="450.0" text-anchor="middle" font-size="11">2</text>
+<rect x="746.7" y="298.4" width="26.9" height="129.6" fill="#16a34a"/>
+<rect x="779.5" y="374.4" width="26.9" height="53.6" fill="#dc2626"/>
+<text x="884.5" y="450.0" text-anchor="middle" font-size="11">4</text>
+<rect x="851.7" y="355.0" width="26.9" height="73.0" fill="#16a34a"/>
+<rect x="884.5" y="392.5" width="26.9" height="35.5" fill="#dc2626"/>
+<text x="989.5" y="450.0" text-anchor="middle" font-size="11">8</text>
+<rect x="956.7" y="390.5" width="26.9" height="37.5" fill="#16a34a"/>
+<rect x="989.5" y="406.9" width="26.9" height="21.1" fill="#dc2626"/>
+<rect x="892.0" y="126.0" width="10.0" height="10.0" fill="#16a34a"/>
+<text x="908.0" y="136.0" font-size="11">newton</text>
+<rect x="892.0" y="144.0" width="10.0" height="10.0" fill="#dc2626"/>
+<text x="908.0" y="154.0" font-size="11">newton-atomic</text>
+<line x1="622" y1="132.8" x2="1042" y2="132.8" stroke="#9ca3af" stroke-dasharray="5 5"/>
+<text x="930" y="124.8" font-size="11" fill="#6b7280">ideal Newton 2x</text>
+<line x1="622" y1="280.4" x2="1042" y2="280.4" stroke="#6b7280" stroke-dasharray="4 4"/>
+<text x="910" y="272.4" font-size="11" fill="#4b5563">direct baseline 1x</text>
 </svg>
