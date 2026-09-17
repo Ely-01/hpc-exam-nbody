@@ -9,6 +9,7 @@ OPENMP    ?= 0
 
 PROGRAMS := nbody_direct_serial generate_ic inspect_particles benchmark_layout
 MPI_PROGRAMS := nbody_mpi_omp
+EXTRA_PROGRAMS := benchmark_rsqrt_kernel
 HEADERS  := nbody_common.h nbody_core.h
 BUILD_DIR := build
 COMMON_FLAGS_FILE := $(BUILD_DIR)/common.flags
@@ -47,6 +48,9 @@ inspect_particles: inspect_particles.c $(HEADERS) $(COMMON_FLAGS_FILE)
 benchmark_layout: benchmark_layout.c nbody_core.c $(HEADERS) $(COMMON_FLAGS_FILE) $(SOLVER_FLAGS_FILE)
 	$(CC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) $(OPENMP_CFLAGS) -o $@ benchmark_layout.c nbody_core.c $(LDLIBS) $(OPENMP_LDLIBS)
 
+benchmark_rsqrt_kernel: benchmark_rsqrt_kernel.c nbody_core.c $(HEADERS) $(COMMON_FLAGS_FILE)
+	$(CC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) -o $@ benchmark_rsqrt_kernel.c nbody_core.c $(LDLIBS)
+
 nbody_mpi_omp: nbody_mpi_omp.c nbody_core.c $(HEADERS) $(COMMON_FLAGS_FILE) $(SOLVER_FLAGS_FILE)
 	$(MPICC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) $(OPENMP_CFLAGS) -o $@ nbody_mpi_omp.c nbody_core.c $(LDLIBS) $(OPENMP_LDLIBS)
 
@@ -70,4 +74,4 @@ run-smoke: all
 	./nbody_direct_serial --input ball_128.bin --nsteps 5 --dt 1e-4 --eps 0.05 --energy-every 1 --output ball_128_final.bin --quiet
 
 clean:
-	rm -rf $(PROGRAMS) $(MPI_PROGRAMS) *.o *.bin $(BUILD_DIR)
+	rm -rf $(PROGRAMS) $(MPI_PROGRAMS) $(EXTRA_PROGRAMS) *.o *.bin $(BUILD_DIR)
