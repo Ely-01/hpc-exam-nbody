@@ -102,97 +102,91 @@ def markdown_table(summary: list[dict[str, object]]) -> str:
     return "\n".join(lines)
 
 
-def bar(x: float, y: float, width: float, height: float, color: str) -> str:
-    return f'<rect x="{x:.1f}" y="{y:.1f}" width="{width:.1f}" height="{height:.1f}" fill="{color}"/>'
-
-
 def write_svg(path: Path, summary: list[dict[str, object]]) -> None:
+    import math
+
     colors = {
         "sqrtf": "#2563eb",
         "rsqrt0": "#16a34a",
         "rsqrt1": "#ca8a04",
         "rsqrt2": "#dc2626",
     }
-    methods = [str(row["method"]) for row in summary]
-    row_by_method = {str(row["method"]): row for row in summary}
     speedup_max = max(1.2, max(float(row["speedup_vs_sqrtf"]) for row in summary) * 1.2)
-    error_max = max(float(row["max_relative_error"]) for row in summary)
-    error_max = max(error_max, 1e-8)
+    x0 = 122.0
+    y0 = 112.0
+    width = 770.0
+    height = 330.0
+    x_min = 1e-8
+    x_max = 1e-3
 
-    def draw_panel(metric: str, title: str, y_label: str,
-                   x0: float, y0: float, width: float, height: float,
-                   y_max: float, log_hint: bool = False) -> str:
-        group_width = width / len(methods)
-        bar_width = group_width * 0.48
+    def sx(value: float) -> float:
+        v = min(max(value, x_min), x_max)
+        return x0 + (math.log10(v) - math.log10(x_min)) / (
+            math.log10(x_max) - math.log10(x_min)
+        ) * width
 
-        def sy(value: float) -> float:
-            if log_hint:
-                floor = 1e-9
-                import math
-
-                v = max(value, floor)
-                lo = math.log10(floor)
-                hi = math.log10(y_max)
-                return y0 + height - (math.log10(v) - lo) / (hi - lo) * height
-            return y0 + height - value / y_max * height
-
-        parts = [
-            f'<text x="{x0 + width / 2:.1f}" y="{y0 - 18:.1f}" text-anchor="middle" font-size="16" font-weight="700">{title}</text>',
-            f'<line x1="{x0}" y1="{y0 + height}" x2="{x0 + width}" y2="{y0 + height}" stroke="#222"/>',
-            f'<line x1="{x0}" y1="{y0}" x2="{x0}" y2="{y0 + height}" stroke="#222"/>',
-            f'<text x="{x0 - 52:.1f}" y="{y0 + height / 2:.1f}" transform="rotate(-90 {x0 - 52:.1f},{y0 + height / 2:.1f})" text-anchor="middle" font-size="12">{y_label}</text>',
-        ]
-
-        for i in range(6):
-            if log_hint:
-                value = 10.0 ** (-9 + i * (9 + __import__("math").log10(y_max)) / 5)
-                label = f"{value:.0e}"
-            else:
-                value = y_max * i / 5
-                label = f"{value:.2g}"
-            py = sy(value)
-            parts.append(f'<line x1="{x0}" y1="{py:.1f}" x2="{x0 + width}" y2="{py:.1f}" stroke="#e5e7eb"/>')
-            parts.append(f'<text x="{x0 - 8:.1f}" y="{py + 4:.1f}" text-anchor="end" font-size="10">{label}</text>')
-
-        for index, method in enumerate(methods):
-            row = row_by_method[method]
-            value = float(row[metric])
-            center = x0 + index * group_width + group_width / 2
-            py = sy(value)
-            parts.append(bar(center - bar_width / 2, py, bar_width, y0 + height - py, colors[method]))
-            parts.append(f'<text x="{center:.1f}" y="{y0 + height + 22:.1f}" text-anchor="middle" font-size="11">{method}</text>')
-
-        return "\n".join(parts)
+    def sy(value: float) -> float:
+        return y0 + height - value / speedup_max * height
 
     parts = [
         '<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="530" viewBox="0 0 1040 530">',
         '<rect width="100%" height="100%" fill="white"/>',
         '<style>text{font-family:Arial, Helvetica, sans-serif; fill:#111827;}</style>',
         '<text x="520" y="34" text-anchor="middle" font-size="21" font-weight="700">SIMD reciprocal square-root microbenchmark</text>',
-        '<text x="520" y="58" text-anchor="middle" font-size="12" fill="#4b5563">Isolated float inverse-square-root path: scalar sqrtf baseline vs AVX rsqrt plus Newton refinements.</text>',
-        draw_panel(
-            "speedup_vs_sqrtf",
-            "Throughput speedup",
-            "x vs sqrtf",
-            86,
-            116,
-            390,
-            300,
-            speedup_max,
-        ),
-        draw_panel(
-            "max_relative_error",
-            "Maximum relative error",
-            "relative error",
-            596,
-            116,
-            360,
-            300,
-            error_max * 1.2,
-            log_hint=True,
-        ),
+        '<text x="520" y="58" text-anchor="middle" font-size="12" fill="#4b5563">Speed-accuracy trade-off for isolated float inverse square root. Left/up is better.</text>',
+        f'<line x1="{x0}" y1="{y0 + height}" x2="{x0 + width}" y2="{y0 + height}" stroke="#222"/>',
+        f'<line x1="{x0}" y1="{y0}" x2="{x0}" y2="{y0 + height}" stroke="#222"/>',
+        f'<text x="{x0 + width / 2:.1f}" y="{y0 + height + 52:.1f}" text-anchor="middle" font-size="12">maximum relative error, log scale</text>',
+        f'<text x="{x0 - 62:.1f}" y="{y0 + height / 2:.1f}" transform="rotate(-90 {x0 - 62:.1f},{y0 + height / 2:.1f})" text-anchor="middle" font-size="12">speedup vs sqrtf</text>',
+        f'<line x1="{x0}" y1="{sy(1.0):.1f}" x2="{x0 + width}" y2="{sy(1.0):.1f}" stroke="#9ca3af" stroke-dasharray="6 5"/>',
+        f'<text x="{x0 + width - 4:.1f}" y="{sy(1.0) - 8:.1f}" text-anchor="end" font-size="11" fill="#6b7280">sqrtf baseline 1x</text>',
         "</svg>",
     ]
+
+    for exponent in range(-8, -2):
+        value = 10.0 ** exponent
+        px = sx(value)
+        parts.insert(
+            -1,
+            f'<line x1="{px:.1f}" y1="{y0}" x2="{px:.1f}" y2="{y0 + height}" stroke="#e5e7eb"/>',
+        )
+        parts.insert(
+            -1,
+            f'<text x="{px:.1f}" y="{y0 + height + 22:.1f}" text-anchor="middle" font-size="10">1e{exponent}</text>',
+        )
+
+    for i in range(6):
+        value = speedup_max * i / 5
+        py = sy(value)
+        parts.insert(
+            -1,
+            f'<line x1="{x0}" y1="{py:.1f}" x2="{x0 + width}" y2="{py:.1f}" stroke="#e5e7eb"/>',
+        )
+        parts.insert(
+            -1,
+            f'<text x="{x0 - 8:.1f}" y="{py + 4:.1f}" text-anchor="end" font-size="10">{value:.1f}</text>',
+        )
+
+    label_offsets = {
+        "sqrtf": (10, 18),
+        "rsqrt0": (10, -10),
+        "rsqrt1": (10, -10),
+        "rsqrt2": (10, 18),
+    }
+    for row in summary:
+        method = str(row["method"])
+        px = sx(float(row["max_relative_error"]))
+        py = sy(float(row["speedup_vs_sqrtf"]))
+        dx, dy = label_offsets.get(method, (10, -10))
+        parts.insert(
+            -1,
+            f'<circle cx="{px:.1f}" cy="{py:.1f}" r="6.5" fill="{colors[method]}" stroke="white" stroke-width="1.5"/>',
+        )
+        parts.insert(
+            -1,
+            f'<text x="{px + dx:.1f}" y="{py + dy:.1f}" font-size="12" font-weight="700">{method}</text>',
+        )
+
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(parts) + "\n")
 
