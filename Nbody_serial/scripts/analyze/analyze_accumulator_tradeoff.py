@@ -230,8 +230,13 @@ def draw_svg(path: Path, summary: list[dict[str, object]]) -> None:
     row_by_key = {
         (int(row["threads"]), int(row["accumulators"])): row for row in summary
     }
-    speedup_max = max(float(row["speedup_vs_direct"]) for row in summary)
-    y_max = max(1.2, math.ceil(speedup_max * 110.0) / 100.0)
+    speedups = [float(row["speedup_vs_direct"]) for row in summary]
+    speedup_min = min(speedups)
+    speedup_max = max(speedups)
+    y_min = min(0.98, math.floor(speedup_min * 100.0) / 100.0 - 0.01)
+    y_max = max(1.08, math.ceil(speedup_max * 105.0) / 100.0)
+    if y_max <= y_min:
+        y_max = y_min + 0.1
     x0 = 122.0
     y0 = 120.0
     width = 820.0
@@ -240,19 +245,19 @@ def draw_svg(path: Path, summary: list[dict[str, object]]) -> None:
     x_max = max(lanes)
 
     def sx(lane: int) -> float:
-      if x_max == x_min:
-        return x0 + width / 2.0
-      return x0 + (lane - x_min) / (x_max - x_min) * width
+        if x_max == x_min:
+            return x0 + width / 2.0
+        return x0 + (lane - x_min) / (x_max - x_min) * width
 
     def sy(value: float) -> float:
-        return y0 + height - value / y_max * height
+        return y0 + height - (value - y_min) / (y_max - y_min) * height
 
     parts = [
         '<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="540" viewBox="0 0 1040 540">',
         '<rect width="1040" height="540" fill="white"/>',
         '<style>text{font-family:Arial, Helvetica, sans-serif; fill:#111827;}</style>',
         '<text x="520" y="36" text-anchor="middle" font-size="22" font-weight="700">Accumulator splitting and critical path</text>',
-        '<text x="520" y="62" text-anchor="middle" font-size="12" fill="#4b5563">Speedup is relative to the direct kernel with one accumulator per component.</text>',
+        '<text x="520" y="62" text-anchor="middle" font-size="12" fill="#4b5563">Zoomed speedup ratio around the direct-kernel baseline. Higher is better.</text>',
         f'<line x1="{x0}" y1="{y0 + height}" x2="{x0 + width}" y2="{y0 + height}" stroke="#222"/>',
         f'<line x1="{x0}" y1="{y0}" x2="{x0}" y2="{y0 + height}" stroke="#222"/>',
         f'<text x="{x0 - 58:.1f}" y="{y0 + height / 2:.1f}" transform="rotate(-90 {x0 - 58:.1f},{y0 + height / 2:.1f})" text-anchor="middle" font-size="12">force-kernel speedup vs direct</text>',
@@ -262,7 +267,7 @@ def draw_svg(path: Path, summary: list[dict[str, object]]) -> None:
     ]
 
     for index in range(6):
-        value = y_max * index / 5
+        value = y_min + (y_max - y_min) * index / 5
         py = sy(value)
         parts.append(
             f'<line x1="{x0}" y1="{py:.1f}" x2="{x0 + width}" y2="{py:.1f}" stroke="#e5e7eb"/>'
