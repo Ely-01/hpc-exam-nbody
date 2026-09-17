@@ -111,7 +111,7 @@ def write_svg(path: Path, summary: list[dict[str, object]]) -> None:
         "rsqrt1": "#ca8a04",
         "rsqrt2": "#dc2626",
     }
-    speedup_max = max(1.2, max(float(row["speedup_vs_sqrtf"]) for row in summary) * 1.2)
+    speedup_max = max(22.0, max(float(row["speedup_vs_sqrtf"]) for row in summary) * 1.08)
     x0 = 122.0
     y0 = 112.0
     width = 770.0
@@ -132,12 +132,12 @@ def write_svg(path: Path, summary: list[dict[str, object]]) -> None:
         '<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="530" viewBox="0 0 1040 530">',
         '<rect width="100%" height="100%" fill="white"/>',
         '<style>text{font-family:Arial, Helvetica, sans-serif; fill:#111827;}</style>',
-        '<text x="520" y="34" text-anchor="middle" font-size="21" font-weight="700">SIMD reciprocal square-root microbenchmark</text>',
-        '<text x="520" y="58" text-anchor="middle" font-size="12" fill="#4b5563">Speed-accuracy trade-off for isolated float inverse square root. Left/up is better.</text>',
+        '<text x="520" y="34" text-anchor="middle" font-size="21" font-weight="700">Isolated reciprocal square-root operation</text>',
+        '<text x="520" y="58" text-anchor="middle" font-size="12" fill="#4b5563">Operation-level AVX rsqrt microbenchmark, not full-solver speedup. Left/up is better.</text>',
         f'<line x1="{x0}" y1="{y0 + height}" x2="{x0 + width}" y2="{y0 + height}" stroke="#222"/>',
         f'<line x1="{x0}" y1="{y0}" x2="{x0}" y2="{y0 + height}" stroke="#222"/>',
         f'<text x="{x0 + width / 2:.1f}" y="{y0 + height + 52:.1f}" text-anchor="middle" font-size="12">maximum relative error, log scale</text>',
-        f'<text x="{x0 - 62:.1f}" y="{y0 + height / 2:.1f}" transform="rotate(-90 {x0 - 62:.1f},{y0 + height / 2:.1f})" text-anchor="middle" font-size="12">speedup vs sqrtf</text>',
+        f'<text x="{x0 - 62:.1f}" y="{y0 + height / 2:.1f}" transform="rotate(-90 {x0 - 62:.1f},{y0 + height / 2:.1f})" text-anchor="middle" font-size="12">operation speedup vs scalar sqrtf</text>',
         f'<line x1="{x0}" y1="{sy(1.0):.1f}" x2="{x0 + width}" y2="{sy(1.0):.1f}" stroke="#9ca3af" stroke-dasharray="6 5"/>',
         f'<text x="{x0 + width - 4:.1f}" y="{sy(1.0) - 8:.1f}" text-anchor="end" font-size="11" fill="#6b7280">sqrtf baseline 1x</text>',
         "</svg>",
@@ -155,16 +155,18 @@ def write_svg(path: Path, summary: list[dict[str, object]]) -> None:
             f'<text x="{px:.1f}" y="{y0 + height + 22:.1f}" text-anchor="middle" font-size="10">1e{exponent}</text>',
         )
 
-    for i in range(6):
-        value = speedup_max * i / 5
+    for value in [0.0, 1.0, 5.0, 10.0, 15.0, 20.0]:
+        if value > speedup_max:
+            continue
         py = sy(value)
+        label = f"{value:.0f}x" if value > 0.0 else "0"
         parts.insert(
             -1,
             f'<line x1="{x0}" y1="{py:.1f}" x2="{x0 + width}" y2="{py:.1f}" stroke="#e5e7eb"/>',
         )
         parts.insert(
             -1,
-            f'<text x="{x0 - 8:.1f}" y="{py + 4:.1f}" text-anchor="end" font-size="10">{value:.1f}</text>',
+            f'<text x="{x0 - 8:.1f}" y="{py + 4:.1f}" text-anchor="end" font-size="10">{label}</text>',
         )
 
     label_offsets = {
