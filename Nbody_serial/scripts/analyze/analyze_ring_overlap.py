@@ -255,7 +255,8 @@ def draw_svg(path: Path, summary: list[dict[str, object]]) -> None:
             value = y_min + (y_max - y_min) * i / 5
             py = sy_for(value, y0, height, y_min, y_max)
             parts.append(f'<line x1="{x0}" y1="{py:.1f}" x2="{x0 + width}" y2="{py:.1f}" stroke="#e5e7eb"/>')
-            parts.append(f'<text x="{x0 - 8:.1f}" y="{py + 4:.1f}" text-anchor="end" font-size="10">{value:.3g}</text>')
+            tick = f"{value:.3f}" if (y_max - y_min) < 0.05 else f"{value:.3g}"
+            parts.append(f'<text x="{x0 - 8:.1f}" y="{py + 4:.1f}" text-anchor="end" font-size="10">{tick}</text>')
         for index, rank in enumerate(ranks):
             center = sx_for(index, x0, width)
             parts.append(f'<line x1="{center:.1f}" y1="{y0}" x2="{center:.1f}" y2="{y0 + height}" stroke="#f3f4f6"/>')
