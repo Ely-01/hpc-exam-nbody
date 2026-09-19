@@ -2,7 +2,7 @@
 <rect width="100%" height="100%" fill="white"/>
 <style>text{font-family:Arial, Helvetica, sans-serif; fill:#111827;}</style>
 <text x="1010.0" y="34" text-anchor="middle" font-size="21" font-weight="700">Native vs container weak scaling</text>
-<text x="1010.0" y="58" text-anchor="middle" font-size="12" fill="#4b5563">Weak scaling for direct all-pairs N-body: fixed Nlocal, so ideal runtime grows as P*T1.</text>
+<text x="1010.0" y="58" text-anchor="middle" font-size="12" fill="#4b5563">Weak scaling for direct all-pairs N-body: fixed Nlocal, so ideal runtime grows as P*T1. Container overhead is annotated on the runtime panel.</text>
 <text x="232.0" y="96.0" text-anchor="middle" font-size="16" font-weight="700">Runtime</text>
 <line x1="72" y1="442" x2="392" y2="442" stroke="#222"/>
 <line x1="72" y1="112" x2="72" y2="442" stroke="#222"/>
@@ -30,21 +30,26 @@
 <text x="221.3" y="464.0" text-anchor="middle" font-size="11">8</text>
 <line x1="392.0" y1="442" x2="392.0" y2="447" stroke="#222"/>
 <text x="392.0" y="464.0" text-anchor="middle" font-size="11">16</text>
-<polyline points="72.00,426.57 93.33,411.15 136.00,380.30 221.33,318.60 392.00,195.19" fill="none" stroke="#9ca3af" stroke-width="2.5"/>
-<polyline points="72.00,426.62 93.33,411.05 136.00,379.89 221.33,317.63 392.00,192.79" fill="none" stroke="#dc2626" stroke-width="2.5"/>
-<circle cx="72.00" cy="426.62" r="4" fill="#dc2626"/>
-<circle cx="93.33" cy="411.05" r="4" fill="#dc2626"/>
-<circle cx="136.00" cy="379.89" r="4" fill="#dc2626"/>
-<circle cx="221.33" cy="317.63" r="4" fill="#dc2626"/>
-<circle cx="392.00" cy="192.79" r="4" fill="#dc2626"/>
-<polyline points="72.00,426.57 93.33,411.02 136.00,379.91 221.33,317.64 392.00,193.06" fill="none" stroke="#2563eb" stroke-width="2.5"/>
-<circle cx="72.00" cy="426.57" r="4" fill="#2563eb"/>
-<circle cx="93.33" cy="411.02" r="4" fill="#2563eb"/>
-<circle cx="136.00" cy="379.91" r="4" fill="#2563eb"/>
-<circle cx="221.33" cy="317.64" r="4" fill="#2563eb"/>
-<circle cx="392.00" cy="193.06" r="4" fill="#2563eb"/>
+<polyline points="72.00,426.60 93.33,411.20 136.00,380.40 221.33,318.81 392.00,195.61" fill="none" stroke="#9ca3af" stroke-width="2.5"/>
+<polyline points="72.00,426.59 93.33,411.01 136.00,379.87 221.33,317.56 392.00,192.58" fill="none" stroke="#dc2626" stroke-width="2.5"/>
+<rect x="68.00" y="422.59" width="8" height="8" fill="#dc2626"/>
+<rect x="89.33" y="407.01" width="8" height="8" fill="#dc2626"/>
+<rect x="132.00" y="375.87" width="8" height="8" fill="#dc2626"/>
+<rect x="217.33" y="313.56" width="8" height="8" fill="#dc2626"/>
+<rect x="388.00" y="188.58" width="8" height="8" fill="#dc2626"/>
+<polyline points="72.00,426.60 93.33,410.99 136.00,379.71 221.33,316.57 392.00,186.76" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+<circle cx="72.00" cy="426.60" r="4" fill="#2563eb"/>
+<circle cx="93.33" cy="410.99" r="4" fill="#2563eb"/>
+<circle cx="136.00" cy="379.71" r="4" fill="#2563eb"/>
+<circle cx="221.33" cy="316.57" r="4" fill="#2563eb"/>
+<circle cx="392.00" cy="186.76" r="4" fill="#2563eb"/>
+<text x="72.0" y="416.6" text-anchor="middle" font-size="11" font-weight="700" fill="#dc2626">+0.1%</text>
+<text x="93.3" y="401.0" text-anchor="middle" font-size="11" font-weight="700" fill="#16a34a">-0.0%</text>
+<text x="136.0" y="369.9" text-anchor="middle" font-size="11" font-weight="700" fill="#16a34a">-0.3%</text>
+<text x="221.3" y="307.6" text-anchor="middle" font-size="11" font-weight="700" fill="#16a34a">-0.8%</text>
+<text x="392.0" y="182.6" text-anchor="middle" font-size="11" font-weight="700" fill="#16a34a">-2.3%</text>
 <text x="288.0" y="132.0" font-size="12" fill="#6b7280">ideal P*T1</text>
-<circle cx="278.0" cy="146.0" r="4" fill="#dc2626"/>
+<rect x="274.0" y="142.0" width="8" height="8" fill="#dc2626"/>
 <text x="288.0" y="150.0" font-size="12" fill="#dc2626">container</text>
 <circle cx="278.0" cy="164.0" r="4" fill="#2563eb"/>
 <text x="288.0" y="168.0" font-size="12" fill="#2563eb">native</text>
@@ -76,20 +81,20 @@
 <line x1="784.0" y1="442" x2="784.0" y2="447" stroke="#222"/>
 <text x="784.0" y="464.0" text-anchor="middle" font-size="11">16</text>
 <polyline points="464.00,425.50 485.33,409.00 528.00,376.00 613.33,310.00 784.00,178.00" fill="none" stroke="#9ca3af" stroke-width="2.5"/>
-<polyline points="464.00,425.50 485.33,409.19 528.00,376.62 613.33,311.40 784.00,181.28" fill="none" stroke="#dc2626" stroke-width="2.5"/>
-<circle cx="464.00" cy="425.50" r="4" fill="#dc2626"/>
-<circle cx="485.33" cy="409.19" r="4" fill="#dc2626"/>
-<circle cx="528.00" cy="376.62" r="4" fill="#dc2626"/>
-<circle cx="613.33" cy="311.40" r="4" fill="#dc2626"/>
-<circle cx="784.00" cy="181.28" r="4" fill="#dc2626"/>
-<polyline points="464.00,425.50 485.33,409.14 528.00,376.41 613.33,311.01 784.00,180.26" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+<polyline points="464.00,425.50 485.33,409.18 528.00,376.51 613.33,311.22 784.00,181.01" fill="none" stroke="#dc2626" stroke-width="2.5"/>
+<rect x="460.00" y="421.50" width="8" height="8" fill="#dc2626"/>
+<rect x="481.33" y="405.18" width="8" height="8" fill="#dc2626"/>
+<rect x="524.00" y="372.51" width="8" height="8" fill="#dc2626"/>
+<rect x="609.33" y="307.22" width="8" height="8" fill="#dc2626"/>
+<rect x="780.00" y="177.01" width="8" height="8" fill="#dc2626"/>
+<polyline points="464.00,425.50 485.33,409.22 528.00,376.73 613.33,312.36 784.00,187.15" fill="none" stroke="#2563eb" stroke-width="2.5"/>
 <circle cx="464.00" cy="425.50" r="4" fill="#2563eb"/>
-<circle cx="485.33" cy="409.14" r="4" fill="#2563eb"/>
-<circle cx="528.00" cy="376.41" r="4" fill="#2563eb"/>
-<circle cx="613.33" cy="311.01" r="4" fill="#2563eb"/>
-<circle cx="784.00" cy="180.26" r="4" fill="#2563eb"/>
+<circle cx="485.33" cy="409.22" r="4" fill="#2563eb"/>
+<circle cx="528.00" cy="376.73" r="4" fill="#2563eb"/>
+<circle cx="613.33" cy="312.36" r="4" fill="#2563eb"/>
+<circle cx="784.00" cy="187.15" r="4" fill="#2563eb"/>
 <text x="680.0" y="132.0" font-size="12" fill="#6b7280">ideal</text>
-<circle cx="670.0" cy="146.0" r="4" fill="#dc2626"/>
+<rect x="666.0" y="142.0" width="8" height="8" fill="#dc2626"/>
 <text x="680.0" y="150.0" font-size="12" fill="#dc2626">container</text>
 <circle cx="670.0" cy="164.0" r="4" fill="#2563eb"/>
 <text x="680.0" y="168.0" font-size="12" fill="#2563eb">native</text>
@@ -121,20 +126,20 @@
 <line x1="1176.0" y1="442" x2="1176.0" y2="447" stroke="#222"/>
 <text x="1176.0" y="464.0" text-anchor="middle" font-size="11">16</text>
 <polyline points="856.00,142.00 877.33,142.00 920.00,142.00 1005.33,142.00 1176.00,142.00" fill="none" stroke="#9ca3af" stroke-width="2.5"/>
-<polyline points="856.00,142.00 877.33,143.76 920.00,144.80 1005.33,145.18 1176.00,145.73" fill="none" stroke="#dc2626" stroke-width="2.5"/>
-<circle cx="856.00" cy="142.00" r="4" fill="#dc2626"/>
-<circle cx="877.33" cy="143.76" r="4" fill="#dc2626"/>
-<circle cx="920.00" cy="144.80" r="4" fill="#dc2626"/>
-<circle cx="1005.33" cy="145.18" r="4" fill="#dc2626"/>
-<circle cx="1176.00" cy="145.73" r="4" fill="#dc2626"/>
-<polyline points="856.00,142.00 877.33,143.25 920.00,143.88 1005.33,144.30 1176.00,144.57" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+<polyline points="856.00,142.00 877.33,143.67 920.00,144.33 1005.33,144.77 1176.00,145.42" fill="none" stroke="#dc2626" stroke-width="2.5"/>
+<rect x="852.00" y="138.00" width="8" height="8" fill="#dc2626"/>
+<rect x="873.33" y="139.67" width="8" height="8" fill="#dc2626"/>
+<rect x="916.00" y="140.33" width="8" height="8" fill="#dc2626"/>
+<rect x="1001.33" y="140.77" width="8" height="8" fill="#dc2626"/>
+<rect x="1172.00" y="141.42" width="8" height="8" fill="#dc2626"/>
+<polyline points="856.00,142.00 877.33,144.02 920.00,145.32 1005.33,147.35 1176.00,152.40" fill="none" stroke="#2563eb" stroke-width="2.5"/>
 <circle cx="856.00" cy="142.00" r="4" fill="#2563eb"/>
-<circle cx="877.33" cy="143.25" r="4" fill="#2563eb"/>
-<circle cx="920.00" cy="143.88" r="4" fill="#2563eb"/>
-<circle cx="1005.33" cy="144.30" r="4" fill="#2563eb"/>
-<circle cx="1176.00" cy="144.57" r="4" fill="#2563eb"/>
+<circle cx="877.33" cy="144.02" r="4" fill="#2563eb"/>
+<circle cx="920.00" cy="145.32" r="4" fill="#2563eb"/>
+<circle cx="1005.33" cy="147.35" r="4" fill="#2563eb"/>
+<circle cx="1176.00" cy="152.40" r="4" fill="#2563eb"/>
 <text x="1072.0" y="132.0" font-size="12" fill="#6b7280">ideal</text>
-<circle cx="1062.0" cy="146.0" r="4" fill="#dc2626"/>
+<rect x="1058.0" y="142.0" width="8" height="8" fill="#dc2626"/>
 <text x="1072.0" y="150.0" font-size="12" fill="#dc2626">container</text>
 <circle cx="1062.0" cy="164.0" r="4" fill="#2563eb"/>
 <text x="1072.0" y="168.0" font-size="12" fill="#2563eb">native</text>
@@ -165,19 +170,19 @@
 <text x="1397.3" y="464.0" text-anchor="middle" font-size="11">8</text>
 <line x1="1568.0" y1="442" x2="1568.0" y2="447" stroke="#222"/>
 <text x="1568.0" y="464.0" text-anchor="middle" font-size="11">16</text>
-<polyline points="1248.00,442.00 1269.33,441.76 1312.00,438.76 1397.33,437.54 1568.00,436.54" fill="none" stroke="#dc2626" stroke-width="2.5"/>
-<circle cx="1248.00" cy="442.00" r="4" fill="#dc2626"/>
-<circle cx="1269.33" cy="441.76" r="4" fill="#dc2626"/>
-<circle cx="1312.00" cy="438.76" r="4" fill="#dc2626"/>
-<circle cx="1397.33" cy="437.54" r="4" fill="#dc2626"/>
-<circle cx="1568.00" cy="436.54" r="4" fill="#dc2626"/>
-<polyline points="1248.00,442.00 1269.33,441.79 1312.00,438.97 1397.33,437.54 1568.00,436.87" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+<polyline points="1248.00,442.00 1269.33,441.15 1312.00,438.69 1397.33,437.40 1568.00,436.32" fill="none" stroke="#dc2626" stroke-width="2.5"/>
+<rect x="1244.00" y="438.00" width="8" height="8" fill="#dc2626"/>
+<rect x="1265.33" y="437.15" width="8" height="8" fill="#dc2626"/>
+<rect x="1308.00" y="434.69" width="8" height="8" fill="#dc2626"/>
+<rect x="1393.33" y="433.40" width="8" height="8" fill="#dc2626"/>
+<rect x="1564.00" y="432.32" width="8" height="8" fill="#dc2626"/>
+<polyline points="1248.00,442.00 1269.33,441.61 1312.00,438.66 1397.33,435.65 1568.00,436.29" fill="none" stroke="#2563eb" stroke-width="2.5"/>
 <circle cx="1248.00" cy="442.00" r="4" fill="#2563eb"/>
-<circle cx="1269.33" cy="441.79" r="4" fill="#2563eb"/>
-<circle cx="1312.00" cy="438.97" r="4" fill="#2563eb"/>
-<circle cx="1397.33" cy="437.54" r="4" fill="#2563eb"/>
-<circle cx="1568.00" cy="436.87" r="4" fill="#2563eb"/>
-<circle cx="1454.0" cy="128.0" r="4" fill="#dc2626"/>
+<circle cx="1269.33" cy="441.61" r="4" fill="#2563eb"/>
+<circle cx="1312.00" cy="438.66" r="4" fill="#2563eb"/>
+<circle cx="1397.33" cy="435.65" r="4" fill="#2563eb"/>
+<circle cx="1568.00" cy="436.29" r="4" fill="#2563eb"/>
+<rect x="1450.0" y="124.0" width="8" height="8" fill="#dc2626"/>
 <text x="1464.0" y="132.0" font-size="12" fill="#dc2626">container</text>
 <circle cx="1454.0" cy="146.0" r="4" fill="#2563eb"/>
 <text x="1464.0" y="150.0" font-size="12" fill="#2563eb">native</text>
@@ -188,34 +193,34 @@
 <text x="1800.0" y="500.0" text-anchor="middle" font-size="13">Total workers</text>
 <text x="1592.0" y="277.0" transform="rotate(-90 1592.0,277.0)" text-anchor="middle" font-size="13">Container vs native (%)</text>
 <line x1="1640" y1="442.0" x2="1960" y2="442.0" stroke="#e5e7eb"/>
-<text x="1632.0" y="446.0" text-anchor="end" font-size="11">-2.0%</text>
+<text x="1632.0" y="446.0" text-anchor="end" font-size="11">-3.1%</text>
 <line x1="1640" y1="359.5" x2="1960" y2="359.5" stroke="#e5e7eb"/>
-<text x="1632.0" y="363.5" text-anchor="end" font-size="11">-1.0%</text>
+<text x="1632.0" y="363.5" text-anchor="end" font-size="11">-1.5%</text>
 <line x1="1640" y1="277.0" x2="1960" y2="277.0" stroke="#e5e7eb"/>
 <text x="1632.0" y="281.0" text-anchor="end" font-size="11">0.0%</text>
 <line x1="1640" y1="194.5" x2="1960" y2="194.5" stroke="#e5e7eb"/>
-<text x="1632.0" y="198.5" text-anchor="end" font-size="11">1.0%</text>
+<text x="1632.0" y="198.5" text-anchor="end" font-size="11">1.5%</text>
 <line x1="1640" y1="112.0" x2="1960" y2="112.0" stroke="#e5e7eb"/>
-<text x="1632.0" y="116.0" text-anchor="end" font-size="11">2.0%</text>
+<text x="1632.0" y="116.0" text-anchor="end" font-size="11">3.1%</text>
 <line x1="1640.0" y1="442" x2="1640.0" y2="447" stroke="#222"/>
 <text x="1640.0" y="464.0" text-anchor="middle" font-size="11">1</text>
-<rect x="1633.0" y="277.0" width="14.1" height="23.0" fill="#16a34a" opacity="0.85"/>
-<text x="1640.0" y="316.0" text-anchor="middle" font-size="11" fill="#16a34a">-0.3%</text>
+<rect x="1633.0" y="272.9" width="14.1" height="4.1" fill="#dc2626" opacity="0.85"/>
+<text x="1640.0" y="265.9" text-anchor="middle" font-size="11" fill="#dc2626">+0.1%</text>
 <line x1="1661.3" y1="442" x2="1661.3" y2="447" stroke="#222"/>
 <text x="1661.3" y="464.0" text-anchor="middle" font-size="11">2</text>
-<rect x="1654.3" y="277.0" width="14.1" height="8.9" fill="#16a34a" opacity="0.85"/>
-<text x="1661.3" y="301.9" text-anchor="middle" font-size="11" fill="#16a34a">-0.1%</text>
+<rect x="1654.3" y="277.0" width="14.1" height="2.3" fill="#16a34a" opacity="0.85"/>
+<text x="1661.3" y="295.3" text-anchor="middle" font-size="11" fill="#16a34a">-0.0%</text>
 <line x1="1704.0" y1="442" x2="1704.0" y2="447" stroke="#222"/>
 <text x="1704.0" y="464.0" text-anchor="middle" font-size="11">4</text>
-<rect x="1697.0" y="274.7" width="14.1" height="2.3" fill="#dc2626" opacity="0.85"/>
-<text x="1704.0" y="267.7" text-anchor="middle" font-size="11" fill="#dc2626">+0.0%</text>
+<rect x="1697.0" y="277.0" width="14.1" height="13.7" fill="#16a34a" opacity="0.85"/>
+<text x="1704.0" y="306.7" text-anchor="middle" font-size="11" fill="#16a34a">-0.3%</text>
 <line x1="1789.3" y1="442" x2="1789.3" y2="447" stroke="#222"/>
 <text x="1789.3" y="464.0" text-anchor="middle" font-size="11">8</text>
-<rect x="1782.3" y="275.8" width="14.1" height="1.2" fill="#dc2626" opacity="0.85"/>
-<text x="1789.3" y="268.8" text-anchor="middle" font-size="11" fill="#dc2626">+0.0%</text>
+<rect x="1782.3" y="277.0" width="14.1" height="42.6" fill="#16a34a" opacity="0.85"/>
+<text x="1789.3" y="335.6" text-anchor="middle" font-size="11" fill="#16a34a">-0.8%</text>
 <line x1="1960.0" y1="442" x2="1960.0" y2="447" stroke="#222"/>
 <text x="1960.0" y="464.0" text-anchor="middle" font-size="11">16</text>
-<rect x="1953.0" y="267.8" width="14.1" height="9.2" fill="#dc2626" opacity="0.85"/>
-<text x="1960.0" y="260.8" text-anchor="middle" font-size="11" fill="#dc2626">+0.1%</text>
+<rect x="1953.0" y="277.0" width="14.1" height="122.2" fill="#16a34a" opacity="0.85"/>
+<text x="1960.0" y="415.2" text-anchor="middle" font-size="11" fill="#16a34a">-2.3%</text>
 <text x="1800.0" y="530.0" text-anchor="middle" font-size="11" fill="#4b5563">positive means container slower</text>
 </svg>
