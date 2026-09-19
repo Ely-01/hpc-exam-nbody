@@ -1,0 +1,1676 @@
+benchmark_layout.c:206:21: missed: statement clobbers memory: t0_4 = nbody_wall_seconds ();
+benchmark_layout.c:204:15: missed: statement clobbers memory: __builtin_GOMP_parallel (compute_accelerations_soa._omp_fn.0, &.omp_data_o.13, 0, 0);
+benchmark_layout.c:208:10: missed: statement clobbers memory: _1 = nbody_wall_seconds ();
+benchmark_layout.c:105:9: note: ***** Analysis succeeded with vector mode V4DI
+benchmark_layout.c:105:9: note: SLPing BB part
+benchmark_layout.c:105:9: note: Costing subgraph: 
+benchmark_layout.c:105:9: note: node 0x30fb5ba8 (max_nunits=2, refcnt=1) const vector(2) double
+benchmark_layout.c:105:9: note: op template: .omp_data_o.13.mass = mass_12;
+benchmark_layout.c:105:9: note: 	stmt 0 .omp_data_o.13.mass = mass_12;
+benchmark_layout.c:105:9: note: 	stmt 1 .omp_data_o.13.eps2 = eps2_13;
+benchmark_layout.c:105:9: note: 	children 0x30fb5ca8
+benchmark_layout.c:105:9: note: node (external) 0x30fb5ca8 (max_nunits=1, refcnt=1) const vector(2) double
+benchmark_layout.c:105:9: note: 	{ mass_12, eps2_13 }
+benchmark_layout.c:105:9: note: Cost model analysis: 
+benchmark_layout.c:105:9: note: Cost model analysis for part in loop 0:
+  Vector cost: 20
+  Scalar cost: 32
+benchmark_layout.c:105:9: note: Costing subgraph: 
+benchmark_layout.c:105:9: note: node 0x30fb5da8 (max_nunits=4, refcnt=1) vector(4) long unsigned int
+benchmark_layout.c:105:9: note: op template: .omp_data_o.13.x = x_14;
+benchmark_layout.c:105:9: note: 	stmt 0 .omp_data_o.13.x = x_14;
+benchmark_layout.c:105:9: note: 	stmt 1 .omp_data_o.13.y = y_15;
+benchmark_layout.c:105:9: note: 	stmt 2 .omp_data_o.13.z = z_16;
+benchmark_layout.c:105:9: note: 	stmt 3 .omp_data_o.13.ax = ax_17;
+benchmark_layout.c:105:9: note: 	children 0x30fb5e28
+benchmark_layout.c:105:9: note: node 0x30fb5e28 (max_nunits=4, refcnt=1) vector(4) long unsigned int
+benchmark_layout.c:105:9: note: op template: x_14 = particles_5(D)->x;
+benchmark_layout.c:105:9: note: 	stmt 0 x_14 = particles_5(D)->x;
+benchmark_layout.c:105:9: note: 	stmt 1 y_15 = particles_5(D)->y;
+benchmark_layout.c:105:9: note: 	stmt 2 z_16 = particles_5(D)->z;
+benchmark_layout.c:105:9: note: 	stmt 3 ax_17 = particles_5(D)->ax;
+benchmark_layout.c:105:9: note: 	load permutation { 0 1 2 6 }
+benchmark_layout.c:105:9: note: Cost model analysis: 
+benchmark_layout.c:105:9: note: Cost model analysis for part in loop 0:
+  Vector cost: 68
+  Scalar cost: 112
+benchmark_layout.c:105:9: note: Costing subgraph: 
+benchmark_layout.c:105:9: note: node 0x30fb5ea8 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+benchmark_layout.c:105:9: note: op template: .omp_data_o.13.ay = ay_18;
+benchmark_layout.c:105:9: note: 	stmt 0 .omp_data_o.13.ay = ay_18;
+benchmark_layout.c:105:9: note: 	stmt 1 .omp_data_o.13.az = az_19;
+benchmark_layout.c:105:9: note: 	children 0x30fb5f28
+benchmark_layout.c:105:9: note: node 0x30fb5f28 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+benchmark_layout.c:105:9: note: op template: ay_18 = particles_5(D)->ay;
+benchmark_layout.c:105:9: note: 	stmt 0 ay_18 = particles_5(D)->ay;
+benchmark_layout.c:105:9: note: 	stmt 1 az_19 = particles_5(D)->az;
+benchmark_layout.c:105:9: note: Cost model analysis: 
+benchmark_layout.c:105:9: note: Cost model analysis for part in loop 0:
+  Vector cost: 32
+  Scalar cost: 56
+benchmark_layout.c:105:9: note: Basic block will be vectorized using SLP
+benchmark_layout.c:105:9: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:105:9: note: Vectorizing SLP tree:
+benchmark_layout.c:105:9: note: node 0x30fb5ba8 (max_nunits=2, refcnt=1) const vector(2) double
+benchmark_layout.c:105:9: note: op template: .omp_data_o.13.mass = mass_12;
+benchmark_layout.c:105:9: note: 	stmt 0 .omp_data_o.13.mass = mass_12;
+benchmark_layout.c:105:9: note: 	stmt 1 .omp_data_o.13.eps2 = eps2_13;
+benchmark_layout.c:105:9: note: 	children 0x30fb5ca8
+benchmark_layout.c:105:9: note: node (external) 0x30fb5ca8 (max_nunits=1, refcnt=1) const vector(2) double
+benchmark_layout.c:105:9: note: 	{ mass_12, eps2_13 }
+benchmark_layout.c:105:9: note: ------>vectorizing SLP node starting from: .omp_data_o.13.mass = mass_12;
+benchmark_layout.c:105:9: note: vect_is_simple_use: operand eps_7(D) * eps_7(D), type of def: internal
+benchmark_layout.c:105:9: note: transform store. ncopies = 1
+benchmark_layout.c:105:9: note: create vector_type-pointer variable to type: const vector(2) double  vectorizing a pointer ref: .omp_data_o.13.mass
+benchmark_layout.c:105:9: note: created &.omp_data_o.13.mass
+benchmark_layout.c:105:9: note: add new stmt: MEM <const vector(2) double> [(double *)&.omp_data_o.13 + 16B] = _8;
+benchmark_layout.c:105:9: note: vectorizing stmts using SLP.
+benchmark_layout.c:105:9: optimized: basic block part vectorized using 32 byte vectors
+benchmark_layout.c:105:9: note: Vectorizing SLP tree:
+benchmark_layout.c:105:9: note: node 0x30fb5da8 (max_nunits=4, refcnt=1) vector(4) long unsigned int
+benchmark_layout.c:105:9: note: op template: .omp_data_o.13.x = x_14;
+benchmark_layout.c:105:9: note: 	stmt 0 .omp_data_o.13.x = x_14;
+benchmark_layout.c:105:9: note: 	stmt 1 .omp_data_o.13.y = y_15;
+benchmark_layout.c:105:9: note: 	stmt 2 .omp_data_o.13.z = z_16;
+benchmark_layout.c:105:9: note: 	stmt 3 .omp_data_o.13.ax = ax_17;
+benchmark_layout.c:105:9: note: 	children 0x30fb5e28
+benchmark_layout.c:105:9: note: node 0x30fb5e28 (max_nunits=4, refcnt=1) vector(4) long unsigned int
+benchmark_layout.c:105:9: note: op template: x_14 = particles_5(D)->x;
+benchmark_layout.c:105:9: note: 	stmt 0 x_14 = particles_5(D)->x;
+benchmark_layout.c:105:9: note: 	stmt 1 y_15 = particles_5(D)->y;
+benchmark_layout.c:105:9: note: 	stmt 2 z_16 = particles_5(D)->z;
+benchmark_layout.c:105:9: note: 	stmt 3 ax_17 = particles_5(D)->ax;
+benchmark_layout.c:105:9: note: 	load permutation { 0 1 2 6 }
+benchmark_layout.c:105:9: note: ------>vectorizing SLP node starting from: x_14 = particles_5(D)->x;
+benchmark_layout.c:105:9: note: transform load. ncopies = 1
+benchmark_layout.c:105:9: note: create vector_type-pointer variable to type: vector(4) long unsigned int  vectorizing a pointer ref: particles_5(D)->x
+benchmark_layout.c:105:9: note: created vectp.34_33
+benchmark_layout.c:105:9: note: add new stmt: vect_x_14.35_34 = MEM <vector(4) long unsigned int> [(dtype * *)vectp.34_33];
+benchmark_layout.c:105:9: note: add new stmt: vectp.34_35 = vectp.34_33 + 32;
+benchmark_layout.c:105:9: note: add new stmt: vect_x_14.36_36 = MEM <vector(4) long unsigned int> [(dtype * *)vectp.34_35];
+benchmark_layout.c:105:9: note: add new stmt: vectp.34_37 = vectp.34_35 + 32;
+benchmark_layout.c:105:9: note: add new stmt: _38 = MEM[(dtype * *)vectp.34_37];
+benchmark_layout.c:105:9: note: add new stmt: vect_x_14.37_39 = {_38, 0, 0, 0};
+benchmark_layout.c:105:9: note: add new stmt: vectp.34_40 = vectp.34_37 + 18446744073709551592;
+benchmark_layout.c:105:9: note: add new stmt: vect_x_14.38_41 = VEC_PERM_EXPR <vect_x_14.35_34, vect_x_14.36_36, { 0, 1, 2, 6 }>;
+benchmark_layout.c:105:9: note: ------>vectorizing SLP node starting from: .omp_data_o.13.x = x_14;
+benchmark_layout.c:105:9: note: vect_is_simple_use: operand particles_5(D)->x, type of def: internal
+benchmark_layout.c:105:9: note: vect_is_simple_use: operand particles_5(D)->y, type of def: internal
+benchmark_layout.c:105:9: note: vect_is_simple_use: operand particles_5(D)->z, type of def: internal
+benchmark_layout.c:105:9: note: vect_is_simple_use: operand particles_5(D)->ax, type of def: internal
+benchmark_layout.c:105:9: note: transform store. ncopies = 1
+benchmark_layout.c:105:9: note: create vector_type-pointer variable to type: vector(4) long unsigned int  vectorizing a pointer ref: .omp_data_o.13.x
+benchmark_layout.c:105:9: note: created &.omp_data_o.13.x
+benchmark_layout.c:105:9: note: add new stmt: MEM <vector(4) long unsigned int> [(const dtype * *)&.omp_data_o.13 + 32B] = vect_x_14.38_41;
+benchmark_layout.c:105:9: note: vectorizing stmts using SLP.
+benchmark_layout.c:105:9: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:105:9: note: Vectorizing SLP tree:
+benchmark_layout.c:105:9: note: node 0x30fb5ea8 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+benchmark_layout.c:105:9: note: op template: .omp_data_o.13.ay = ay_18;
+benchmark_layout.c:105:9: note: 	stmt 0 .omp_data_o.13.ay = ay_18;
+benchmark_layout.c:105:9: note: 	stmt 1 .omp_data_o.13.az = az_19;
+benchmark_layout.c:105:9: note: 	children 0x30fb5f28
+benchmark_layout.c:105:9: note: node 0x30fb5f28 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+benchmark_layout.c:105:9: note: op template: ay_18 = particles_5(D)->ay;
+benchmark_layout.c:105:9: note: 	stmt 0 ay_18 = particles_5(D)->ay;
+benchmark_layout.c:105:9: note: 	stmt 1 az_19 = particles_5(D)->az;
+benchmark_layout.c:105:9: note: ------>vectorizing SLP node starting from: ay_18 = particles_5(D)->ay;
+benchmark_layout.c:105:9: note: transform load. ncopies = 1
+benchmark_layout.c:105:9: note: create vector_type-pointer variable to type: vector(2) long unsigned int  vectorizing a pointer ref: particles_5(D)->ay
+benchmark_layout.c:105:9: note: created vectp.42_43
+benchmark_layout.c:105:9: note: add new stmt: vect_ay_18.43_44 = MEM <vector(2) long unsigned int> [(dtype * *)vectp.42_43];
+benchmark_layout.c:105:9: note: add new stmt: vectp.42_45 = vectp.42_43 + 56;
+benchmark_layout.c:105:9: note: ------>vectorizing SLP node starting from: .omp_data_o.13.ay = ay_18;
+benchmark_layout.c:105:9: note: vect_is_simple_use: operand particles_5(D)->ay, type of def: internal
+benchmark_layout.c:105:9: note: vect_is_simple_use: operand particles_5(D)->az, type of def: internal
+benchmark_layout.c:105:9: note: transform store. ncopies = 1
+benchmark_layout.c:105:9: note: create vector_type-pointer variable to type: vector(2) long unsigned int  vectorizing a pointer ref: .omp_data_o.13.ay
+benchmark_layout.c:105:9: note: created &.omp_data_o.13.ay
+benchmark_layout.c:105:9: note: add new stmt: MEM <vector(2) long unsigned int> [(dtype * *)&.omp_data_o.13 + 64B] = vect_ay_18.43_44;
+benchmark_layout.c:105:9: note: vectorizing stmts using SLP.
+benchmark_layout.c:105:9: note: ***** The result for vector mode V32QI would be the same
+benchmark_layout.c:152:25: missed: couldn't vectorize loop
+benchmark_layout.c:152:25: missed: not vectorized: unsupported control flow in loop.
+benchmark_layout.c:159:29: missed: couldn't vectorize loop
+benchmark_layout.c:159:29: missed: not vectorized: unsupported control flow in loop.
+benchmark_layout.c:148:9: note: vectorized 0 loops in function.
+nbody_common.h:81:10: missed: statement clobbers memory: _74 = sqrt (r2_54);
+benchmark_layout.c:176:15: note: ***** Analysis succeeded with vector mode V4DI
+benchmark_layout.c:176:15: note: SLPing BB part
+benchmark_layout.c:176:15: note: Costing subgraph: 
+benchmark_layout.c:176:15: note: node 0x3106bf58 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:176:15: note: op template: *_33.ax = axi_14;
+benchmark_layout.c:176:15: note: 	stmt 0 *_33.ax = axi_14;
+benchmark_layout.c:176:15: note: 	stmt 1 *_33.ay = ayi_121;
+benchmark_layout.c:176:15: note: 	children 0x3106bfd8
+benchmark_layout.c:176:15: note: node 0x3106bfd8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:176:15: note: op template: axi_14 = PHI <axi_4(10)>
+benchmark_layout.c:176:15: note: 	stmt 0 axi_14 = PHI <axi_4(10)>
+benchmark_layout.c:176:15: note: 	stmt 1 ayi_121 = PHI <ayi_6(10)>
+benchmark_layout.c:176:15: note: 	children 0x3106c058
+benchmark_layout.c:176:15: note: node 0x3106c058 (max_nunits=2, refcnt=2) vector(2) double
+benchmark_layout.c:176:15: note: op template: axi_4 = PHI <axi_79(9), axi_61(14)>
+benchmark_layout.c:176:15: note: 	stmt 0 axi_4 = PHI <axi_79(9), axi_61(14)>
+benchmark_layout.c:176:15: note: 	stmt 1 ayi_6 = PHI <ayi_81(9), ayi_63(14)>
+benchmark_layout.c:176:15: note: 	children 0x3106c0d8 0x3106c1d8
+benchmark_layout.c:176:15: note: node 0x3106c0d8 (max_nunits=2, refcnt=2) vector(2) double
+benchmark_layout.c:176:15: note: op template: axi_79 = PHI <axi_4(17), 0.0(7)>
+benchmark_layout.c:176:15: note: 	stmt 0 axi_79 = PHI <axi_4(17), 0.0(7)>
+benchmark_layout.c:176:15: note: 	stmt 1 ayi_81 = PHI <ayi_6(17), 0.0(7)>
+benchmark_layout.c:176:15: note: 	children 0x3106c058 0x3106c158
+benchmark_layout.c:176:15: note: node (constant) 0x3106c158 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:176:15: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:176:15: note: node 0x3106c1d8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:176:15: note: op template: axi_61 = _60 + axi_79;
+benchmark_layout.c:176:15: note: 	stmt 0 axi_61 = _60 + axi_79;
+benchmark_layout.c:176:15: note: 	stmt 1 ayi_63 = _62 + ayi_81;
+benchmark_layout.c:176:15: note: 	children 0x3106c258 0x3106c0d8
+benchmark_layout.c:176:15: note: node 0x3106c258 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:176:15: note: op template: _60 = dx_44 * s_59;
+benchmark_layout.c:176:15: note: 	stmt 0 _60 = dx_44 * s_59;
+benchmark_layout.c:176:15: note: 	stmt 1 _62 = dy_46 * s_59;
+benchmark_layout.c:176:15: note: 	children 0x3106c2d8 0x3106c458
+benchmark_layout.c:176:15: note: node 0x3106c2d8 (max_nunits=2, refcnt=1) const vector(2) double
+benchmark_layout.c:176:15: note: op template: dx_44 = _43 - xi_34;
+benchmark_layout.c:176:15: note: 	stmt 0 dx_44 = _43 - xi_34;
+benchmark_layout.c:176:15: note: 	stmt 1 dy_46 = _45 - yi_35;
+benchmark_layout.c:176:15: note: 	children 0x3106c358 0x3106c3d8
+benchmark_layout.c:176:15: note: node 0x3106c358 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:176:15: note: op template: _43 = *_42.x;
+benchmark_layout.c:176:15: note: 	stmt 0 _43 = *_42.x;
+benchmark_layout.c:176:15: note: 	stmt 1 _45 = *_42.y;
+benchmark_layout.c:176:15: note: node 0x3106c3d8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:176:15: note: op template: xi_34 = *_33.x;
+benchmark_layout.c:176:15: note: 	stmt 0 xi_34 = *_33.x;
+benchmark_layout.c:176:15: note: 	stmt 1 yi_35 = *_33.y;
+benchmark_layout.c:176:15: note: node (external) 0x3106c458 (max_nunits=1, refcnt=1) const vector(2) double
+benchmark_layout.c:176:15: note: 	{ s_59, s_59 }
+benchmark_layout.c:176:15: note: Cost model analysis: 
+benchmark_layout.c:176:15: note: Cost model analysis for part in loop 1:
+  Vector cost: 32
+  Scalar cost: 64
+benchmark_layout.c:176:15: note: Cost model analysis for part in loop 2:
+  Vector cost: 124
+  Scalar cost: 192
+benchmark_layout.c:176:15: note: Basic block will be vectorized using SLP
+benchmark_layout.c:176:15: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:176:15: note: Vectorizing SLP tree:
+benchmark_layout.c:176:15: note: node 0x3106bf58 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:176:15: note: op template: *_33.ax = axi_14;
+benchmark_layout.c:176:15: note: 	stmt 0 *_33.ax = axi_14;
+benchmark_layout.c:176:15: note: 	stmt 1 *_33.ay = ayi_121;
+benchmark_layout.c:176:15: note: 	children 0x3106bfd8
+benchmark_layout.c:176:15: note: node 0x3106bfd8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:176:15: note: op template: axi_14 = PHI <axi_4(10)>
+benchmark_layout.c:176:15: note: 	stmt 0 axi_14 = PHI <axi_4(10)>
+benchmark_layout.c:176:15: note: 	stmt 1 ayi_121 = PHI <ayi_6(10)>
+benchmark_layout.c:176:15: note: 	children 0x3106c058
+benchmark_layout.c:176:15: note: node 0x3106c058 (max_nunits=2, refcnt=2) vector(2) double
+benchmark_layout.c:176:15: note: op template: axi_4 = PHI <axi_79(9), axi_61(14)>
+benchmark_layout.c:176:15: note: 	stmt 0 axi_4 = PHI <axi_79(9), axi_61(14)>
+benchmark_layout.c:176:15: note: 	stmt 1 ayi_6 = PHI <ayi_81(9), ayi_63(14)>
+benchmark_layout.c:176:15: note: 	children 0x3106c0d8 0x3106c1d8
+benchmark_layout.c:176:15: note: node 0x3106c0d8 (max_nunits=2, refcnt=2) vector(2) double
+benchmark_layout.c:176:15: note: op template: axi_79 = PHI <axi_4(17), 0.0(7)>
+benchmark_layout.c:176:15: note: 	stmt 0 axi_79 = PHI <axi_4(17), 0.0(7)>
+benchmark_layout.c:176:15: note: 	stmt 1 ayi_81 = PHI <ayi_6(17), 0.0(7)>
+benchmark_layout.c:176:15: note: 	children 0x3106c058 0x3106c158
+benchmark_layout.c:176:15: note: node (constant) 0x3106c158 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:176:15: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:176:15: note: node 0x3106c1d8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:176:15: note: op template: axi_61 = _60 + axi_79;
+benchmark_layout.c:176:15: note: 	stmt 0 axi_61 = _60 + axi_79;
+benchmark_layout.c:176:15: note: 	stmt 1 ayi_63 = _62 + ayi_81;
+benchmark_layout.c:176:15: note: 	children 0x3106c258 0x3106c0d8
+benchmark_layout.c:176:15: note: node 0x3106c258 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:176:15: note: op template: _60 = dx_44 * s_59;
+benchmark_layout.c:176:15: note: 	stmt 0 _60 = dx_44 * s_59;
+benchmark_layout.c:176:15: note: 	stmt 1 _62 = dy_46 * s_59;
+benchmark_layout.c:176:15: note: 	children 0x3106c2d8 0x3106c458
+benchmark_layout.c:176:15: note: node 0x3106c2d8 (max_nunits=2, refcnt=1) const vector(2) double
+benchmark_layout.c:176:15: note: op template: dx_44 = _43 - xi_34;
+benchmark_layout.c:176:15: note: 	stmt 0 dx_44 = _43 - xi_34;
+benchmark_layout.c:176:15: note: 	stmt 1 dy_46 = _45 - yi_35;
+benchmark_layout.c:176:15: note: 	children 0x3106c358 0x3106c3d8
+benchmark_layout.c:176:15: note: node 0x3106c358 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:176:15: note: op template: _43 = *_42.x;
+benchmark_layout.c:176:15: note: 	stmt 0 _43 = *_42.x;
+benchmark_layout.c:176:15: note: 	stmt 1 _45 = *_42.y;
+benchmark_layout.c:176:15: note: node 0x3106c3d8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:176:15: note: op template: xi_34 = *_33.x;
+benchmark_layout.c:176:15: note: 	stmt 0 xi_34 = *_33.x;
+benchmark_layout.c:176:15: note: 	stmt 1 yi_35 = *_33.y;
+benchmark_layout.c:176:15: note: node (external) 0x3106c458 (max_nunits=1, refcnt=1) const vector(2) double
+benchmark_layout.c:176:15: note: 	{ s_59, s_59 }
+benchmark_layout.c:176:15: note: ------>vectorizing SLP node starting from: _43 = *_42.x;
+benchmark_layout.c:176:15: note: transform load. ncopies = 1
+benchmark_layout.c:176:15: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: *_42.x
+benchmark_layout.c:176:15: note: created vectp.53_117
+benchmark_layout.c:176:15: note: add new stmt: vect__43.54_116 = MEM <vector(2) double> [(double *)vectp.53_117];
+benchmark_layout.c:176:15: note: add new stmt: vectp.53_115 = vectp.53_117 + 8;
+benchmark_layout.c:176:15: note: ------>vectorizing SLP node starting from: xi_34 = *_33.x;
+benchmark_layout.c:176:15: note: transform load. ncopies = 1
+benchmark_layout.c:176:15: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: *_33.x
+benchmark_layout.c:176:15: note: created vectp.56_114
+benchmark_layout.c:176:15: note: add new stmt: vect_xi_34.57_113 = MEM <vector(2) double> [(double *)vectp.56_114];
+benchmark_layout.c:176:15: note: add new stmt: vectp.56_112 = vectp.56_114 + 8;
+benchmark_layout.c:176:15: note: ------>vectorizing SLP node starting from: dx_44 = _43 - xi_34;
+benchmark_layout.c:176:15: note: vect_is_simple_use: operand *_42.x, type of def: internal
+benchmark_layout.c:176:15: note: vect_is_simple_use: operand *_33.x, type of def: internal
+benchmark_layout.c:176:15: note: transform binary/unary operation.
+benchmark_layout.c:176:15: note: add new stmt: vect_dx_44.58_111 = vect__43.54_116 - vect_xi_34.57_113;
+benchmark_layout.c:176:15: note: extracting lane for live stmt dx_44 = _43 - xi_34;
+benchmark_layout.c:176:15: note: extracting lane for live stmt dy_46 = _45 - yi_35;
+benchmark_layout.c:176:15: note: ------>vectorizing SLP node starting from: _60 = dx_44 * s_59;
+benchmark_layout.c:176:15: note: vect_is_simple_use: operand _43 - xi_34, type of def: internal
+benchmark_layout.c:176:15: note: transform binary/unary operation.
+benchmark_layout.c:176:15: note: add new stmt: vect__60.59_107 = vect_dx_44.58_111 * _108;
+benchmark_layout.c:176:15: note: ------>vectorizing SLP node starting from: axi_79 = PHI <axi_4(17), 0.0(7)>
+benchmark_layout.c:176:15: note: ------>vectorizing SLP node starting from: axi_4 = PHI <axi_79(9), axi_61(14)>
+benchmark_layout.c:176:15: note: ------>vectorizing SLP node starting from: axi_61 = _60 + axi_79;
+benchmark_layout.c:176:15: note: vect_is_simple_use: operand dx_44 * s_59, type of def: internal
+benchmark_layout.c:176:15: note: vect_is_simple_use: operand axi_79 = PHI <axi_4(17), 0.0(7)>, type of def: internal
+benchmark_layout.c:176:15: note: transform binary/unary operation.
+benchmark_layout.c:176:15: note: add new stmt: vect_axi_61.62_104 = vect__60.59_107 + vect_axi_79.60_106;
+benchmark_layout.c:176:15: note: ------>vectorizing SLP node starting from: axi_14 = PHI <axi_4(10)>
+benchmark_layout.c:176:15: note: ------>vectorizing SLP node starting from: *_33.ax = axi_14;
+benchmark_layout.c:176:15: note: vect_is_simple_use: operand axi_14 = PHI <axi_4(10)>, type of def: internal
+benchmark_layout.c:176:15: note: vect_is_simple_use: operand ayi_121 = PHI <ayi_6(10)>, type of def: internal
+benchmark_layout.c:176:15: note: transform store. ncopies = 1
+benchmark_layout.c:176:15: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: *_33.ax
+benchmark_layout.c:176:15: note: created vectp.65_102
+benchmark_layout.c:176:15: note: add new stmt: MEM <vector(2) double> [(double *)vectp.65_102] = vect_axi_14.63_103;
+benchmark_layout.c:176:15: note: vectorizing stmts using SLP.
+benchmark_layout.c:176:15: note: ***** The result for vector mode V32QI would be the same
+benchmark_layout.c:109:25: missed: couldn't vectorize loop
+benchmark_layout.c:109:25: missed: not vectorized: unsupported control flow in loop.
+benchmark_layout.c:116:29: missed: couldn't vectorize loop
+benchmark_layout.c:116:29: missed: not vectorized: unsupported control flow in loop.
+benchmark_layout.c:105:9: note: vectorized 0 loops in function.
+nbody_common.h:81:10: missed: statement clobbers memory: _86 = sqrt (r2_66);
+benchmark_layout.c:105:9: note: ***** Analysis failed with vector mode V4DI
+benchmark_layout.c:105:9: note: ***** The result for vector mode V32QI would be the same
+benchmark_layout.c:105:9: note: ***** Re-trying analysis with vector mode V16QI
+benchmark_layout.c:105:9: note: ***** Analysis failed with vector mode V16QI
+benchmark_layout.c:105:9: note: ***** Re-trying analysis with vector mode V8QI
+benchmark_layout.c:105:9: note: ***** Analysis failed with vector mode V8QI
+benchmark_layout.c:105:9: note: ***** Re-trying analysis with vector mode V4QI
+benchmark_layout.c:105:9: note: ***** Analysis failed with vector mode V4QI
+benchmark_layout.c:284:35: missed: couldn't vectorize loop
+benchmark_layout.c:284:35: missed: not vectorized: unsupported control flow in loop.
+benchmark_layout.c:187:25: missed: couldn't vectorize loop
+benchmark_layout.c:219:5: missed: not vectorized: unsupported use in stmt.
+benchmark_layout.c:78:25: optimized: loop vectorized using 32 byte vectors
+benchmark_layout.c:78:25: optimized:  loop versioned for vectorization because of possible aliasing
+benchmark_layout.c:233:27: missed: couldn't vectorize loop
+benchmark_layout.c:233:27: missed: not vectorized: could not determine main exit from loop with multiple exits.
+benchmark_layout.c:219:5: note: vectorized 1 loops in function.
+benchmark_layout.c:231:3: missed: statement clobbers memory: particles_init_empty (&particles);
+benchmark_layout.c:237:20: missed: statement clobbers memory: value_106 = option_value (&argi, argc_75(D), argv_77(D), "--input");
+benchmark_layout.c:239:25: missed: statement clobbers memory: value_108 = option_value (&argi, argc_75(D), argv_77(D), "--layout");
+benchmark_layout.c:241:25: missed: statement clobbers memory: value_110 = option_value (&argi, argc_75(D), argv_77(D), "--repeats");
+benchmark_layout.c:243:25: missed: statement clobbers memory: value_112 = option_value (&argi, argc_75(D), argv_77(D), "--eps");
+benchmark_layout.c:245:25: missed: statement clobbers memory: value_114 = option_value (&argi, argc_75(D), argv_77(D), "--G");
+benchmark_layout.c:247:25: missed: statement clobbers memory: value_116 = option_value (&argi, argc_75(D), argv_77(D), "--mass");
+benchmark_layout.c:249:16: missed: statement clobbers memory: _6 = strcmp (_5, "--no-header");
+benchmark_layout.c:251:16: missed: statement clobbers memory: _7 = strcmp (_5, "--help");
+benchmark_layout.c:54:3: missed: statement clobbers memory: fprintf (pretmp_352, "usage: %s --input FILE [options]\n\noptions:\n  --input FILE        input binary particle file (%s)\n  --layout NAME       layout to benchmark: both, soa, or aos (default: both)\n  --repeats N         repeated force evaluations per layout (default: 5)\n  --eps X             softening length (default: 0.05)\n  --G X               gravitational constant (default: 1)\n  --mass X            particle mass (default: 1)\n  --no-header         omit CSV header\n  --help              show this help message\n", pretmp_351, "nbody-f32-v1");
+benchmark_layout.c:259:11: missed: statement clobbers memory: nbody_die ("unknown option: %s", _14);
+benchmark_layout.c:248:16: missed: statement clobbers memory: mass_121 = parse_dtype (value_116, "--mass");
+benchmark_layout.c:246:13: missed: statement clobbers memory: g_123 = parse_dtype (value_114, "--G");
+benchmark_layout.c:244:15: missed: statement clobbers memory: eps_125 = parse_dtype (value_112, "--eps");
+benchmark_layout.c:242:19: missed: statement clobbers memory: repeats_127 = parse_size (value_110, "--repeats");
+benchmark_layout.c:41:7: missed: statement clobbers memory: _138 = strcmp (value_108, "both");
+benchmark_layout.c:43:7: missed: statement clobbers memory: _139 = strcmp (value_108, "soa");
+benchmark_layout.c:45:7: missed: statement clobbers memory: _140 = strcmp (value_108, "aos");
+benchmark_layout.c:48:3: missed: statement clobbers memory: nbody_die ("invalid layout \'%s\': expected both, soa, or aos", value_108);
+benchmark_layout.c:54:3: missed: statement clobbers memory: fprintf (pretmp_313, "usage: %s --input FILE [options]\n\noptions:\n  --input FILE        input binary particle file (%s)\n  --layout NAME       layout to benchmark: both, soa, or aos (default: both)\n  --repeats N         repeated force evaluations per layout (default: 5)\n  --eps X             softening length (default: 0.05)\n  --G X               gravitational constant (default: 1)\n  --mass X            particle mass (default: 1)\n  --no-header         omit CSV header\n  --help              show this help message\n", pretmp_314, "nbody-f32-v1");
+benchmark_layout.c:54:3: missed: statement clobbers memory: fprintf (stderr.5_134, "usage: %s --input FILE [options]\n\noptions:\n  --input FILE        input binary particle file (%s)\n  --layout NAME       layout to benchmark: both, soa, or aos (default: both)\n  --repeats N         repeated force evaluations per layout (default: 5)\n  --eps X             softening length (default: 0.05)\n  --G X               gravitational constant (default: 1)\n  --mass X            particle mass (default: 1)\n  --no-header         omit CSV header\n  --help              show this help message\n", _18, "nbody-f32-v1");
+benchmark_layout.c:266:7: missed: statement clobbers memory: nbody_die ("missing required --input FILE");
+benchmark_layout.c:269:5: missed: statement clobbers memory: nbody_die ("--repeats must be positive");
+benchmark_layout.c:271:5: missed: statement clobbers memory: nbody_die ("--eps must be non-negative");
+benchmark_layout.c:273:5: missed: statement clobbers memory: nbody_die ("--G must be positive");
+benchmark_layout.c:275:5: missed: statement clobbers memory: nbody_die ("--mass must be positive");
+benchmark_layout.c:277:3: missed: statement clobbers memory: particles_read_binary (input_path_274, mass_297, &particles);
+benchmark_layout.c:72:5: missed: statement clobbers memory: nbody_die ("particle count is too large for AoS allocation");
+benchmark_layout.c:73:10: missed: statement clobbers memory: _167 = nbody_aligned_alloc (_166, 64);
+benchmark_layout.c:282:5: missed: statement clobbers memory: __builtin_puts (&"layout,n,threads,repeat,seconds,max_abs_accel_diff,status"[0]);
+benchmark_layout.c:302:27: missed: statement clobbers memory: soa_seconds_38 = time_soa (&particles, g_66, eps_299);
+benchmark_layout.c:214:21: missed: statement clobbers memory: t0_172 = nbody_wall_seconds ();
+benchmark_layout.c:219:5: missed: statement clobbers memory: __builtin_GOMP_parallel (compute_accelerations_aos._omp_fn.0, &.omp_data_o.8, 0, 0);
+benchmark_layout.c:216:10: missed: statement clobbers memory: _174 = nbody_wall_seconds ();
+benchmark_layout.c:302:27: missed: statement clobbers memory: soa_seconds_93 = time_soa (&particles, g_66, eps_299);
+benchmark_layout.c:214:21: missed: statement clobbers memory: t0_321 = nbody_wall_seconds ();
+benchmark_layout.c:219:5: missed: statement clobbers memory: __builtin_GOMP_parallel (compute_accelerations_aos._omp_fn.0, &.omp_data_o.8, 0, 0);
+benchmark_layout.c:216:10: missed: statement clobbers memory: _331 = nbody_wall_seconds ();
+benchmark_layout.c:293:27: missed: statement clobbers memory: soa_seconds_95 = time_soa (&particles, g_66, eps_299);
+benchmark_layout.c:311:9: missed: statement clobbers memory: _307 = nbody_openmp_max_threads ();
+benchmark_layout.c:311:9: missed: statement clobbers memory: printf ("soa,%zu,%d,%zu,%.9f,%.17g,OK\n", _308, _307, repeat_260, soa_seconds_305, 0.0);
+benchmark_layout.c:214:21: missed: statement clobbers memory: t0_337 = nbody_wall_seconds ();
+benchmark_layout.c:219:5: missed: statement clobbers memory: __builtin_GOMP_parallel (compute_accelerations_aos._omp_fn.0, &.omp_data_o.8, 0, 0);
+benchmark_layout.c:216:10: missed: statement clobbers memory: _347 = nbody_wall_seconds ();
+benchmark_layout.c:311:9: missed: statement clobbers memory: _287 = nbody_openmp_max_threads ();
+benchmark_layout.c:311:9: missed: statement clobbers memory: printf ("soa,%zu,%d,%zu,%.9f,%.17g,OK\n", _68, _287, repeat_260, soa_seconds_95, 0.0);
+benchmark_layout.c:311:9: missed: statement clobbers memory: _30 = nbody_openmp_max_threads ();
+benchmark_layout.c:311:9: missed: statement clobbers memory: printf ("soa,%zu,%d,%zu,%.9f,%.17g,OK\n", _31, _30, repeat_260, soa_seconds_295, diff_286);
+benchmark_layout.c:314:9: missed: statement clobbers memory: _35 = nbody_openmp_max_threads ();
+benchmark_layout.c:314:9: missed: statement clobbers memory: printf ("aos,%zu,%d,%zu,%.9f,%.17g,OK\n", _36, _35, repeat_260, aos_seconds_294, diff_288);
+benchmark_layout.c:318:3: missed: statement clobbers memory: free (_167);
+benchmark_layout.c:319:3: missed: statement clobbers memory: particles_free (&particles);
+benchmark_layout.c:148:9: note: ***** Analysis succeeded with vector mode V8SI
+benchmark_layout.c:148:9: note: SLPing BB part
+benchmark_layout.c:86:17: note: Costing subgraph: 
+benchmark_layout.c:86:17: note: node 0x30fd5c48 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: op template: MEM[(double *)ivtmp_385] = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 0 MEM[(double *)ivtmp_385] = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 1 MEM[(double *)ivtmp_385 + 8B] = 0.0;
+benchmark_layout.c:86:17: note: 	children 0x30fd5cc8
+benchmark_layout.c:86:17: note: node (constant) 0x30fd5cc8 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:86:17: note: Cost model analysis: 
+benchmark_layout.c:86:17: note: Cost model analysis for part in loop 3:
+  Vector cost: 32
+  Scalar cost: 32
+benchmark_layout.c:86:17: note: Costing subgraph: 
+benchmark_layout.c:86:17: note: node 0x30fd5dc8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: op template: MEM[(double *)ivtmp_390] = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 0 MEM[(double *)ivtmp_390] = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 1 MEM[(double *)ivtmp_390 + 8B] = 0.0;
+benchmark_layout.c:86:17: note: 	children 0x30fd5e48
+benchmark_layout.c:86:17: note: node (constant) 0x30fd5e48 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:86:17: note: Cost model analysis: 
+benchmark_layout.c:86:17: note: Cost model analysis for part in loop 3:
+  Vector cost: 32
+  Scalar cost: 32
+benchmark_layout.c:86:17: note: Costing subgraph: 
+benchmark_layout.c:86:17: note: node 0x30fd5f48 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: op template: MEM[(double *)ivtmp_394] = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 0 MEM[(double *)ivtmp_394] = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 1 MEM[(double *)ivtmp_394 + 8B] = 0.0;
+benchmark_layout.c:86:17: note: 	children 0x30fd5fc8
+benchmark_layout.c:86:17: note: node (constant) 0x30fd5fc8 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:86:17: note: Cost model analysis: 
+benchmark_layout.c:86:17: note: Cost model analysis for part in loop 3:
+  Vector cost: 32
+  Scalar cost: 32
+benchmark_layout.c:86:17: note: Costing subgraph: 
+benchmark_layout.c:86:17: note: node 0x30fd60c8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: op template: MEM[(double *)ivtmp_398] = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 0 MEM[(double *)ivtmp_398] = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 1 MEM[(double *)ivtmp_398 + 8B] = 0.0;
+benchmark_layout.c:86:17: note: 	children 0x30fd6148
+benchmark_layout.c:86:17: note: node (constant) 0x30fd6148 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:86:17: note: Cost model analysis: 
+benchmark_layout.c:86:17: note: Cost model analysis for part in loop 3:
+  Vector cost: 32
+  Scalar cost: 32
+benchmark_layout.c:85:17: note: Costing subgraph: 
+benchmark_layout.c:85:17: note: node 0x30fd6248 (max_nunits=4, refcnt=1) vector(4) double
+benchmark_layout.c:85:17: note: op template: MEM[(double *)ivtmp_421] = _423;
+benchmark_layout.c:85:17: note: 	stmt 0 MEM[(double *)ivtmp_421] = _423;
+benchmark_layout.c:85:17: note: 	stmt 1 MEM[(double *)ivtmp_435] = _436;
+benchmark_layout.c:85:17: note: 	stmt 2 MEM[(double *)ivtmp_448] = _449;
+benchmark_layout.c:85:17: note: 	stmt 3 MEM[(double *)ivtmp_461] = _462;
+benchmark_layout.c:85:17: note: 	children 0x30fd6348
+benchmark_layout.c:85:17: note: node (external) 0x30fd6348 (max_nunits=1, refcnt=1) vector(4) double
+benchmark_layout.c:85:17: note: 	{ _423, _436, _449, _462 }
+benchmark_layout.c:85:17: note: Cost model analysis: 
+benchmark_layout.c:85:17: note: Cost model analysis for part in loop 3:
+  Vector cost: 40
+  Scalar cost: 64
+benchmark_layout.c:85:17: note: Costing subgraph: 
+benchmark_layout.c:85:17: note: node 0x30fd63c8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:85:17: note: op template: MEM[(double *)ivtmp_474] = _475;
+benchmark_layout.c:85:17: note: 	stmt 0 MEM[(double *)ivtmp_474] = _475;
+benchmark_layout.c:85:17: note: 	stmt 1 MEM[(double *)ivtmp_487] = _488;
+benchmark_layout.c:85:17: note: 	children 0x30fd64c8
+benchmark_layout.c:85:17: note: node (external) 0x30fd64c8 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:85:17: note: 	{ _475, _488 }
+benchmark_layout.c:85:17: note: Cost model analysis: 
+benchmark_layout.c:85:17: note: Cost model analysis for part in loop 3:
+  Vector cost: 20
+  Scalar cost: 32
+benchmark_layout.c:85:17: note: Costing subgraph: 
+benchmark_layout.c:85:17: note: node 0x30fd65c8 (max_nunits=4, refcnt=1) vector(4) double
+benchmark_layout.c:85:17: note: op template: MEM[(double *)ivtmp_425] = _426;
+benchmark_layout.c:85:17: note: 	stmt 0 MEM[(double *)ivtmp_425] = _426;
+benchmark_layout.c:85:17: note: 	stmt 1 MEM[(double *)ivtmp_438] = _439;
+benchmark_layout.c:85:17: note: 	stmt 2 MEM[(double *)ivtmp_451] = _452;
+benchmark_layout.c:85:17: note: 	stmt 3 MEM[(double *)ivtmp_464] = _465;
+benchmark_layout.c:85:17: note: 	children 0x30fd66c8
+benchmark_layout.c:85:17: note: node (external) 0x30fd66c8 (max_nunits=1, refcnt=1) vector(4) double
+benchmark_layout.c:85:17: note: 	{ _426, _439, _452, _465 }
+benchmark_layout.c:85:17: note: Cost model analysis: 
+benchmark_layout.c:85:17: note: Cost model analysis for part in loop 3:
+  Vector cost: 40
+  Scalar cost: 64
+benchmark_layout.c:85:17: note: Costing subgraph: 
+benchmark_layout.c:85:17: note: node 0x30fd6748 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:85:17: note: op template: MEM[(double *)ivtmp_477] = _478;
+benchmark_layout.c:85:17: note: 	stmt 0 MEM[(double *)ivtmp_477] = _478;
+benchmark_layout.c:85:17: note: 	stmt 1 MEM[(double *)ivtmp_490] = _491;
+benchmark_layout.c:85:17: note: 	children 0x30fd6848
+benchmark_layout.c:85:17: note: node (external) 0x30fd6848 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:85:17: note: 	{ _478, _491 }
+benchmark_layout.c:85:17: note: Cost model analysis: 
+benchmark_layout.c:85:17: note: Cost model analysis for part in loop 3:
+  Vector cost: 20
+  Scalar cost: 32
+benchmark_layout.c:85:17: note: Costing subgraph: 
+benchmark_layout.c:85:17: note: node 0x30fd6948 (max_nunits=4, refcnt=1) vector(4) double
+benchmark_layout.c:85:17: note: op template: MEM[(double *)ivtmp_428] = _429;
+benchmark_layout.c:85:17: note: 	stmt 0 MEM[(double *)ivtmp_428] = _429;
+benchmark_layout.c:85:17: note: 	stmt 1 MEM[(double *)ivtmp_441] = _442;
+benchmark_layout.c:85:17: note: 	stmt 2 MEM[(double *)ivtmp_454] = _455;
+benchmark_layout.c:85:17: note: 	stmt 3 MEM[(double *)ivtmp_467] = _468;
+benchmark_layout.c:85:17: note: 	children 0x30fd6a48
+benchmark_layout.c:85:17: note: node (external) 0x30fd6a48 (max_nunits=1, refcnt=1) vector(4) double
+benchmark_layout.c:85:17: note: 	{ _429, _442, _455, _468 }
+benchmark_layout.c:85:17: note: Cost model analysis: 
+benchmark_layout.c:85:17: note: Cost model analysis for part in loop 3:
+  Vector cost: 40
+  Scalar cost: 64
+benchmark_layout.c:85:17: note: Costing subgraph: 
+benchmark_layout.c:85:17: note: node 0x30fd6ac8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:85:17: note: op template: MEM[(double *)ivtmp_480] = _481;
+benchmark_layout.c:85:17: note: 	stmt 0 MEM[(double *)ivtmp_480] = _481;
+benchmark_layout.c:85:17: note: 	stmt 1 MEM[(double *)ivtmp_493] = _494;
+benchmark_layout.c:85:17: note: 	children 0x30fd6bc8
+benchmark_layout.c:85:17: note: node (external) 0x30fd6bc8 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:85:17: note: 	{ _481, _494 }
+benchmark_layout.c:85:17: note: Cost model analysis: 
+benchmark_layout.c:85:17: note: Cost model analysis for part in loop 3:
+  Vector cost: 20
+  Scalar cost: 32
+benchmark_layout.c:85:17: note: Costing subgraph: 
+benchmark_layout.c:85:17: note: node 0x30fd6cc8 (max_nunits=4, refcnt=1) vector(4) double
+benchmark_layout.c:85:17: note: op template: MEM[(double *)ivtmp_431] = _432;
+benchmark_layout.c:85:17: note: 	stmt 0 MEM[(double *)ivtmp_431] = _432;
+benchmark_layout.c:85:17: note: 	stmt 1 MEM[(double *)ivtmp_444] = _445;
+benchmark_layout.c:85:17: note: 	stmt 2 MEM[(double *)ivtmp_457] = _458;
+benchmark_layout.c:85:17: note: 	stmt 3 MEM[(double *)ivtmp_470] = _471;
+benchmark_layout.c:85:17: note: 	children 0x30fd6dc8
+benchmark_layout.c:85:17: note: node (external) 0x30fd6dc8 (max_nunits=1, refcnt=1) vector(4) double
+benchmark_layout.c:85:17: note: 	{ _432, _445, _458, _471 }
+benchmark_layout.c:85:17: note: Cost model analysis: 
+benchmark_layout.c:85:17: note: Cost model analysis for part in loop 3:
+  Vector cost: 40
+  Scalar cost: 64
+benchmark_layout.c:85:17: note: Costing subgraph: 
+benchmark_layout.c:85:17: note: node 0x30fd6e48 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:85:17: note: op template: MEM[(double *)ivtmp_483] = _484;
+benchmark_layout.c:85:17: note: 	stmt 0 MEM[(double *)ivtmp_483] = _484;
+benchmark_layout.c:85:17: note: 	stmt 1 MEM[(double *)ivtmp_496] = _497;
+benchmark_layout.c:85:17: note: 	children 0x30fd6f48
+benchmark_layout.c:85:17: note: node (external) 0x30fd6f48 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:85:17: note: 	{ _484, _497 }
+benchmark_layout.c:85:17: note: Cost model analysis: 
+benchmark_layout.c:85:17: note: Cost model analysis for part in loop 3:
+  Vector cost: 20
+  Scalar cost: 32
+benchmark_layout.c:86:17: note: Costing subgraph: 
+benchmark_layout.c:86:17: note: node 0x30fd73c8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: op template: _148->ax = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 0 _148->ax = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 1 _148->ay = 0.0;
+benchmark_layout.c:86:17: note: 	children 0x30fd7448
+benchmark_layout.c:86:17: note: node (constant) 0x30fd7448 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:86:17: note: Cost model analysis: 
+benchmark_layout.c:86:17: note: Cost model analysis for part in loop 0:
+  Vector cost: 32
+  Scalar cost: 32
+benchmark_layout.c:86:17: note: Costing subgraph: 
+benchmark_layout.c:86:17: note: node 0x30fd78c8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: op template: _223->ax = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 0 _223->ax = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 1 _223->ay = 0.0;
+benchmark_layout.c:86:17: note: 	children 0x30fd7948
+benchmark_layout.c:86:17: note: node (constant) 0x30fd7948 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:86:17: note: Cost model analysis: 
+benchmark_layout.c:86:17: note: Cost model analysis for part in loop 0:
+  Vector cost: 32
+  Scalar cost: 32
+benchmark_layout.c:86:17: note: Costing subgraph: 
+benchmark_layout.c:86:17: note: node 0x30fd7dc8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: op template: _357->ax = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 0 _357->ax = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 1 _357->ay = 0.0;
+benchmark_layout.c:86:17: note: 	children 0x30fd7e48
+benchmark_layout.c:86:17: note: node (constant) 0x30fd7e48 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:86:17: note: Cost model analysis: 
+benchmark_layout.c:86:17: note: Cost model analysis for part in loop 0:
+  Vector cost: 32
+  Scalar cost: 32
+benchmark_layout.c:86:17: note: Costing subgraph: 
+benchmark_layout.c:86:17: note: node 0x30fd82c8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: op template: _56->ax = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 0 _56->ax = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 1 _56->ay = 0.0;
+benchmark_layout.c:86:17: note: 	children 0x30fd8348
+benchmark_layout.c:86:17: note: node (constant) 0x30fd8348 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:86:17: note: Cost model analysis: 
+benchmark_layout.c:86:17: note: Cost model analysis for part in loop 5:
+  Vector cost: 32
+  Scalar cost: 32
+benchmark_layout.c:148:9: note: Costing subgraph: 
+benchmark_layout.c:148:9: note: node 0x30fd8448 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: op template: .omp_data_o.8.g = g_66;
+benchmark_layout.c:148:9: note: 	stmt 0 .omp_data_o.8.g = g_66;
+benchmark_layout.c:148:9: note: 	stmt 1 .omp_data_o.8.mass = mass_297;
+benchmark_layout.c:148:9: note: 	children 0x30fd84c8
+benchmark_layout.c:148:9: note: node 0x30fd84c8 (max_nunits=2, refcnt=3) vector(2) double
+benchmark_layout.c:148:9: note: op template: g_66 = PHI <g_349(23), g_273(24)>
+benchmark_layout.c:148:9: note: 	stmt 0 g_66 = PHI <g_349(23), g_273(24)>
+benchmark_layout.c:148:9: note: 	stmt 1 mass_297 = PHI <mass_334(23), mass_296(24)>
+benchmark_layout.c:148:9: note: 	children 0x30fd88c8 0x30fd87c8
+benchmark_layout.c:148:9: note: node (external) 0x30fd88c8 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: 	{ g_349, mass_334 }
+benchmark_layout.c:148:9: note: node 0x30fd87c8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: op template: g_273 = PHI <g_349(23), 1.0e+0(22)>
+benchmark_layout.c:148:9: note: 	stmt 0 g_273 = PHI <g_349(23), 1.0e+0(22)>
+benchmark_layout.c:148:9: note: 	stmt 1 mass_296 = PHI <mass_334(23), 1.0e+0(22)>
+benchmark_layout.c:148:9: note: 	children 0x30fd8948 0x30fd89c8
+benchmark_layout.c:148:9: note: node (external) 0x30fd8948 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: 	{ g_349, mass_334 }
+benchmark_layout.c:148:9: note: node (constant) 0x30fd89c8 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: 	{ 1.0e+0, 1.0e+0 }
+benchmark_layout.c:148:9: note: node 0x30fd8ac8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: op template: .omp_data_o.8.g = g_66;
+benchmark_layout.c:148:9: note: 	stmt 0 .omp_data_o.8.g = g_66;
+benchmark_layout.c:148:9: note: 	stmt 1 .omp_data_o.8.mass = mass_297;
+benchmark_layout.c:148:9: note: 	children 0x30fd84c8
+benchmark_layout.c:148:9: note: node 0x30fd8bc8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: op template: .omp_data_o.8.g = g_66;
+benchmark_layout.c:148:9: note: 	stmt 0 .omp_data_o.8.g = g_66;
+benchmark_layout.c:148:9: note: 	stmt 1 .omp_data_o.8.mass = mass_297;
+benchmark_layout.c:148:9: note: 	children 0x30fd84c8
+benchmark_layout.c:148:9: note: Cost model analysis: 
+benchmark_layout.c:148:9: note: Cost model analysis for part in loop 0:
+  Vector cost: 64
+  Scalar cost: 64
+benchmark_layout.c:148:9: note: Cost model analysis for part in loop 2:
+  Vector cost: 48
+  Scalar cost: 96
+benchmark_layout.c:148:9: note: Basic block will be vectorized using SLP
+benchmark_layout.c:86:17: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:86:17: note: Vectorizing SLP tree:
+benchmark_layout.c:86:17: note: node 0x30fd5c48 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: op template: MEM[(double *)ivtmp_385] = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 0 MEM[(double *)ivtmp_385] = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 1 MEM[(double *)ivtmp_385 + 8B] = 0.0;
+benchmark_layout.c:86:17: note: 	children 0x30fd5cc8
+benchmark_layout.c:86:17: note: node (constant) 0x30fd5cc8 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:86:17: note: ------>vectorizing SLP node starting from: MEM[(double *)ivtmp_385] = 0.0;
+benchmark_layout.c:86:17: note: vect_is_simple_use: operand 0.0, type of def: constant
+benchmark_layout.c:86:17: note: transform store. ncopies = 1
+benchmark_layout.c:86:17: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: MEM[(double *)ivtmp_385]
+benchmark_layout.c:86:17: note: created vectp.133_262
+benchmark_layout.c:86:17: note: add new stmt: MEM <vector(2) double> [(double *)vectp.133_262] = { 0.0, 0.0 };
+benchmark_layout.c:86:17: note: vectorizing stmts using SLP.
+benchmark_layout.c:86:17: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:86:17: note: Vectorizing SLP tree:
+benchmark_layout.c:86:17: note: node 0x30fd5dc8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: op template: MEM[(double *)ivtmp_390] = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 0 MEM[(double *)ivtmp_390] = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 1 MEM[(double *)ivtmp_390 + 8B] = 0.0;
+benchmark_layout.c:86:17: note: 	children 0x30fd5e48
+benchmark_layout.c:86:17: note: node (constant) 0x30fd5e48 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:86:17: note: ------>vectorizing SLP node starting from: MEM[(double *)ivtmp_390] = 0.0;
+benchmark_layout.c:86:17: note: vect_is_simple_use: operand 0.0, type of def: constant
+benchmark_layout.c:86:17: note: transform store. ncopies = 1
+benchmark_layout.c:86:17: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: MEM[(double *)ivtmp_390]
+benchmark_layout.c:86:17: note: created vectp.135_246
+benchmark_layout.c:86:17: note: add new stmt: MEM <vector(2) double> [(double *)vectp.135_246] = { 0.0, 0.0 };
+benchmark_layout.c:86:17: note: vectorizing stmts using SLP.
+benchmark_layout.c:86:17: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:86:17: note: Vectorizing SLP tree:
+benchmark_layout.c:86:17: note: node 0x30fd5f48 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: op template: MEM[(double *)ivtmp_394] = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 0 MEM[(double *)ivtmp_394] = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 1 MEM[(double *)ivtmp_394 + 8B] = 0.0;
+benchmark_layout.c:86:17: note: 	children 0x30fd5fc8
+benchmark_layout.c:86:17: note: node (constant) 0x30fd5fc8 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:86:17: note: ------>vectorizing SLP node starting from: MEM[(double *)ivtmp_394] = 0.0;
+benchmark_layout.c:86:17: note: vect_is_simple_use: operand 0.0, type of def: constant
+benchmark_layout.c:86:17: note: transform store. ncopies = 1
+benchmark_layout.c:86:17: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: MEM[(double *)ivtmp_394]
+benchmark_layout.c:86:17: note: created vectp.137_232
+benchmark_layout.c:86:17: note: add new stmt: MEM <vector(2) double> [(double *)vectp.137_232] = { 0.0, 0.0 };
+benchmark_layout.c:86:17: note: vectorizing stmts using SLP.
+benchmark_layout.c:86:17: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:86:17: note: Vectorizing SLP tree:
+benchmark_layout.c:86:17: note: node 0x30fd60c8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: op template: MEM[(double *)ivtmp_398] = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 0 MEM[(double *)ivtmp_398] = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 1 MEM[(double *)ivtmp_398 + 8B] = 0.0;
+benchmark_layout.c:86:17: note: 	children 0x30fd6148
+benchmark_layout.c:86:17: note: node (constant) 0x30fd6148 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:86:17: note: ------>vectorizing SLP node starting from: MEM[(double *)ivtmp_398] = 0.0;
+benchmark_layout.c:86:17: note: vect_is_simple_use: operand 0.0, type of def: constant
+benchmark_layout.c:86:17: note: transform store. ncopies = 1
+benchmark_layout.c:86:17: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: MEM[(double *)ivtmp_398]
+benchmark_layout.c:86:17: note: created vectp.139_215
+benchmark_layout.c:86:17: note: add new stmt: MEM <vector(2) double> [(double *)vectp.139_215] = { 0.0, 0.0 };
+benchmark_layout.c:86:17: note: vectorizing stmts using SLP.
+benchmark_layout.c:85:17: optimized: basic block part vectorized using 32 byte vectors
+benchmark_layout.c:85:17: note: Vectorizing SLP tree:
+benchmark_layout.c:85:17: note: node 0x30fd6248 (max_nunits=4, refcnt=1) vector(4) double
+benchmark_layout.c:85:17: note: op template: MEM[(double *)ivtmp_421] = _423;
+benchmark_layout.c:85:17: note: 	stmt 0 MEM[(double *)ivtmp_421] = _423;
+benchmark_layout.c:85:17: note: 	stmt 1 MEM[(double *)ivtmp_435] = _436;
+benchmark_layout.c:85:17: note: 	stmt 2 MEM[(double *)ivtmp_448] = _449;
+benchmark_layout.c:85:17: note: 	stmt 3 MEM[(double *)ivtmp_461] = _462;
+benchmark_layout.c:85:17: note: 	children 0x30fd6348
+benchmark_layout.c:85:17: note: node (external) 0x30fd6348 (max_nunits=1, refcnt=1) vector(4) double
+benchmark_layout.c:85:17: note: 	{ _423, _436, _449, _462 }
+benchmark_layout.c:85:17: note: ------>vectorizing SLP node starting from: MEM[(double *)ivtmp_421] = _423;
+benchmark_layout.c:85:17: note: vect_is_simple_use: operand BIT_FIELD_REF <vect__151.117_408, 64, 0>, type of def: internal
+benchmark_layout.c:85:17: note: vect_is_simple_use: operand BIT_FIELD_REF <vect__154.120_411, 64, 0>, type of def: internal
+benchmark_layout.c:85:17: note: vect_is_simple_use: operand BIT_FIELD_REF <vect__157.123_414, 64, 0>, type of def: internal
+benchmark_layout.c:85:17: note: transform store. ncopies = 1
+benchmark_layout.c:85:17: note: create vector_type-pointer variable to type: vector(4) double  vectorizing a pointer ref: MEM[(double *)ivtmp_421]
+benchmark_layout.c:85:17: note: created vectp.141_169
+benchmark_layout.c:85:17: note: add new stmt: MEM <vector(4) double> [(double *)vectp.141_169] = _177;
+benchmark_layout.c:85:17: note: vectorizing stmts using SLP.
+benchmark_layout.c:85:17: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:85:17: note: Vectorizing SLP tree:
+benchmark_layout.c:85:17: note: node 0x30fd63c8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:85:17: note: op template: MEM[(double *)ivtmp_474] = _475;
+benchmark_layout.c:85:17: note: 	stmt 0 MEM[(double *)ivtmp_474] = _475;
+benchmark_layout.c:85:17: note: 	stmt 1 MEM[(double *)ivtmp_487] = _488;
+benchmark_layout.c:85:17: note: 	children 0x30fd64c8
+benchmark_layout.c:85:17: note: node (external) 0x30fd64c8 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:85:17: note: 	{ _475, _488 }
+benchmark_layout.c:85:17: note: ------>vectorizing SLP node starting from: MEM[(double *)ivtmp_474] = _475;
+benchmark_layout.c:85:17: note: vect_is_simple_use: operand BIT_FIELD_REF <vect__163.129_420, 64, 0>, type of def: internal
+benchmark_layout.c:85:17: note: transform store. ncopies = 1
+benchmark_layout.c:85:17: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: MEM[(double *)ivtmp_474]
+benchmark_layout.c:85:17: note: created vectp.143_99
+benchmark_layout.c:85:17: note: add new stmt: MEM <vector(2) double> [(double *)vectp.143_99] = _130;
+benchmark_layout.c:85:17: note: vectorizing stmts using SLP.
+benchmark_layout.c:85:17: optimized: basic block part vectorized using 32 byte vectors
+benchmark_layout.c:85:17: note: Vectorizing SLP tree:
+benchmark_layout.c:85:17: note: node 0x30fd65c8 (max_nunits=4, refcnt=1) vector(4) double
+benchmark_layout.c:85:17: note: op template: MEM[(double *)ivtmp_425] = _426;
+benchmark_layout.c:85:17: note: 	stmt 0 MEM[(double *)ivtmp_425] = _426;
+benchmark_layout.c:85:17: note: 	stmt 1 MEM[(double *)ivtmp_438] = _439;
+benchmark_layout.c:85:17: note: 	stmt 2 MEM[(double *)ivtmp_451] = _452;
+benchmark_layout.c:85:17: note: 	stmt 3 MEM[(double *)ivtmp_464] = _465;
+benchmark_layout.c:85:17: note: 	children 0x30fd66c8
+benchmark_layout.c:85:17: note: node (external) 0x30fd66c8 (max_nunits=1, refcnt=1) vector(4) double
+benchmark_layout.c:85:17: note: 	{ _426, _439, _452, _465 }
+benchmark_layout.c:85:17: note: ------>vectorizing SLP node starting from: MEM[(double *)ivtmp_425] = _426;
+benchmark_layout.c:85:17: note: vect_is_simple_use: operand BIT_FIELD_REF <vect__151.117_408, 64, 64>, type of def: internal
+benchmark_layout.c:85:17: note: vect_is_simple_use: operand BIT_FIELD_REF <vect__154.120_411, 64, 64>, type of def: internal
+benchmark_layout.c:85:17: note: vect_is_simple_use: operand BIT_FIELD_REF <vect__157.123_414, 64, 64>, type of def: internal
+benchmark_layout.c:85:17: note: transform store. ncopies = 1
+benchmark_layout.c:85:17: note: create vector_type-pointer variable to type: vector(4) double  vectorizing a pointer ref: MEM[(double *)ivtmp_425]
+benchmark_layout.c:85:17: note: created vectp.145_254
+benchmark_layout.c:85:17: note: add new stmt: MEM <vector(4) double> [(double *)vectp.145_254] = _383;
+benchmark_layout.c:85:17: note: vectorizing stmts using SLP.
+benchmark_layout.c:85:17: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:85:17: note: Vectorizing SLP tree:
+benchmark_layout.c:85:17: note: node 0x30fd6748 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:85:17: note: op template: MEM[(double *)ivtmp_477] = _478;
+benchmark_layout.c:85:17: note: 	stmt 0 MEM[(double *)ivtmp_477] = _478;
+benchmark_layout.c:85:17: note: 	stmt 1 MEM[(double *)ivtmp_490] = _491;
+benchmark_layout.c:85:17: note: 	children 0x30fd6848
+benchmark_layout.c:85:17: note: node (external) 0x30fd6848 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:85:17: note: 	{ _478, _491 }
+benchmark_layout.c:85:17: note: ------>vectorizing SLP node starting from: MEM[(double *)ivtmp_477] = _478;
+benchmark_layout.c:85:17: note: vect_is_simple_use: operand BIT_FIELD_REF <vect__163.129_420, 64, 64>, type of def: internal
+benchmark_layout.c:85:17: note: transform store. ncopies = 1
+benchmark_layout.c:85:17: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: MEM[(double *)ivtmp_477]
+benchmark_layout.c:85:17: note: created vectp.147_523
+benchmark_layout.c:85:17: note: add new stmt: MEM <vector(2) double> [(double *)vectp.147_523] = _98;
+benchmark_layout.c:85:17: note: vectorizing stmts using SLP.
+benchmark_layout.c:85:17: optimized: basic block part vectorized using 32 byte vectors
+benchmark_layout.c:85:17: note: Vectorizing SLP tree:
+benchmark_layout.c:85:17: note: node 0x30fd6948 (max_nunits=4, refcnt=1) vector(4) double
+benchmark_layout.c:85:17: note: op template: MEM[(double *)ivtmp_428] = _429;
+benchmark_layout.c:85:17: note: 	stmt 0 MEM[(double *)ivtmp_428] = _429;
+benchmark_layout.c:85:17: note: 	stmt 1 MEM[(double *)ivtmp_441] = _442;
+benchmark_layout.c:85:17: note: 	stmt 2 MEM[(double *)ivtmp_454] = _455;
+benchmark_layout.c:85:17: note: 	stmt 3 MEM[(double *)ivtmp_467] = _468;
+benchmark_layout.c:85:17: note: 	children 0x30fd6a48
+benchmark_layout.c:85:17: note: node (external) 0x30fd6a48 (max_nunits=1, refcnt=1) vector(4) double
+benchmark_layout.c:85:17: note: 	{ _429, _442, _455, _468 }
+benchmark_layout.c:85:17: note: ------>vectorizing SLP node starting from: MEM[(double *)ivtmp_428] = _429;
+benchmark_layout.c:85:17: note: vect_is_simple_use: operand BIT_FIELD_REF <vect__151.117_408, 64, 128>, type of def: internal
+benchmark_layout.c:85:17: note: vect_is_simple_use: operand BIT_FIELD_REF <vect__154.120_411, 64, 128>, type of def: internal
+benchmark_layout.c:85:17: note: vect_is_simple_use: operand BIT_FIELD_REF <vect__157.123_414, 64, 128>, type of def: internal
+benchmark_layout.c:85:17: note: transform store. ncopies = 1
+benchmark_layout.c:85:17: note: create vector_type-pointer variable to type: vector(4) double  vectorizing a pointer ref: MEM[(double *)ivtmp_428]
+benchmark_layout.c:85:17: note: created vectp.149_526
+benchmark_layout.c:85:17: note: add new stmt: MEM <vector(4) double> [(double *)vectp.149_526] = _525;
+benchmark_layout.c:85:17: note: vectorizing stmts using SLP.
+benchmark_layout.c:85:17: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:85:17: note: Vectorizing SLP tree:
+benchmark_layout.c:85:17: note: node 0x30fd6ac8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:85:17: note: op template: MEM[(double *)ivtmp_480] = _481;
+benchmark_layout.c:85:17: note: 	stmt 0 MEM[(double *)ivtmp_480] = _481;
+benchmark_layout.c:85:17: note: 	stmt 1 MEM[(double *)ivtmp_493] = _494;
+benchmark_layout.c:85:17: note: 	children 0x30fd6bc8
+benchmark_layout.c:85:17: note: node (external) 0x30fd6bc8 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:85:17: note: 	{ _481, _494 }
+benchmark_layout.c:85:17: note: ------>vectorizing SLP node starting from: MEM[(double *)ivtmp_480] = _481;
+benchmark_layout.c:85:17: note: vect_is_simple_use: operand BIT_FIELD_REF <vect__163.129_420, 64, 128>, type of def: internal
+benchmark_layout.c:85:17: note: transform store. ncopies = 1
+benchmark_layout.c:85:17: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: MEM[(double *)ivtmp_480]
+benchmark_layout.c:85:17: note: created vectp.151_529
+benchmark_layout.c:85:17: note: add new stmt: MEM <vector(2) double> [(double *)vectp.151_529] = _528;
+benchmark_layout.c:85:17: note: vectorizing stmts using SLP.
+benchmark_layout.c:85:17: optimized: basic block part vectorized using 32 byte vectors
+benchmark_layout.c:85:17: note: Vectorizing SLP tree:
+benchmark_layout.c:85:17: note: node 0x30fd6cc8 (max_nunits=4, refcnt=1) vector(4) double
+benchmark_layout.c:85:17: note: op template: MEM[(double *)ivtmp_431] = _432;
+benchmark_layout.c:85:17: note: 	stmt 0 MEM[(double *)ivtmp_431] = _432;
+benchmark_layout.c:85:17: note: 	stmt 1 MEM[(double *)ivtmp_444] = _445;
+benchmark_layout.c:85:17: note: 	stmt 2 MEM[(double *)ivtmp_457] = _458;
+benchmark_layout.c:85:17: note: 	stmt 3 MEM[(double *)ivtmp_470] = _471;
+benchmark_layout.c:85:17: note: 	children 0x30fd6dc8
+benchmark_layout.c:85:17: note: node (external) 0x30fd6dc8 (max_nunits=1, refcnt=1) vector(4) double
+benchmark_layout.c:85:17: note: 	{ _432, _445, _458, _471 }
+benchmark_layout.c:85:17: note: ------>vectorizing SLP node starting from: MEM[(double *)ivtmp_431] = _432;
+benchmark_layout.c:85:17: note: vect_is_simple_use: operand BIT_FIELD_REF <vect__151.117_408, 64, 192>, type of def: internal
+benchmark_layout.c:85:17: note: vect_is_simple_use: operand BIT_FIELD_REF <vect__154.120_411, 64, 192>, type of def: internal
+benchmark_layout.c:85:17: note: vect_is_simple_use: operand BIT_FIELD_REF <vect__157.123_414, 64, 192>, type of def: internal
+benchmark_layout.c:85:17: note: transform store. ncopies = 1
+benchmark_layout.c:85:17: note: create vector_type-pointer variable to type: vector(4) double  vectorizing a pointer ref: MEM[(double *)ivtmp_431]
+benchmark_layout.c:85:17: note: created vectp.153_532
+benchmark_layout.c:85:17: note: add new stmt: MEM <vector(4) double> [(double *)vectp.153_532] = _531;
+benchmark_layout.c:85:17: note: vectorizing stmts using SLP.
+benchmark_layout.c:85:17: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:85:17: note: Vectorizing SLP tree:
+benchmark_layout.c:85:17: note: node 0x30fd6e48 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:85:17: note: op template: MEM[(double *)ivtmp_483] = _484;
+benchmark_layout.c:85:17: note: 	stmt 0 MEM[(double *)ivtmp_483] = _484;
+benchmark_layout.c:85:17: note: 	stmt 1 MEM[(double *)ivtmp_496] = _497;
+benchmark_layout.c:85:17: note: 	children 0x30fd6f48
+benchmark_layout.c:85:17: note: node (external) 0x30fd6f48 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:85:17: note: 	{ _484, _497 }
+benchmark_layout.c:85:17: note: ------>vectorizing SLP node starting from: MEM[(double *)ivtmp_483] = _484;
+benchmark_layout.c:85:17: note: vect_is_simple_use: operand BIT_FIELD_REF <vect__163.129_420, 64, 192>, type of def: internal
+benchmark_layout.c:85:17: note: transform store. ncopies = 1
+benchmark_layout.c:85:17: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: MEM[(double *)ivtmp_483]
+benchmark_layout.c:85:17: note: created vectp.155_535
+benchmark_layout.c:85:17: note: add new stmt: MEM <vector(2) double> [(double *)vectp.155_535] = _534;
+benchmark_layout.c:85:17: note: vectorizing stmts using SLP.
+benchmark_layout.c:86:17: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:86:17: note: Vectorizing SLP tree:
+benchmark_layout.c:86:17: note: node 0x30fd73c8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: op template: _148->ax = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 0 _148->ax = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 1 _148->ay = 0.0;
+benchmark_layout.c:86:17: note: 	children 0x30fd7448
+benchmark_layout.c:86:17: note: node (constant) 0x30fd7448 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:86:17: note: ------>vectorizing SLP node starting from: _148->ax = 0.0;
+benchmark_layout.c:86:17: note: vect_is_simple_use: operand 0.0, type of def: constant
+benchmark_layout.c:86:17: note: transform store. ncopies = 1
+benchmark_layout.c:86:17: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: _148->ax
+benchmark_layout.c:86:17: note: created vectp.157_537
+benchmark_layout.c:86:17: note: add new stmt: MEM <vector(2) double> [(double *)vectp.157_537] = { 0.0, 0.0 };
+benchmark_layout.c:86:17: note: vectorizing stmts using SLP.
+benchmark_layout.c:86:17: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:86:17: note: Vectorizing SLP tree:
+benchmark_layout.c:86:17: note: node 0x30fd78c8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: op template: _223->ax = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 0 _223->ax = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 1 _223->ay = 0.0;
+benchmark_layout.c:86:17: note: 	children 0x30fd7948
+benchmark_layout.c:86:17: note: node (constant) 0x30fd7948 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:86:17: note: ------>vectorizing SLP node starting from: _223->ax = 0.0;
+benchmark_layout.c:86:17: note: vect_is_simple_use: operand 0.0, type of def: constant
+benchmark_layout.c:86:17: note: transform store. ncopies = 1
+benchmark_layout.c:86:17: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: _223->ax
+benchmark_layout.c:86:17: note: created vectp.159_539
+benchmark_layout.c:86:17: note: add new stmt: MEM <vector(2) double> [(double *)vectp.159_539] = { 0.0, 0.0 };
+benchmark_layout.c:86:17: note: vectorizing stmts using SLP.
+benchmark_layout.c:86:17: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:86:17: note: Vectorizing SLP tree:
+benchmark_layout.c:86:17: note: node 0x30fd7dc8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: op template: _357->ax = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 0 _357->ax = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 1 _357->ay = 0.0;
+benchmark_layout.c:86:17: note: 	children 0x30fd7e48
+benchmark_layout.c:86:17: note: node (constant) 0x30fd7e48 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:86:17: note: ------>vectorizing SLP node starting from: _357->ax = 0.0;
+benchmark_layout.c:86:17: note: vect_is_simple_use: operand 0.0, type of def: constant
+benchmark_layout.c:86:17: note: transform store. ncopies = 1
+benchmark_layout.c:86:17: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: _357->ax
+benchmark_layout.c:86:17: note: created vectp.161_541
+benchmark_layout.c:86:17: note: add new stmt: MEM <vector(2) double> [(double *)vectp.161_541] = { 0.0, 0.0 };
+benchmark_layout.c:86:17: note: vectorizing stmts using SLP.
+benchmark_layout.c:86:17: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:86:17: note: Vectorizing SLP tree:
+benchmark_layout.c:86:17: note: node 0x30fd82c8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: op template: _56->ax = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 0 _56->ax = 0.0;
+benchmark_layout.c:86:17: note: 	stmt 1 _56->ay = 0.0;
+benchmark_layout.c:86:17: note: 	children 0x30fd8348
+benchmark_layout.c:86:17: note: node (constant) 0x30fd8348 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:86:17: note: 	{ 0.0, 0.0 }
+benchmark_layout.c:86:17: note: ------>vectorizing SLP node starting from: _56->ax = 0.0;
+benchmark_layout.c:86:17: note: vect_is_simple_use: operand 0.0, type of def: constant
+benchmark_layout.c:86:17: note: transform store. ncopies = 1
+benchmark_layout.c:86:17: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: _56->ax
+benchmark_layout.c:86:17: note: created vectp.163_543
+benchmark_layout.c:86:17: note: add new stmt: MEM <vector(2) double> [(double *)vectp.163_543] = { 0.0, 0.0 };
+benchmark_layout.c:86:17: note: vectorizing stmts using SLP.
+benchmark_layout.c:148:9: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:148:9: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:148:9: optimized: basic block part vectorized using 16 byte vectors
+benchmark_layout.c:148:9: note: Vectorizing SLP tree:
+benchmark_layout.c:148:9: note: node 0x30fd8448 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: op template: .omp_data_o.8.g = g_66;
+benchmark_layout.c:148:9: note: 	stmt 0 .omp_data_o.8.g = g_66;
+benchmark_layout.c:148:9: note: 	stmt 1 .omp_data_o.8.mass = mass_297;
+benchmark_layout.c:148:9: note: 	children 0x30fd84c8
+benchmark_layout.c:148:9: note: node 0x30fd84c8 (max_nunits=2, refcnt=3) vector(2) double
+benchmark_layout.c:148:9: note: op template: g_66 = PHI <g_349(23), g_273(24)>
+benchmark_layout.c:148:9: note: 	stmt 0 g_66 = PHI <g_349(23), g_273(24)>
+benchmark_layout.c:148:9: note: 	stmt 1 mass_297 = PHI <mass_334(23), mass_296(24)>
+benchmark_layout.c:148:9: note: 	children 0x30fd88c8 0x30fd87c8
+benchmark_layout.c:148:9: note: node (external) 0x30fd88c8 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: 	{ g_349, mass_334 }
+benchmark_layout.c:148:9: note: node 0x30fd87c8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: op template: g_273 = PHI <g_349(23), 1.0e+0(22)>
+benchmark_layout.c:148:9: note: 	stmt 0 g_273 = PHI <g_349(23), 1.0e+0(22)>
+benchmark_layout.c:148:9: note: 	stmt 1 mass_296 = PHI <mass_334(23), 1.0e+0(22)>
+benchmark_layout.c:148:9: note: 	children 0x30fd8948 0x30fd89c8
+benchmark_layout.c:148:9: note: node (external) 0x30fd8948 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: 	{ g_349, mass_334 }
+benchmark_layout.c:148:9: note: node (constant) 0x30fd89c8 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: 	{ 1.0e+0, 1.0e+0 }
+benchmark_layout.c:148:9: note: ------>vectorizing SLP node starting from: g_273 = PHI <g_349(23), 1.0e+0(22)>
+benchmark_layout.c:148:9: note: ------>vectorizing SLP node starting from: g_66 = PHI <g_349(23), g_273(24)>
+benchmark_layout.c:148:9: note: extracting lane for live stmt g_66 = PHI <g_349(23), g_273(24)>
+benchmark_layout.c:148:9: note: extracting lane for live stmt mass_297 = PHI <mass_334(23), mass_296(24)>
+benchmark_layout.c:148:9: note: ------>vectorizing SLP node starting from: .omp_data_o.8.g = g_66;
+benchmark_layout.c:148:9: note: vect_is_simple_use: operand g_66 = PHI <g_349(23), g_273(24)>, type of def: internal
+benchmark_layout.c:148:9: note: vect_is_simple_use: operand mass_297 = PHI <mass_334(23), mass_296(24)>, type of def: internal
+benchmark_layout.c:148:9: note: transform store. ncopies = 1
+benchmark_layout.c:148:9: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: .omp_data_o.8.g
+benchmark_layout.c:148:9: note: created &.omp_data_o.8.g
+benchmark_layout.c:148:9: note: add new stmt: MEM <vector(2) double> [(double *)&.omp_data_o.8 + 16B] = vect_g_66.165_548;
+benchmark_layout.c:148:9: note: vectorizing stmts using SLP.
+benchmark_layout.c:148:9: note: Vectorizing SLP tree:
+benchmark_layout.c:148:9: note: node 0x30fd8ac8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: op template: .omp_data_o.8.g = g_66;
+benchmark_layout.c:148:9: note: 	stmt 0 .omp_data_o.8.g = g_66;
+benchmark_layout.c:148:9: note: 	stmt 1 .omp_data_o.8.mass = mass_297;
+benchmark_layout.c:148:9: note: 	children 0x30fd84c8
+benchmark_layout.c:148:9: note: node 0x30fd84c8 (max_nunits=2, refcnt=3) vector(2) double
+benchmark_layout.c:148:9: note: op template: g_66 = PHI <g_349(23), g_273(24)>
+benchmark_layout.c:148:9: note: 	stmt 0 g_66 = PHI <g_349(23), g_273(24)>
+benchmark_layout.c:148:9: note: 	stmt 1 mass_297 = PHI <mass_334(23), mass_296(24)>
+benchmark_layout.c:148:9: note: 	children 0x30fd88c8 0x30fd87c8
+benchmark_layout.c:148:9: note: node (external) 0x30fd88c8 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: 	{ g_349, mass_334 }
+benchmark_layout.c:148:9: note: node 0x30fd87c8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: op template: g_273 = PHI <g_349(23), 1.0e+0(22)>
+benchmark_layout.c:148:9: note: 	stmt 0 g_273 = PHI <g_349(23), 1.0e+0(22)>
+benchmark_layout.c:148:9: note: 	stmt 1 mass_296 = PHI <mass_334(23), 1.0e+0(22)>
+benchmark_layout.c:148:9: note: 	children 0x30fd8948 0x30fd89c8
+benchmark_layout.c:148:9: note: node (external) 0x30fd8948 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: 	{ g_349, mass_334 }
+benchmark_layout.c:148:9: note: node (constant) 0x30fd89c8 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: 	{ 1.0e+0, 1.0e+0 }
+benchmark_layout.c:148:9: note: ------>vectorizing SLP node starting from: .omp_data_o.8.g = g_66;
+benchmark_layout.c:148:9: note: vect_is_simple_use: operand g_66 = PHI <g_349(23), g_273(24)>, type of def: internal
+benchmark_layout.c:148:9: note: vect_is_simple_use: operand mass_297 = PHI <mass_334(23), mass_296(24)>, type of def: internal
+benchmark_layout.c:148:9: note: transform store. ncopies = 1
+benchmark_layout.c:148:9: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: .omp_data_o.8.g
+benchmark_layout.c:148:9: note: created &.omp_data_o.8.g
+benchmark_layout.c:148:9: note: add new stmt: MEM <vector(2) double> [(double *)&.omp_data_o.8 + 16B] = vect_g_66.165_548;
+benchmark_layout.c:148:9: note: vectorizing stmts using SLP.
+benchmark_layout.c:148:9: note: Vectorizing SLP tree:
+benchmark_layout.c:148:9: note: node 0x30fd8bc8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: op template: .omp_data_o.8.g = g_66;
+benchmark_layout.c:148:9: note: 	stmt 0 .omp_data_o.8.g = g_66;
+benchmark_layout.c:148:9: note: 	stmt 1 .omp_data_o.8.mass = mass_297;
+benchmark_layout.c:148:9: note: 	children 0x30fd84c8
+benchmark_layout.c:148:9: note: node 0x30fd84c8 (max_nunits=2, refcnt=3) vector(2) double
+benchmark_layout.c:148:9: note: op template: g_66 = PHI <g_349(23), g_273(24)>
+benchmark_layout.c:148:9: note: 	stmt 0 g_66 = PHI <g_349(23), g_273(24)>
+benchmark_layout.c:148:9: note: 	stmt 1 mass_297 = PHI <mass_334(23), mass_296(24)>
+benchmark_layout.c:148:9: note: 	children 0x30fd88c8 0x30fd87c8
+benchmark_layout.c:148:9: note: node (external) 0x30fd88c8 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: 	{ g_349, mass_334 }
+benchmark_layout.c:148:9: note: node 0x30fd87c8 (max_nunits=2, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: op template: g_273 = PHI <g_349(23), 1.0e+0(22)>
+benchmark_layout.c:148:9: note: 	stmt 0 g_273 = PHI <g_349(23), 1.0e+0(22)>
+benchmark_layout.c:148:9: note: 	stmt 1 mass_296 = PHI <mass_334(23), 1.0e+0(22)>
+benchmark_layout.c:148:9: note: 	children 0x30fd8948 0x30fd89c8
+benchmark_layout.c:148:9: note: node (external) 0x30fd8948 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: 	{ g_349, mass_334 }
+benchmark_layout.c:148:9: note: node (constant) 0x30fd89c8 (max_nunits=1, refcnt=1) vector(2) double
+benchmark_layout.c:148:9: note: 	{ 1.0e+0, 1.0e+0 }
+benchmark_layout.c:148:9: note: ------>vectorizing SLP node starting from: .omp_data_o.8.g = g_66;
+benchmark_layout.c:148:9: note: vect_is_simple_use: operand g_66 = PHI <g_349(23), g_273(24)>, type of def: internal
+benchmark_layout.c:148:9: note: vect_is_simple_use: operand mass_297 = PHI <mass_334(23), mass_296(24)>, type of def: internal
+benchmark_layout.c:148:9: note: transform store. ncopies = 1
+benchmark_layout.c:148:9: note: create vector_type-pointer variable to type: vector(2) double  vectorizing a pointer ref: .omp_data_o.8.g
+benchmark_layout.c:148:9: note: created &.omp_data_o.8.g
+benchmark_layout.c:148:9: note: add new stmt: MEM <vector(2) double> [(double *)&.omp_data_o.8 + 16B] = vect_g_66.165_548;
+benchmark_layout.c:148:9: note: vectorizing stmts using SLP.
+benchmark_layout.c:148:9: note: ***** The result for vector mode V32QI would be the same
+nbody_core.c:444:50: missed: couldn't vectorize loop
+nbody_core.c:444:50: missed: not vectorized: no vectype for stmt: _24 = *_23;
+ scalar_type: const dtype
+nbody_core.c:440:9: note: vectorized 0 loops in function.
+nbody_core.c:440:9: missed: statement clobbers memory: __builtin_GOMP_atomic_start ();
+nbody_core.c:440:9: missed: statement clobbers memory: __builtin_GOMP_atomic_end ();
+nbody_core.c:440:9: note: ***** Analysis failed with vector mode V4DI
+nbody_core.c:440:9: note: ***** The result for vector mode V32QI would be the same
+nbody_core.c:440:9: note: ***** Re-trying analysis with vector mode V16QI
+nbody_core.c:440:9: note: ***** Analysis failed with vector mode V16QI
+nbody_core.c:440:9: note: ***** Re-trying analysis with vector mode V8QI
+nbody_core.c:440:9: note: ***** Analysis failed with vector mode V8QI
+nbody_core.c:440:9: note: ***** Re-trying analysis with vector mode V4QI
+nbody_core.c:440:9: note: ***** Analysis failed with vector mode V4QI
+nbody_core.c:469:25: missed: couldn't vectorize loop
+nbody_core.c:469:25: missed: not vectorized: unsupported control flow in loop.
+nbody_core.c:473:33: missed: couldn't vectorize loop
+nbody_core.c:473:33: missed: not vectorized: unsupported control flow in loop.
+nbody_core.c:465:9: note: vectorized 0 loops in function.
+nbody_common.h:81:10: missed: statement clobbers memory: _72 = sqrt (r2_53);
+nbody_core.c:465:9: missed: statement clobbers memory: __builtin_GOMP_atomic_start ();
+nbody_core.c:465:9: missed: statement clobbers memory: __builtin_GOMP_atomic_end ();
+nbody_core.c:465:9: note: ***** Analysis failed with vector mode V4DI
+nbody_core.c:465:9: note: ***** The result for vector mode V32QI would be the same
+nbody_core.c:465:9: note: ***** Re-trying analysis with vector mode V16QI
+nbody_core.c:465:9: note: ***** Analysis failed with vector mode V16QI
+nbody_core.c:465:9: note: ***** Re-trying analysis with vector mode V8QI
+nbody_core.c:465:9: note: ***** Analysis failed with vector mode V8QI
+nbody_core.c:465:9: note: ***** Re-trying analysis with vector mode V4QI
+nbody_core.c:465:9: note: ***** Analysis failed with vector mode V4QI
+nbody_core.c:28:1: note: ***** Analysis failed with vector mode V4DI
+nbody_core.c:28:1: note: ***** Skipping vector mode V32QI, which would repeat the analysis for V4DI
+nbody_core.c:34:3: missed: statement clobbers memory: __builtin_va_start (&args, 0);
+nbody_core.c:35:3: missed: statement clobbers memory: vfprintf (stderr.0_1, format_7(D), &args);
+nbody_core.c:36:3: missed: statement clobbers memory: __builtin_va_end (&args);
+nbody_core.c:37:3: missed: statement clobbers memory: fputc (10, stderr.1_2);
+nbody_core.c:39:5: missed: statement clobbers memory: error_handler.2_3 ();
+nbody_core.c:40:3: missed: statement clobbers memory: exit (1);
+nbody_core.c:40:3: note: ***** Analysis failed with vector mode V4DI
+nbody_core.c:40:3: note: ***** Skipping vector mode V32QI, which would repeat the analysis for V4DI
+nbody_core.c:331:42: missed: couldn't vectorize loop
+nbody_core.c:191:22: missed: statement clobbers memory: got_69 = fread (&record, 4, 6, fp_9);
+nbody_core.c:316:9: note: vectorized 0 loops in function.
+nbody_core.c:191:22: missed: statement clobbers memory: got_69 = fread (&record, 4, 6, fp_9);
+nbody_core.c:332:9: missed: statement clobbers memory: nbody_die ("non-finite particle value in \'%s\' at index %zu", path_11, i_5);
+nbody_core.c:195:11: missed: statement clobbers memory: _70 = ferror (fp_9);
+nbody_core.c:197:7: missed: statement clobbers memory: nbody_die ("short file while reading %s from \'%s\'", "particle record", path_11);
+nbody_core.c:196:9: missed: statement clobbers memory: nbody_die ("read error while reading %s from \'%s\'", "particle record", path_11);
+nbody_core.c:316:9: note: ***** Analysis failed with vector mode V4DI
+nbody_core.c:316:9: note: ***** The result for vector mode V32QI would be the same
+nbody_core.c:316:9: note: ***** Re-trying analysis with vector mode V16QI
+nbody_core.c:316:9: note: ***** Analysis failed with vector mode V16QI
+nbody_core.c:316:9: note: ***** Re-trying analysis with vector mode V8QI
+nbody_core.c:316:9: note: ***** Analysis failed with vector mode V8QI
+nbody_core.c:316:9: note: ***** Re-trying analysis with vector mode V4QI
+nbody_core.c:316:9: note: ***** Analysis failed with vector mode V4QI
+nbody_core.c:206:6: missed: couldn't vectorize loop
+nbody_core.c:204:26: missed: statement clobbers memory: written_51 = fwrite (&record, 4, 6, fp_9);
+nbody_core.c:364:9: note: vectorized 0 loops in function.
+nbody_core.c:204:26: missed: statement clobbers memory: written_51 = fwrite (&record, 4, 6, fp_9);
+nbody_core.c:207:5: missed: statement clobbers memory: nbody_die ("write error while writing %s to \'%s\'", "particle record", path_11);
+nbody_core.c:287:5: missed: statement clobbers memory: nbody_die ("particle %zu component %s cannot be stored as a finite float", i_88, "vz");
+nbody_core.c:287:5: missed: statement clobbers memory: nbody_die ("particle %zu component %s cannot be stored as a finite float", i_89, "vy");
+nbody_core.c:287:5: missed: statement clobbers memory: nbody_die ("particle %zu component %s cannot be stored as a finite float", i_90, "vx");
+nbody_core.c:287:5: missed: statement clobbers memory: nbody_die ("particle %zu component %s cannot be stored as a finite float", i_91, "z");
+nbody_core.c:287:5: missed: statement clobbers memory: nbody_die ("particle %zu component %s cannot be stored as a finite float", i_92, "y");
+nbody_core.c:287:5: missed: statement clobbers memory: nbody_die ("particle %zu component %s cannot be stored as a finite float", i_5, "x");
+nbody_core.c:364:9: note: ***** Analysis failed with vector mode V4DI
+nbody_core.c:364:9: note: ***** The result for vector mode V32QI would be the same
+nbody_core.c:364:9: note: ***** Re-trying analysis with vector mode V16QI
+nbody_core.c:364:9: note: ***** Analysis failed with vector mode V16QI
+nbody_core.c:364:9: note: ***** Re-trying analysis with vector mode V8QI
+nbody_core.c:364:9: note: ***** Analysis failed with vector mode V8QI
+nbody_core.c:364:9: note: ***** Re-trying analysis with vector mode V4QI
+nbody_core.c:364:9: note: ***** Analysis failed with vector mode V4QI
+nbody_core.c:47:7: missed: statement clobbers memory: _1 = clock_gettime (1, &now);
+nbody_core.c:48:5: missed: statement clobbers memory: nbody_die ("clock_gettime(CLOCK_MONOTONIC) failed");
+nbody_core.c:48:5: note: ***** Analysis failed with vector mode V4DI
+nbody_core.c:48:5: note: ***** Skipping vector mode V32QI, which would repeat the analysis for V4DI
+nbody_core.c:56:10: missed: statement clobbers memory: _3 = omp_get_max_threads ();
+nbody_core.c:56:10: note: ***** Analysis failed with vector mode VOID
+nbody_core.c:65:10: note: ***** Analysis failed with vector mode VOID
+nbody_core.c:73:25: note: ***** Analysis succeeded with vector mode V4DF
+nbody_core.c:73:25: note: SLPing BB part
+nbody_core.c:73:25: note: Costing subgraph: 
+nbody_core.c:73:25: note: node 0x29c64348 (max_nunits=4, refcnt=1) vector(4) double
+nbody_core.c:73:25: note: op template: timing_2(D)->total_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 0 timing_2(D)->total_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 1 timing_2(D)->read_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 2 timing_2(D)->distribute_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 3 timing_2(D)->initial_energy_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 4 timing_2(D)->initial_acceleration_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 5 timing_2(D)->integration_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 6 timing_2(D)->force_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 7 timing_2(D)->communication_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 8 timing_2(D)->drift_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 9 timing_2(D)->kick_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 10 timing_2(D)->energy_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 11 timing_2(D)->write_seconds = 0.0;
+nbody_core.c:73:25: note: 	children 0x29c643c8
+nbody_core.c:73:25: note: node (constant) 0x29c643c8 (max_nunits=1, refcnt=1) vector(4) double
+nbody_core.c:73:25: note: 	{ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }
+nbody_core.c:73:25: note: Cost model analysis: 
+nbody_core.c:73:25: note: Cost model analysis for part in loop 0:
+  Vector cost: 64
+  Scalar cost: 192
+nbody_core.c:73:25: note: Basic block will be vectorized using SLP
+nbody_core.c:73:25: optimized: basic block part vectorized using 32 byte vectors
+nbody_core.c:73:25: note: Vectorizing SLP tree:
+nbody_core.c:73:25: note: node 0x29c64348 (max_nunits=4, refcnt=1) vector(4) double
+nbody_core.c:73:25: note: op template: timing_2(D)->total_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 0 timing_2(D)->total_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 1 timing_2(D)->read_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 2 timing_2(D)->distribute_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 3 timing_2(D)->initial_energy_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 4 timing_2(D)->initial_acceleration_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 5 timing_2(D)->integration_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 6 timing_2(D)->force_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 7 timing_2(D)->communication_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 8 timing_2(D)->drift_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 9 timing_2(D)->kick_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 10 timing_2(D)->energy_seconds = 0.0;
+nbody_core.c:73:25: note: 	stmt 11 timing_2(D)->write_seconds = 0.0;
+nbody_core.c:73:25: note: 	children 0x29c643c8
+nbody_core.c:73:25: note: node (constant) 0x29c643c8 (max_nunits=1, refcnt=1) vector(4) double
+nbody_core.c:73:25: note: 	{ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 }
+nbody_core.c:73:25: note: ------>vectorizing SLP node starting from: timing_2(D)->total_seconds = 0.0;
+nbody_core.c:73:25: note: vect_is_simple_use: operand 0.0, type of def: constant
+nbody_core.c:73:25: note: vect_is_simple_use: operand 0.0, type of def: constant
+nbody_core.c:73:25: note: vect_is_simple_use: operand 0.0, type of def: constant
+nbody_core.c:73:25: note: vect_is_simple_use: operand 0.0, type of def: constant
+nbody_core.c:73:25: note: vect_is_simple_use: operand 0.0, type of def: constant
+nbody_core.c:73:25: note: vect_is_simple_use: operand 0.0, type of def: constant
+nbody_core.c:73:25: note: vect_is_simple_use: operand 0.0, type of def: constant
+nbody_core.c:73:25: note: vect_is_simple_use: operand 0.0, type of def: constant
+nbody_core.c:73:25: note: vect_is_simple_use: operand 0.0, type of def: constant
+nbody_core.c:73:25: note: vect_is_simple_use: operand 0.0, type of def: constant
+nbody_core.c:73:25: note: vect_is_simple_use: operand 0.0, type of def: constant
+nbody_core.c:73:25: note: transform store. ncopies = 1
+nbody_core.c:73:25: note: create vector_type-pointer variable to type: vector(4) double  vectorizing a pointer ref: timing_2(D)->total_seconds
+nbody_core.c:73:25: note: created vectp.136_15
+nbody_core.c:73:25: note: add new stmt: MEM <vector(4) double> [(double *)vectp.136_15] = { 0.0, 0.0, 0.0, 0.0 };
+nbody_core.c:73:25: note: add new stmt: vectp.136_17 = vectp.136_15 + 32;
+nbody_core.c:73:25: note: add new stmt: MEM <vector(4) double> [(double *)vectp.136_17] = { 0.0, 0.0, 0.0, 0.0 };
+nbody_core.c:73:25: note: add new stmt: vectp.136_19 = vectp.136_17 + 32;
+nbody_core.c:73:25: note: add new stmt: MEM <vector(4) double> [(double *)vectp.136_19] = { 0.0, 0.0, 0.0, 0.0 };
+nbody_core.c:73:25: note: vectorizing stmts using SLP.
+nbody_core.c:73:25: note: ***** The result for vector mode V32QI would be the same
+nbody_core.c:56:10: missed: statement clobbers memory: _12 = omp_get_max_threads ();
+nbody_core.c:89:3: missed: statement clobbers memory: printf ("# timing openmp %s max_threads %d\n", "enabled", _12);
+nbody_core.c:91:3: missed: statement clobbers memory: printf ("# timing total_seconds %.9f\n", _1);
+nbody_core.c:92:3: missed: statement clobbers memory: printf ("# timing read_seconds %.9f\n", _2);
+nbody_core.c:93:3: missed: statement clobbers memory: printf ("# timing initial_energy_seconds %.9f\n", _3);
+nbody_core.c:94:3: missed: statement clobbers memory: printf ("# timing initial_acceleration_seconds %.9f\n", _4);
+nbody_core.c:95:3: missed: statement clobbers memory: printf ("# timing integration_seconds %.9f\n", _5);
+nbody_core.c:96:3: missed: statement clobbers memory: printf ("# timing force_seconds %.9f\n", _6);
+nbody_core.c:97:3: missed: statement clobbers memory: printf ("# timing drift_seconds %.9f\n", _7);
+nbody_core.c:98:3: missed: statement clobbers memory: printf ("# timing kick_seconds %.9f\n", _8);
+nbody_core.c:99:3: missed: statement clobbers memory: printf ("# timing energy_seconds %.9f\n", _9);
+nbody_core.c:100:3: missed: statement clobbers memory: printf ("# timing write_seconds %.9f\n", _10);
+nbody_core.c:101:1: note: ***** Analysis failed with vector mode V4DF
+nbody_core.c:101:1: note: ***** Skipping vector mode V32QI, which would repeat the analysis for V4DF
+nbody_core.c:114:11: missed: statement clobbers memory: value_9 = strtoull (text_7(D), &endptr, 10);
+nbody_core.c:116:5: missed: statement clobbers memory: nbody_die ("invalid integer for %s: %s", name_10(D), text_7(D));
+nbody_core.c:116:5: note: ***** Analysis failed with vector mode V8SI
+nbody_core.c:116:5: note: ***** Skipping vector mode V32QI, which would repeat the analysis for V8SI
+nbody_core.c:135:11: missed: statement clobbers memory: value_10 = strtod (text_8(D), &endptr);
+nbody_core.c:137:5: missed: statement clobbers memory: nbody_die ("invalid floating-point value for %s: %s", name_11(D), text_8(D));
+nbody_core.c:137:5: note: ***** Analysis failed with vector mode V8SI
+nbody_core.c:137:5: note: ***** Skipping vector mode V32QI, which would repeat the analysis for V8SI
+nbody_core.c:151:26: missed: statement clobbers memory: key_len_18 = strlen (key_17(D));
+nbody_core.c:154:8: missed: statement clobbers memory: _5 = strncmp (arg_21, key_17(D), key_len_18);
+nbody_core.c:157:7: missed: statement clobbers memory: _9 = strcmp (arg_21, key_17(D));
+nbody_core.c:160:9: missed: statement clobbers memory: nbody_die ("missing value after %s", key_17(D));
+nbody_core.c:155:26: note: ***** Analysis failed with vector mode V8SI
+nbody_core.c:155:26: note: ***** Skipping vector mode V32QI, which would repeat the analysis for V8SI
+nbody_core.c:181:9: missed: statement clobbers memory: ptr_13 = aligned_alloc (alignment_8(D), padded_11);
+nbody_core.c:183:5: missed: statement clobbers memory: nbody_die ("aligned_alloc failed for %zu bytes", padded_11);
+nbody_core.c:178:5: missed: statement clobbers memory: nbody_die ("allocation size overflow");
+nbody_core.c:176:5: missed: statement clobbers memory: nbody_die ("invalid zero alignment");
+nbody_core.c:174:5: missed: statement clobbers memory: nbody_die ("attempted zero-byte allocation");
+nbody_core.c:174:5: note: ***** Analysis failed with vector mode VOID
+nbody_core.c:214:8: note: ***** Analysis succeeded with vector mode V4DI
+nbody_core.c:214:8: note: SLPing BB part
+nbody_core.c:214:8: note: Costing subgraph: 
+nbody_core.c:214:8: note: node 0x29c34398 (max_nunits=4, refcnt=1) vector(4) long unsigned int
+nbody_core.c:214:8: note: op template: p_2(D)->x = 0B;
+nbody_core.c:214:8: note: 	stmt 0 p_2(D)->x = 0B;
+nbody_core.c:214:8: note: 	stmt 1 p_2(D)->y = 0B;
+nbody_core.c:214:8: note: 	stmt 2 p_2(D)->z = 0B;
+nbody_core.c:214:8: note: 	stmt 3 p_2(D)->vx = 0B;
+nbody_core.c:214:8: note: 	stmt 4 p_2(D)->vy = 0B;
+nbody_core.c:214:8: note: 	stmt 5 p_2(D)->vz = 0B;
+nbody_core.c:214:8: note: 	stmt 6 p_2(D)->ax = 0B;
+nbody_core.c:214:8: note: 	stmt 7 p_2(D)->ay = 0B;
+nbody_core.c:214:8: note: 	children 0x29c34418
+nbody_core.c:214:8: note: node (constant) 0x29c34418 (max_nunits=1, refcnt=1) vector(4) long unsigned int
+nbody_core.c:214:8: note: 	{ 0B, 0B, 0B, 0B, 0B, 0B, 0B, 0B }
+nbody_core.c:214:8: note: Cost model analysis: 
+nbody_core.c:214:8: note: Cost model analysis for part in loop 0:
+  Vector cost: 48
+  Scalar cost: 128
+nbody_core.c:214:8: note: Basic block will be vectorized using SLP
+nbody_core.c:214:8: optimized: basic block part vectorized using 32 byte vectors
+nbody_core.c:214:8: note: Vectorizing SLP tree:
+nbody_core.c:214:8: note: node 0x29c34398 (max_nunits=4, refcnt=1) vector(4) long unsigned int
+nbody_core.c:214:8: note: op template: p_2(D)->x = 0B;
+nbody_core.c:214:8: note: 	stmt 0 p_2(D)->x = 0B;
+nbody_core.c:214:8: note: 	stmt 1 p_2(D)->y = 0B;
+nbody_core.c:214:8: note: 	stmt 2 p_2(D)->z = 0B;
+nbody_core.c:214:8: note: 	stmt 3 p_2(D)->vx = 0B;
+nbody_core.c:214:8: note: 	stmt 4 p_2(D)->vy = 0B;
+nbody_core.c:214:8: note: 	stmt 5 p_2(D)->vz = 0B;
+nbody_core.c:214:8: note: 	stmt 6 p_2(D)->ax = 0B;
+nbody_core.c:214:8: note: 	stmt 7 p_2(D)->ay = 0B;
+nbody_core.c:214:8: note: 	children 0x29c34418
+nbody_core.c:214:8: note: node (constant) 0x29c34418 (max_nunits=1, refcnt=1) vector(4) long unsigned int
+nbody_core.c:214:8: note: 	{ 0B, 0B, 0B, 0B, 0B, 0B, 0B, 0B }
+nbody_core.c:214:8: note: ------>vectorizing SLP node starting from: p_2(D)->x = 0B;
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: transform store. ncopies = 1
+nbody_core.c:214:8: note: create vector_type-pointer variable to type: vector(4) long unsigned int  vectorizing a pointer ref: p_2(D)->x
+nbody_core.c:214:8: note: created vectp.156_14
+nbody_core.c:214:8: note: add new stmt: MEM <vector(4) long unsigned int> [(dtype * *)vectp.156_14] = { 0, 0, 0, 0 };
+nbody_core.c:214:8: note: add new stmt: vectp.156_16 = vectp.156_14 + 32;
+nbody_core.c:214:8: note: add new stmt: MEM <vector(4) long unsigned int> [(dtype * *)vectp.156_16] = { 0, 0, 0, 0 };
+nbody_core.c:214:8: note: vectorizing stmts using SLP.
+nbody_core.c:214:8: note: ***** The result for vector mode V32QI would be the same
+nbody_core.c:181:9: missed: statement clobbers memory: ptr_101 = aligned_alloc (64, padded_100);
+nbody_core.c:181:9: missed: statement clobbers memory: ptr_95 = aligned_alloc (64, padded_100);
+nbody_core.c:181:9: missed: statement clobbers memory: ptr_89 = aligned_alloc (64, padded_100);
+nbody_core.c:181:9: missed: statement clobbers memory: ptr_83 = aligned_alloc (64, padded_100);
+nbody_core.c:181:9: missed: statement clobbers memory: ptr_77 = aligned_alloc (64, padded_100);
+nbody_core.c:181:9: missed: statement clobbers memory: ptr_71 = aligned_alloc (64, padded_100);
+nbody_core.c:181:9: missed: statement clobbers memory: ptr_65 = aligned_alloc (64, padded_100);
+nbody_core.c:181:9: missed: statement clobbers memory: ptr_59 = aligned_alloc (64, padded_100);
+nbody_core.c:181:9: missed: statement clobbers memory: ptr_53 = aligned_alloc (64, padded_100);
+nbody_core.c:183:5: missed: statement clobbers memory: nbody_die ("aligned_alloc failed for %zu bytes", padded_100);
+nbody_core.c:183:5: missed: statement clobbers memory: nbody_die ("aligned_alloc failed for %zu bytes", padded_100);
+nbody_core.c:183:5: missed: statement clobbers memory: nbody_die ("aligned_alloc failed for %zu bytes", padded_100);
+nbody_core.c:183:5: missed: statement clobbers memory: nbody_die ("aligned_alloc failed for %zu bytes", padded_100);
+nbody_core.c:183:5: missed: statement clobbers memory: nbody_die ("aligned_alloc failed for %zu bytes", padded_100);
+nbody_core.c:183:5: missed: statement clobbers memory: nbody_die ("aligned_alloc failed for %zu bytes", padded_100);
+nbody_core.c:183:5: missed: statement clobbers memory: nbody_die ("aligned_alloc failed for %zu bytes", padded_100);
+nbody_core.c:183:5: missed: statement clobbers memory: nbody_die ("aligned_alloc failed for %zu bytes", padded_100);
+nbody_core.c:183:5: missed: statement clobbers memory: nbody_die ("aligned_alloc failed for %zu bytes", padded_100);
+nbody_core.c:178:5: missed: statement clobbers memory: nbody_die ("allocation size overflow");
+nbody_core.c:234:5: missed: statement clobbers memory: nbody_die ("particle mass must be positive and finite");
+nbody_core.c:232:5: missed: statement clobbers memory: nbody_die ("particle count is too large");
+nbody_core.c:230:5: missed: statement clobbers memory: nbody_die ("the number of particles must be positive");
+nbody_core.c:214:8: note: ***** Analysis succeeded with vector mode V4DI
+nbody_core.c:214:8: note: SLPing BB part
+nbody_core.c:214:8: note: Costing subgraph: 
+nbody_core.c:214:8: note: node 0x29adfe18 (max_nunits=4, refcnt=1) vector(4) long unsigned int
+nbody_core.c:214:8: note: op template: p_18(D)->x = 0B;
+nbody_core.c:214:8: note: 	stmt 0 p_18(D)->x = 0B;
+nbody_core.c:214:8: note: 	stmt 1 p_18(D)->y = 0B;
+nbody_core.c:214:8: note: 	stmt 2 p_18(D)->z = 0B;
+nbody_core.c:214:8: note: 	stmt 3 p_18(D)->vx = 0B;
+nbody_core.c:214:8: note: 	stmt 4 p_18(D)->vy = 0B;
+nbody_core.c:214:8: note: 	stmt 5 p_18(D)->vz = 0B;
+nbody_core.c:214:8: note: 	stmt 6 p_18(D)->ax = 0B;
+nbody_core.c:214:8: note: 	stmt 7 p_18(D)->ay = 0B;
+nbody_core.c:214:8: note: 	children 0x29adfe98
+nbody_core.c:214:8: note: node (constant) 0x29adfe98 (max_nunits=1, refcnt=1) vector(4) long unsigned int
+nbody_core.c:214:8: note: 	{ 0B, 0B, 0B, 0B, 0B, 0B, 0B, 0B }
+nbody_core.c:214:8: note: Cost model analysis: 
+nbody_core.c:214:8: note: Cost model analysis for part in loop 0:
+  Vector cost: 48
+  Scalar cost: 128
+nbody_core.c:214:8: note: Basic block will be vectorized using SLP
+nbody_core.c:214:8: optimized: basic block part vectorized using 32 byte vectors
+nbody_core.c:214:8: note: Vectorizing SLP tree:
+nbody_core.c:214:8: note: node 0x29adfe18 (max_nunits=4, refcnt=1) vector(4) long unsigned int
+nbody_core.c:214:8: note: op template: p_18(D)->x = 0B;
+nbody_core.c:214:8: note: 	stmt 0 p_18(D)->x = 0B;
+nbody_core.c:214:8: note: 	stmt 1 p_18(D)->y = 0B;
+nbody_core.c:214:8: note: 	stmt 2 p_18(D)->z = 0B;
+nbody_core.c:214:8: note: 	stmt 3 p_18(D)->vx = 0B;
+nbody_core.c:214:8: note: 	stmt 4 p_18(D)->vy = 0B;
+nbody_core.c:214:8: note: 	stmt 5 p_18(D)->vz = 0B;
+nbody_core.c:214:8: note: 	stmt 6 p_18(D)->ax = 0B;
+nbody_core.c:214:8: note: 	stmt 7 p_18(D)->ay = 0B;
+nbody_core.c:214:8: note: 	children 0x29adfe98
+nbody_core.c:214:8: note: node (constant) 0x29adfe98 (max_nunits=1, refcnt=1) vector(4) long unsigned int
+nbody_core.c:214:8: note: 	{ 0B, 0B, 0B, 0B, 0B, 0B, 0B, 0B }
+nbody_core.c:214:8: note: ------>vectorizing SLP node starting from: p_18(D)->x = 0B;
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: transform store. ncopies = 1
+nbody_core.c:214:8: note: create vector_type-pointer variable to type: vector(4) long unsigned int  vectorizing a pointer ref: p_18(D)->x
+nbody_core.c:214:8: note: created vectp.161_92
+nbody_core.c:214:8: note: add new stmt: MEM <vector(4) long unsigned int> [(dtype * *)vectp.161_92] = { 0, 0, 0, 0 };
+nbody_core.c:214:8: note: add new stmt: vectp.161_86 = vectp.161_92 + 32;
+nbody_core.c:214:8: note: add new stmt: MEM <vector(4) long unsigned int> [(dtype * *)vectp.161_86] = { 0, 0, 0, 0 };
+nbody_core.c:214:8: note: vectorizing stmts using SLP.
+nbody_core.c:214:8: note: ***** The result for vector mode V32QI would be the same
+nbody_core.c:252:3: missed: statement clobbers memory: free (_1);
+nbody_core.c:253:3: missed: statement clobbers memory: free (_2);
+nbody_core.c:254:3: missed: statement clobbers memory: free (_3);
+nbody_core.c:255:3: missed: statement clobbers memory: free (_4);
+nbody_core.c:256:3: missed: statement clobbers memory: free (_5);
+nbody_core.c:257:3: missed: statement clobbers memory: free (_6);
+nbody_core.c:258:3: missed: statement clobbers memory: free (_7);
+nbody_core.c:259:3: missed: statement clobbers memory: free (_8);
+nbody_core.c:260:3: missed: statement clobbers memory: free (_9);
+nbody_core.c:214:8: note: ***** Analysis succeeded with vector mode V4DI
+nbody_core.c:214:8: note: SLPing BB part
+nbody_core.c:214:8: note: Costing subgraph: 
+nbody_core.c:214:8: note: node 0x29adfe18 (max_nunits=4, refcnt=1) vector(4) long unsigned int
+nbody_core.c:214:8: note: op template: p_11(D)->x = 0B;
+nbody_core.c:214:8: note: 	stmt 0 p_11(D)->x = 0B;
+nbody_core.c:214:8: note: 	stmt 1 p_11(D)->y = 0B;
+nbody_core.c:214:8: note: 	stmt 2 p_11(D)->z = 0B;
+nbody_core.c:214:8: note: 	stmt 3 p_11(D)->vx = 0B;
+nbody_core.c:214:8: note: 	stmt 4 p_11(D)->vy = 0B;
+nbody_core.c:214:8: note: 	stmt 5 p_11(D)->vz = 0B;
+nbody_core.c:214:8: note: 	stmt 6 p_11(D)->ax = 0B;
+nbody_core.c:214:8: note: 	stmt 7 p_11(D)->ay = 0B;
+nbody_core.c:214:8: note: 	children 0x29adfe98
+nbody_core.c:214:8: note: node (constant) 0x29adfe98 (max_nunits=1, refcnt=1) vector(4) long unsigned int
+nbody_core.c:214:8: note: 	{ 0B, 0B, 0B, 0B, 0B, 0B, 0B, 0B }
+nbody_core.c:214:8: note: Cost model analysis: 
+nbody_core.c:214:8: note: Cost model analysis for part in loop 0:
+  Vector cost: 48
+  Scalar cost: 128
+nbody_core.c:214:8: note: Basic block will be vectorized using SLP
+nbody_core.c:214:8: optimized: basic block part vectorized using 32 byte vectors
+nbody_core.c:214:8: note: Vectorizing SLP tree:
+nbody_core.c:214:8: note: node 0x29adfe18 (max_nunits=4, refcnt=1) vector(4) long unsigned int
+nbody_core.c:214:8: note: op template: p_11(D)->x = 0B;
+nbody_core.c:214:8: note: 	stmt 0 p_11(D)->x = 0B;
+nbody_core.c:214:8: note: 	stmt 1 p_11(D)->y = 0B;
+nbody_core.c:214:8: note: 	stmt 2 p_11(D)->z = 0B;
+nbody_core.c:214:8: note: 	stmt 3 p_11(D)->vx = 0B;
+nbody_core.c:214:8: note: 	stmt 4 p_11(D)->vy = 0B;
+nbody_core.c:214:8: note: 	stmt 5 p_11(D)->vz = 0B;
+nbody_core.c:214:8: note: 	stmt 6 p_11(D)->ax = 0B;
+nbody_core.c:214:8: note: 	stmt 7 p_11(D)->ay = 0B;
+nbody_core.c:214:8: note: 	children 0x29adfe98
+nbody_core.c:214:8: note: node (constant) 0x29adfe98 (max_nunits=1, refcnt=1) vector(4) long unsigned int
+nbody_core.c:214:8: note: 	{ 0B, 0B, 0B, 0B, 0B, 0B, 0B, 0B }
+nbody_core.c:214:8: note: ------>vectorizing SLP node starting from: p_11(D)->x = 0B;
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: vect_is_simple_use: operand 0B, type of def: constant
+nbody_core.c:214:8: note: transform store. ncopies = 1
+nbody_core.c:214:8: note: create vector_type-pointer variable to type: vector(4) long unsigned int  vectorizing a pointer ref: p_11(D)->x
+nbody_core.c:214:8: note: created vectp.166_32
+nbody_core.c:214:8: note: add new stmt: MEM <vector(4) long unsigned int> [(dtype * *)vectp.166_32] = { 0, 0, 0, 0 };
+nbody_core.c:214:8: note: add new stmt: vectp.166_34 = vectp.166_32 + 32;
+nbody_core.c:214:8: note: add new stmt: MEM <vector(4) long unsigned int> [(dtype * *)vectp.166_34] = { 0, 0, 0, 0 };
+nbody_core.c:214:8: note: vectorizing stmts using SLP.
+nbody_core.c:214:8: note: ***** The result for vector mode V32QI would be the same
+nbody_core.c:292:6: note: vectorized 0 loops in function.
+nbody_core.c:299:8: missed: statement clobbers memory: fp_7 = fopen (path_5(D), "rb");
+nbody_core.c:191:22: missed: statement clobbers memory: got_26 = fread (&magic, 1, 8, fp_7);
+nbody_core.c:305:7: missed: statement clobbers memory: _1 = memcmp (&magic, &nbody_binary_magic, 8);
+nbody_core.c:191:22: missed: statement clobbers memory: got_28 = fread (&n64, 8, 1, fp_7);
+nbody_core.c:313:3: missed: statement clobbers memory: particles_allocate (p_13(D), n64.8_2, mass_14(D));
+nbody_core.c:292:6: missed: statement clobbers memory: __builtin_GOMP_parallel (particles_read_binary._omp_fn.0, &.omp_data_o.11, 0, 0);
+nbody_core.c:342:7: missed: statement clobbers memory: _3 = fclose (fp_7);
+nbody_core.c:343:5: missed: statement clobbers memory: nbody_die ("error while closing input file \'%s\'", path_5(D));
+nbody_core.c:310:5: missed: statement clobbers memory: nbody_die ("invalid particle count in \'%s\'", path_5(D));
+nbody_core.c:195:11: missed: statement clobbers memory: _29 = ferror (fp_7);
+nbody_core.c:197:7: missed: statement clobbers memory: nbody_die ("short file while reading %s from \'%s\'", "particle count", path_5(D));
+nbody_core.c:196:9: missed: statement clobbers memory: nbody_die ("read error while reading %s from \'%s\'", "particle count", path_5(D));
+nbody_core.c:306:5: missed: statement clobbers memory: nbody_die ("input file \'%s\' is not an %s file", path_5(D), "nbody-f32-v1");
+nbody_core.c:195:11: missed: statement clobbers memory: _27 = ferror (fp_7);
+nbody_core.c:197:7: missed: statement clobbers memory: nbody_die ("short file while reading %s from \'%s\'", "binary magic", path_5(D));
+nbody_core.c:196:9: missed: statement clobbers memory: nbody_die ("read error while reading %s from \'%s\'", "binary magic", path_5(D));
+nbody_core.c:301:5: missed: statement clobbers memory: nbody_die ("cannot open input file \'%s\'", path_5(D));
+nbody_core.c:316:9: note: ***** Analysis succeeded with vector mode V4DI
+nbody_core.c:316:9: note: SLPing BB part
+nbody_core.c:316:9: note: Costing subgraph: 
+nbody_core.c:316:9: note: node 0x29adfe18 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:316:9: note: op template: .omp_data_o.11.path = path_5(D);
+nbody_core.c:316:9: note: 	stmt 0 .omp_data_o.11.path = path_5(D);
+nbody_core.c:316:9: note: 	stmt 1 .omp_data_o.11.p = p_13(D);
+nbody_core.c:316:9: note: 	children 0x29adfe98
+nbody_core.c:316:9: note: node (external) 0x29adfe98 (max_nunits=1, refcnt=1) vector(2) long unsigned int
+nbody_core.c:316:9: note: 	{ path_5(D), p_13(D) }
+nbody_core.c:316:9: note: Cost model analysis: 
+nbody_core.c:316:9: note: Cost model analysis for part in loop 0:
+  Vector cost: 32
+  Scalar cost: 32
+nbody_core.c:316:9: note: Basic block will be vectorized using SLP
+nbody_core.c:316:9: optimized: basic block part vectorized using 16 byte vectors
+nbody_core.c:316:9: note: Vectorizing SLP tree:
+nbody_core.c:316:9: note: node 0x29adfe18 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:316:9: note: op template: .omp_data_o.11.path = path_5(D);
+nbody_core.c:316:9: note: 	stmt 0 .omp_data_o.11.path = path_5(D);
+nbody_core.c:316:9: note: 	stmt 1 .omp_data_o.11.p = p_13(D);
+nbody_core.c:316:9: note: 	children 0x29adfe98
+nbody_core.c:316:9: note: node (external) 0x29adfe98 (max_nunits=1, refcnt=1) vector(2) long unsigned int
+nbody_core.c:316:9: note: 	{ path_5(D), p_13(D) }
+nbody_core.c:316:9: note: ------>vectorizing SLP node starting from: .omp_data_o.11.path = path_5(D);
+nbody_core.c:316:9: note: vect_is_simple_use: operand p_13(D), type of def: external
+nbody_core.c:316:9: note: conflicting alias set types.
+nbody_core.c:316:9: note: transform store. ncopies = 1
+nbody_core.c:316:9: note: create vector_type-pointer variable to type: vector(2) long unsigned int  vectorizing a pointer ref: .omp_data_o.11.path
+nbody_core.c:316:9: note: created &.omp_data_o.11
+nbody_core.c:316:9: note: add new stmt: MEM <vector(2) long unsigned int> [(void *)&.omp_data_o.11] = _10;
+nbody_core.c:316:9: note: vectorizing stmts using SLP.
+nbody_core.c:316:9: note: ***** The result for vector mode V32QI would be the same
+nbody_core.c:346:6: note: vectorized 0 loops in function.
+nbody_core.c:355:8: missed: statement clobbers memory: fp_8 = fopen (path_6(D), "wb");
+nbody_core.c:204:26: missed: statement clobbers memory: written_20 = fwrite (&nbody_binary_magic, 1, 8, fp_8);
+nbody_core.c:204:26: missed: statement clobbers memory: written_19 = fwrite (&n64, 8, 1, fp_8);
+nbody_core.c:346:6: missed: statement clobbers memory: __builtin_GOMP_parallel (particles_write_binary._omp_fn.0, &.omp_data_o.17, 0, 0);
+nbody_core.c:380:7: missed: statement clobbers memory: _1 = fclose (fp_8);
+nbody_core.c:381:5: missed: statement clobbers memory: nbody_die ("error while closing output file \'%s\'", path_6(D));
+nbody_core.c:207:5: missed: statement clobbers memory: nbody_die ("write error while writing %s to \'%s\'", "particle count", path_6(D));
+nbody_core.c:207:5: missed: statement clobbers memory: nbody_die ("write error while writing %s to \'%s\'", "binary magic", path_6(D));
+nbody_core.c:357:5: missed: statement clobbers memory: nbody_die ("cannot open output file \'%s\'", path_6(D));
+nbody_core.c:364:9: note: ***** Analysis succeeded with vector mode V4DI
+nbody_core.c:364:9: note: SLPing BB part
+nbody_core.c:364:9: note: Costing subgraph: 
+nbody_core.c:364:9: note: node 0x29c443a8 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:364:9: note: op template: .omp_data_o.17.path = path_6(D);
+nbody_core.c:364:9: note: 	stmt 0 .omp_data_o.17.path = path_6(D);
+nbody_core.c:364:9: note: 	stmt 1 .omp_data_o.17.p = p_3(D);
+nbody_core.c:364:9: note: 	children 0x29c44428
+nbody_core.c:364:9: note: node (external) 0x29c44428 (max_nunits=1, refcnt=1) vector(2) long unsigned int
+nbody_core.c:364:9: note: 	{ path_6(D), p_3(D) }
+nbody_core.c:364:9: note: Cost model analysis: 
+nbody_core.c:364:9: note: Cost model analysis for part in loop 0:
+  Vector cost: 32
+  Scalar cost: 32
+nbody_core.c:364:9: note: Basic block will be vectorized using SLP
+nbody_core.c:364:9: optimized: basic block part vectorized using 16 byte vectors
+nbody_core.c:364:9: note: Vectorizing SLP tree:
+nbody_core.c:364:9: note: node 0x29c443a8 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:364:9: note: op template: .omp_data_o.17.path = path_6(D);
+nbody_core.c:364:9: note: 	stmt 0 .omp_data_o.17.path = path_6(D);
+nbody_core.c:364:9: note: 	stmt 1 .omp_data_o.17.p = p_3(D);
+nbody_core.c:364:9: note: 	children 0x29c44428
+nbody_core.c:364:9: note: node (external) 0x29c44428 (max_nunits=1, refcnt=1) vector(2) long unsigned int
+nbody_core.c:364:9: note: 	{ path_6(D), p_3(D) }
+nbody_core.c:364:9: note: ------>vectorizing SLP node starting from: .omp_data_o.17.path = path_6(D);
+nbody_core.c:364:9: note: vect_is_simple_use: operand p_3(D), type of def: external
+nbody_core.c:364:9: note: conflicting alias set types.
+nbody_core.c:364:9: note: transform store. ncopies = 1
+nbody_core.c:364:9: note: create vector_type-pointer variable to type: vector(2) long unsigned int  vectorizing a pointer ref: .omp_data_o.17.path
+nbody_core.c:364:9: note: created &.omp_data_o.17
+nbody_core.c:364:9: note: add new stmt: MEM <vector(2) long unsigned int> [(void *)&.omp_data_o.17] = _24;
+nbody_core.c:364:9: note: vectorizing stmts using SLP.
+nbody_core.c:364:9: note: ***** The result for vector mode V32QI would be the same
+nbody_core.c:404:25: missed: couldn't vectorize loop
+nbody_core.c:406:8: missed: not vectorized: no vectype for stmt: _3 = *_2;
+ scalar_type: dtype
+nbody_core.c:394:6: note: vectorized 0 loops in function.
+nbody_core.c:410:1: note: ***** Analysis failed with vector mode V4DI
+nbody_core.c:410:1: note: ***** Skipping vector mode V32QI, which would repeat the analysis for V4DI
+nbody_core.c:422:25: missed: couldn't vectorize loop
+nbody_core.c:424:9: missed: not vectorized: no vectype for stmt: _3 = *_2;
+ scalar_type: dtype
+nbody_core.c:412:6: note: vectorized 0 loops in function.
+nbody_core.c:428:1: note: ***** Analysis failed with vector mode V4DI
+nbody_core.c:428:1: note: ***** Skipping vector mode V32QI, which would repeat the analysis for V4DI
+nbody_core.c:430:7: note: vectorized 0 loops in function.
+nbody_core.c:430:7: missed: statement clobbers memory: __builtin_GOMP_parallel (kinetic_energy._omp_fn.0, &.omp_data_o.22, 0, 0);
+nbody_core.c:440:9: note: ***** Analysis succeeded with vector mode V4DI
+nbody_core.c:440:9: note: SLPing BB part
+nbody_core.c:440:9: note: Costing subgraph: 
+nbody_core.c:440:9: note: node 0x29b03ab8 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:440:9: note: op template: .omp_data_o.22.vx_arr = vx_arr_8;
+nbody_core.c:440:9: note: 	stmt 0 .omp_data_o.22.vx_arr = vx_arr_8;
+nbody_core.c:440:9: note: 	stmt 1 .omp_data_o.22.vy_arr = vy_arr_9;
+nbody_core.c:440:9: note: 	children 0x29b03b38
+nbody_core.c:440:9: note: node 0x29b03b38 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:440:9: note: op template: vx_arr_8 = p_5(D)->vx;
+nbody_core.c:440:9: note: 	stmt 0 vx_arr_8 = p_5(D)->vx;
+nbody_core.c:440:9: note: 	stmt 1 vy_arr_9 = p_5(D)->vy;
+nbody_core.c:440:9: note: Cost model analysis: 
+nbody_core.c:440:9: note: Cost model analysis for part in loop 0:
+  Vector cost: 32
+  Scalar cost: 56
+nbody_core.c:440:9: note: Basic block will be vectorized using SLP
+nbody_core.c:440:9: optimized: basic block part vectorized using 16 byte vectors
+nbody_core.c:440:9: note: Vectorizing SLP tree:
+nbody_core.c:440:9: note: node 0x29b03ab8 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:440:9: note: op template: .omp_data_o.22.vx_arr = vx_arr_8;
+nbody_core.c:440:9: note: 	stmt 0 .omp_data_o.22.vx_arr = vx_arr_8;
+nbody_core.c:440:9: note: 	stmt 1 .omp_data_o.22.vy_arr = vy_arr_9;
+nbody_core.c:440:9: note: 	children 0x29b03b38
+nbody_core.c:440:9: note: node 0x29b03b38 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:440:9: note: op template: vx_arr_8 = p_5(D)->vx;
+nbody_core.c:440:9: note: 	stmt 0 vx_arr_8 = p_5(D)->vx;
+nbody_core.c:440:9: note: 	stmt 1 vy_arr_9 = p_5(D)->vy;
+nbody_core.c:440:9: note: ------>vectorizing SLP node starting from: vx_arr_8 = p_5(D)->vx;
+nbody_core.c:440:9: note: transform load. ncopies = 1
+nbody_core.c:440:9: note: create vector_type-pointer variable to type: vector(2) long unsigned int  vectorizing a pointer ref: p_5(D)->vx
+nbody_core.c:440:9: note: created vectp.209_20
+nbody_core.c:440:9: note: add new stmt: vect_vx_arr_8.210_21 = MEM <vector(2) long unsigned int> [(dtype * *)vectp.209_20];
+nbody_core.c:440:9: note: add new stmt: vectp.209_22 = vectp.209_20 + 8;
+nbody_core.c:440:9: note: ------>vectorizing SLP node starting from: .omp_data_o.22.vx_arr = vx_arr_8;
+nbody_core.c:440:9: note: vect_is_simple_use: operand p_5(D)->vx, type of def: internal
+nbody_core.c:440:9: note: vect_is_simple_use: operand p_5(D)->vy, type of def: internal
+nbody_core.c:440:9: note: transform store. ncopies = 1
+nbody_core.c:440:9: note: create vector_type-pointer variable to type: vector(2) long unsigned int  vectorizing a pointer ref: .omp_data_o.22.vx_arr
+nbody_core.c:440:9: note: created &.omp_data_o.22.vx_arr
+nbody_core.c:440:9: note: add new stmt: MEM <vector(2) long unsigned int> [(const dtype * *)&.omp_data_o.22 + 24B] = vect_vx_arr_8.210_21;
+nbody_core.c:440:9: note: vectorizing stmts using SLP.
+nbody_core.c:440:9: note: ***** The result for vector mode V32QI would be the same
+nbody_core.c:454:7: note: vectorized 0 loops in function.
+nbody_core.c:454:7: missed: statement clobbers memory: __builtin_GOMP_parallel (potential_energy_naive._omp_fn.0, &.omp_data_o.27, 0, 0);
+nbody_core.c:465:9: note: ***** Analysis succeeded with vector mode V4DI
+nbody_core.c:465:9: note: SLPing BB part
+nbody_core.c:465:9: note: Costing subgraph: 
+nbody_core.c:465:9: note: node 0x29cc2b28 (max_nunits=2, refcnt=1) const vector(2) double
+nbody_core.c:465:9: note: op template: .omp_data_o.27.eps2 = eps2_6;
+nbody_core.c:465:9: note: 	stmt 0 .omp_data_o.27.eps2 = eps2_6;
+nbody_core.c:465:9: note: 	stmt 1 .omp_data_o.27.m2 = m2_7;
+nbody_core.c:465:9: note: 	children 0x29cc2ca8
+nbody_core.c:465:9: note: node (external) 0x29cc2ca8 (max_nunits=1, refcnt=1) const vector(2) double
+nbody_core.c:465:9: note: 	{ eps2_6, m2_7 }
+nbody_core.c:465:9: note: Cost model analysis: 
+nbody_core.c:465:9: note: Cost model analysis for part in loop 0:
+  Vector cost: 20
+  Scalar cost: 32
+nbody_core.c:465:9: note: Costing subgraph: 
+nbody_core.c:465:9: note: node 0x29cc2d28 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:465:9: note: op template: .omp_data_o.27.x = x_8;
+nbody_core.c:465:9: note: 	stmt 0 .omp_data_o.27.x = x_8;
+nbody_core.c:465:9: note: 	stmt 1 .omp_data_o.27.y = y_9;
+nbody_core.c:465:9: note: 	children 0x29cc2da8
+nbody_core.c:465:9: note: node 0x29cc2da8 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:465:9: note: op template: x_8 = p_3(D)->x;
+nbody_core.c:465:9: note: 	stmt 0 x_8 = p_3(D)->x;
+nbody_core.c:465:9: note: 	stmt 1 y_9 = p_3(D)->y;
+nbody_core.c:465:9: note: Cost model analysis: 
+nbody_core.c:465:9: note: Cost model analysis for part in loop 0:
+  Vector cost: 32
+  Scalar cost: 56
+nbody_core.c:465:9: note: Basic block will be vectorized using SLP
+nbody_core.c:465:9: optimized: basic block part vectorized using 16 byte vectors
+nbody_core.c:465:9: note: Vectorizing SLP tree:
+nbody_core.c:465:9: note: node 0x29cc2b28 (max_nunits=2, refcnt=1) const vector(2) double
+nbody_core.c:465:9: note: op template: .omp_data_o.27.eps2 = eps2_6;
+nbody_core.c:465:9: note: 	stmt 0 .omp_data_o.27.eps2 = eps2_6;
+nbody_core.c:465:9: note: 	stmt 1 .omp_data_o.27.m2 = m2_7;
+nbody_core.c:465:9: note: 	children 0x29cc2ca8
+nbody_core.c:465:9: note: node (external) 0x29cc2ca8 (max_nunits=1, refcnt=1) const vector(2) double
+nbody_core.c:465:9: note: 	{ eps2_6, m2_7 }
+nbody_core.c:465:9: note: ------>vectorizing SLP node starting from: .omp_data_o.27.eps2 = eps2_6;
+nbody_core.c:465:9: note: vect_is_simple_use: operand _1 * _1, type of def: internal
+nbody_core.c:465:9: note: transform store. ncopies = 1
+nbody_core.c:465:9: note: create vector_type-pointer variable to type: const vector(2) double  vectorizing a pointer ref: .omp_data_o.27.eps2
+nbody_core.c:465:9: note: created &.omp_data_o.27.eps2
+nbody_core.c:465:9: note: add new stmt: MEM <const vector(2) double> [(double *)&.omp_data_o.27 + 32B] = _24;
+nbody_core.c:465:9: note: vectorizing stmts using SLP.
+nbody_core.c:465:9: optimized: basic block part vectorized using 16 byte vectors
+nbody_core.c:465:9: note: Vectorizing SLP tree:
+nbody_core.c:465:9: note: node 0x29cc2d28 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:465:9: note: op template: .omp_data_o.27.x = x_8;
+nbody_core.c:465:9: note: 	stmt 0 .omp_data_o.27.x = x_8;
+nbody_core.c:465:9: note: 	stmt 1 .omp_data_o.27.y = y_9;
+nbody_core.c:465:9: note: 	children 0x29cc2da8
+nbody_core.c:465:9: note: node 0x29cc2da8 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:465:9: note: op template: x_8 = p_3(D)->x;
+nbody_core.c:465:9: note: 	stmt 0 x_8 = p_3(D)->x;
+nbody_core.c:465:9: note: 	stmt 1 y_9 = p_3(D)->y;
+nbody_core.c:465:9: note: ------>vectorizing SLP node starting from: x_8 = p_3(D)->x;
+nbody_core.c:465:9: note: transform load. ncopies = 1
+nbody_core.c:465:9: note: create vector_type-pointer variable to type: vector(2) long unsigned int  vectorizing a pointer ref: p_3(D)->x
+nbody_core.c:465:9: note: created vectp.219_26
+nbody_core.c:465:9: note: add new stmt: vect_x_8.220_27 = MEM <vector(2) long unsigned int> [(dtype * *)vectp.219_26];
+nbody_core.c:465:9: note: add new stmt: vectp.219_28 = vectp.219_26 + 8;
+nbody_core.c:465:9: note: ------>vectorizing SLP node starting from: .omp_data_o.27.x = x_8;
+nbody_core.c:465:9: note: vect_is_simple_use: operand p_3(D)->x, type of def: internal
+nbody_core.c:465:9: note: vect_is_simple_use: operand p_3(D)->y, type of def: internal
+nbody_core.c:465:9: note: transform store. ncopies = 1
+nbody_core.c:465:9: note: create vector_type-pointer variable to type: vector(2) long unsigned int  vectorizing a pointer ref: .omp_data_o.27.x
+nbody_core.c:465:9: note: created &.omp_data_o.27.x
+nbody_core.c:465:9: note: add new stmt: MEM <vector(2) long unsigned int> [(const dtype * *)&.omp_data_o.27 + 48B] = vect_x_8.220_27;
+nbody_core.c:465:9: note: vectorizing stmts using SLP.
+nbody_core.c:465:9: note: ***** The result for vector mode V32QI would be the same
+nbody_core.c:488:7: missed: statement clobbers memory: __builtin_GOMP_parallel (kinetic_energy._omp_fn.0, &.omp_data_o.22, 0, 0);
+nbody_core.c:488:7: missed: statement clobbers memory: __builtin_GOMP_parallel (potential_energy_naive._omp_fn.0, &.omp_data_o.27, 0, 0);
+nbody_core.c:465:9: note: ***** Analysis succeeded with vector mode V4DI
+nbody_core.c:465:9: note: SLPing BB part
+nbody_core.c:440:9: note: Costing subgraph: 
+nbody_core.c:440:9: note: node 0x29c04368 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:440:9: note: op template: .omp_data_o.22.vx_arr = vx_arr_26;
+nbody_core.c:440:9: note: 	stmt 0 .omp_data_o.22.vx_arr = vx_arr_26;
+nbody_core.c:440:9: note: 	stmt 1 .omp_data_o.22.vy_arr = vy_arr_27;
+nbody_core.c:440:9: note: 	children 0x29c043e8
+nbody_core.c:440:9: note: node 0x29c043e8 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:440:9: note: op template: vx_arr_26 = p_5(D)->vx;
+nbody_core.c:440:9: note: 	stmt 0 vx_arr_26 = p_5(D)->vx;
+nbody_core.c:440:9: note: 	stmt 1 vy_arr_27 = p_5(D)->vy;
+nbody_core.c:440:9: note: Cost model analysis: 
+nbody_core.c:440:9: note: Cost model analysis for part in loop 0:
+  Vector cost: 32
+  Scalar cost: 56
+nbody_core.c:465:9: note: Costing subgraph: 
+nbody_core.c:465:9: note: node 0x29c04468 (max_nunits=2, refcnt=1) const vector(2) double
+nbody_core.c:465:9: note: op template: .omp_data_o.27.eps2 = eps2_16;
+nbody_core.c:465:9: note: 	stmt 0 .omp_data_o.27.eps2 = eps2_16;
+nbody_core.c:465:9: note: 	stmt 1 .omp_data_o.27.m2 = m2_18;
+nbody_core.c:465:9: note: 	children 0x29c045e8
+nbody_core.c:465:9: note: node (external) 0x29c045e8 (max_nunits=1, refcnt=1) const vector(2) double
+nbody_core.c:465:9: note: 	{ eps2_16, m2_18 }
+nbody_core.c:465:9: note: Cost model analysis: 
+nbody_core.c:465:9: note: Cost model analysis for part in loop 0:
+  Vector cost: 20
+  Scalar cost: 32
+nbody_core.c:465:9: note: Costing subgraph: 
+nbody_core.c:465:9: note: node 0x29c04668 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:465:9: note: op template: .omp_data_o.27.x = x_19;
+nbody_core.c:465:9: note: 	stmt 0 .omp_data_o.27.x = x_19;
+nbody_core.c:465:9: note: 	stmt 1 .omp_data_o.27.y = y_20;
+nbody_core.c:465:9: note: 	children 0x29c046e8
+nbody_core.c:465:9: note: node 0x29c046e8 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:465:9: note: op template: x_19 = p_5(D)->x;
+nbody_core.c:465:9: note: 	stmt 0 x_19 = p_5(D)->x;
+nbody_core.c:465:9: note: 	stmt 1 y_20 = p_5(D)->y;
+nbody_core.c:465:9: note: Cost model analysis: 
+nbody_core.c:465:9: note: Cost model analysis for part in loop 0:
+  Vector cost: 32
+  Scalar cost: 56
+nbody_core.c:465:9: note: Basic block will be vectorized using SLP
+nbody_core.c:440:9: optimized: basic block part vectorized using 16 byte vectors
+nbody_core.c:440:9: note: Vectorizing SLP tree:
+nbody_core.c:440:9: note: node 0x29c04368 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:440:9: note: op template: .omp_data_o.22.vx_arr = vx_arr_26;
+nbody_core.c:440:9: note: 	stmt 0 .omp_data_o.22.vx_arr = vx_arr_26;
+nbody_core.c:440:9: note: 	stmt 1 .omp_data_o.22.vy_arr = vy_arr_27;
+nbody_core.c:440:9: note: 	children 0x29c043e8
+nbody_core.c:440:9: note: node 0x29c043e8 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:440:9: note: op template: vx_arr_26 = p_5(D)->vx;
+nbody_core.c:440:9: note: 	stmt 0 vx_arr_26 = p_5(D)->vx;
+nbody_core.c:440:9: note: 	stmt 1 vy_arr_27 = p_5(D)->vy;
+nbody_core.c:440:9: note: ------>vectorizing SLP node starting from: vx_arr_26 = p_5(D)->vx;
+nbody_core.c:440:9: note: transform load. ncopies = 1
+nbody_core.c:440:9: note: create vector_type-pointer variable to type: vector(2) long unsigned int  vectorizing a pointer ref: p_5(D)->vx
+nbody_core.c:440:9: note: created vectp.227_52
+nbody_core.c:440:9: note: add new stmt: vect_vx_arr_26.228_41 = MEM <vector(2) long unsigned int> [(dtype * *)vectp.227_52];
+nbody_core.c:440:9: note: add new stmt: vectp.227_2 = vectp.227_52 + 8;
+nbody_core.c:440:9: note: ------>vectorizing SLP node starting from: .omp_data_o.22.vx_arr = vx_arr_26;
+nbody_core.c:440:9: note: vect_is_simple_use: operand p_5(D)->vx, type of def: internal
+nbody_core.c:440:9: note: vect_is_simple_use: operand p_5(D)->vy, type of def: internal
+nbody_core.c:440:9: note: transform store. ncopies = 1
+nbody_core.c:440:9: note: create vector_type-pointer variable to type: vector(2) long unsigned int  vectorizing a pointer ref: .omp_data_o.22.vx_arr
+nbody_core.c:440:9: note: created &.omp_data_o.22.vx_arr
+nbody_core.c:440:9: note: add new stmt: MEM <vector(2) long unsigned int> [(const dtype * *)&.omp_data_o.22 + 24B] = vect_vx_arr_26.228_41;
+nbody_core.c:440:9: note: vectorizing stmts using SLP.
+nbody_core.c:465:9: optimized: basic block part vectorized using 16 byte vectors
+nbody_core.c:465:9: note: Vectorizing SLP tree:
+nbody_core.c:465:9: note: node 0x29c04468 (max_nunits=2, refcnt=1) const vector(2) double
+nbody_core.c:465:9: note: op template: .omp_data_o.27.eps2 = eps2_16;
+nbody_core.c:465:9: note: 	stmt 0 .omp_data_o.27.eps2 = eps2_16;
+nbody_core.c:465:9: note: 	stmt 1 .omp_data_o.27.m2 = m2_18;
+nbody_core.c:465:9: note: 	children 0x29c045e8
+nbody_core.c:465:9: note: node (external) 0x29c045e8 (max_nunits=1, refcnt=1) const vector(2) double
+nbody_core.c:465:9: note: 	{ eps2_16, m2_18 }
+nbody_core.c:465:9: note: ------>vectorizing SLP node starting from: .omp_data_o.27.eps2 = eps2_16;
+nbody_core.c:465:9: note: vect_is_simple_use: operand _17 * _17, type of def: internal
+nbody_core.c:465:9: note: transform store. ncopies = 1
+nbody_core.c:465:9: note: create vector_type-pointer variable to type: const vector(2) double  vectorizing a pointer ref: .omp_data_o.27.eps2
+nbody_core.c:465:9: note: created &.omp_data_o.27.eps2
+nbody_core.c:465:9: note: add new stmt: MEM <const vector(2) double> [(double *)&.omp_data_o.27 + 32B] = _6;
+nbody_core.c:465:9: note: vectorizing stmts using SLP.
+nbody_core.c:465:9: optimized: basic block part vectorized using 16 byte vectors
+nbody_core.c:465:9: note: Vectorizing SLP tree:
+nbody_core.c:465:9: note: node 0x29c04668 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:465:9: note: op template: .omp_data_o.27.x = x_19;
+nbody_core.c:465:9: note: 	stmt 0 .omp_data_o.27.x = x_19;
+nbody_core.c:465:9: note: 	stmt 1 .omp_data_o.27.y = y_20;
+nbody_core.c:465:9: note: 	children 0x29c046e8
+nbody_core.c:465:9: note: node 0x29c046e8 (max_nunits=2, refcnt=1) vector(2) long unsigned int
+nbody_core.c:465:9: note: op template: x_19 = p_5(D)->x;
+nbody_core.c:465:9: note: 	stmt 0 x_19 = p_5(D)->x;
+nbody_core.c:465:9: note: 	stmt 1 y_20 = p_5(D)->y;
+nbody_core.c:465:9: note: ------>vectorizing SLP node starting from: x_19 = p_5(D)->x;
+nbody_core.c:465:9: note: transform load. ncopies = 1
+nbody_core.c:465:9: note: create vector_type-pointer variable to type: vector(2) long unsigned int  vectorizing a pointer ref: p_5(D)->x
+nbody_core.c:465:9: note: created vectp.234_53
+nbody_core.c:465:9: note: add new stmt: vect_x_19.235_54 = MEM <vector(2) long unsigned int> [(dtype * *)vectp.234_53];
+nbody_core.c:465:9: note: add new stmt: vectp.234_55 = vectp.234_53 + 8;
+nbody_core.c:465:9: note: ------>vectorizing SLP node starting from: .omp_data_o.27.x = x_19;
+nbody_core.c:465:9: note: vect_is_simple_use: operand p_5(D)->x, type of def: internal
+nbody_core.c:465:9: note: vect_is_simple_use: operand p_5(D)->y, type of def: internal
+nbody_core.c:465:9: note: transform store. ncopies = 1
+nbody_core.c:465:9: note: create vector_type-pointer variable to type: vector(2) long unsigned int  vectorizing a pointer ref: .omp_data_o.27.x
+nbody_core.c:465:9: note: created &.omp_data_o.27.x
+nbody_core.c:465:9: note: add new stmt: MEM <vector(2) long unsigned int> [(const dtype * *)&.omp_data_o.27 + 48B] = vect_x_19.235_54;
+nbody_core.c:465:9: note: vectorizing stmts using SLP.
+nbody_core.c:465:9: note: ***** The result for vector mode V32QI would be the same
