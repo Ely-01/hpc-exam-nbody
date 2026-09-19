@@ -98,7 +98,7 @@ which is of the same order as the selected softening length $\epsilon=0.05$.
 
 A substantially smaller softening would preserve stronger close encounters but would also require finer temporal resolution. Conversely, an excessively large $\epsilon$ would suppress small-scale gravitational structure. The selected value therefore provides a practical compromise for the benchmark configuration used in this work.
 
-Since the number of integration steps is fixed during performance experiments, changing $\epsilon$ does not alter the asymptotic number of pair interactions per step. Its main role in the present measurements is therefore to control the short-range physics and numerical stability.
+Changing $\epsilon$ therefore changes both the physical model and the practical cost of a simulation. For fixed $N$ and a fixed number of integration steps, the cost per force evaluation remains $O(N^2)$ because every particle pair is still visited. However, a smaller $\epsilon$ permits larger close-encounter accelerations and usually requires a smaller timestep, or more steps, to keep the energy drift below a fixed tolerance. A larger $\epsilon$ smooths those close encounters and can make the integration less stiff, but at the price of modifying the dynamics below scales comparable to $\epsilon$. This is why the relevant physical scale is the typical interparticle spacing $\ell$: choosing $\epsilon \ll \ell$ makes individual encounters dynamically important, while choosing $\epsilon \gg \ell$ over-smooths the system.
 
 
 ### 2.3 Kick-Drift-Kick Leapfrog Integration
@@ -277,7 +277,7 @@ parallel for i = 0 ... N-1:
             accumulate into ax_i, ay_i, az_i
 ```
 
-Each OpenMP iteration is responsible for one target particle \(i\). Therefore,
+Each OpenMP iteration is responsible for one target particle $i$. Therefore,
 a thread updates only the acceleration associated with the target particles
 assigned to it, while source-particle data are read-only.
 
@@ -298,7 +298,7 @@ compared with the $O(N^2)$ force evaluation.
 
 ### 3.3 MPI Domain Decomposition
 
-For distributed-memory execution, the global particle set is divided into equal contiguous blocks across \(P\) MPI ranks.
+For distributed-memory execution, the global particle set is divided into equal contiguous blocks across $P$ MPI ranks.
 
 Each rank permanently owns
 
@@ -555,6 +555,8 @@ srun -n <ranks> -c <threads> ...
 
 where `-n` specifies the number of MPI processes and `-c` the number of CPU cores allocated to each process.
 
+No additional explicit `mpirun --bind-to` option is used in the benchmark scripts. Process placement is delegated to the SLURM `srun` allocation, while thread placement is fixed through the OpenMP binding variables below. In the report this is the relevant `MPI_BIND`-equivalent run configuration: MPI ranks are created by `srun -n <ranks> -c <threads>`, and OpenMP threads are then bound within the cores assigned to each rank.
+
 OpenMP execution is configured through
 ```text
 OMP_NUM_THREADS = <threads>
@@ -565,13 +567,20 @@ OMP_PROC_BIND   = close
 so that OpenMP threads are placed on physical cores and kept close within the resources allocated to each MPI rank.
 
 For the controlled native-versus-container scaling experiments, both backends
-were executed with the same OpenMPI transport configuration,
+were executed with the same explicit OpenMPI runtime policy,
 
 ```text
+OMPI_MCA_pml=^ucx
 OMPI_MCA_btl=self,tcp
+OMPI_MCA_osc=^ucx
 ```
 
-in order to avoid attributing differences in MPI shared-memory transport to Singularity itself. This choice followed diagnostic runs in which the default shared-memory transport generated container-specific warnings.
+in order to avoid attributing UCX or shared-memory transport behaviour to
+Singularity itself. This choice followed diagnostic runs in which the default
+container execution generated UCX warnings and `vader` shared-memory warnings.
+The `self,tcp` policy is deliberately conservative: it is used to make the
+native/container comparison reproducible, not to claim the maximum possible
+intra-node MPI bandwidth of Orfeo.
 
 The native-only hybrid mapping experiment was treated separately and used the host MPI default transport, since its objective was to characterize the best
 native MPI/OpenMP mapping on the GENOA node rather than to isolate container overhead.
@@ -587,7 +596,7 @@ The final benchmark campaign consists of several complementary experiments, each
 |:---|:---|---:|:---|
 | Energy validation | $N=10\,000$ | 100 | 8 OpenMP threads |
 | Complexity growth | $N=1\,000$ and $N=10\,000$ | 50 | 1 OpenMP thread |
-| Hybrid mapping | $N=32\,768$ | 20 | \(2\times32\), $8\times8$, $64\times1$ |
+| Hybrid mapping | $N=32\,768$ | 20 | $2\times32$, $8\times8$, $64\times1$ |
 | MPI overlap | $N=32\,768$ | 20 | 4, 8, 16, 32 MPI ranks |
 | Strong scaling | $N=32\,768$ | 100 | 1, 2, 4, 8, 16, 32 MPI ranks |
 | Weak scaling | $N_{\mathrm{local}}=8192$ | 100 | 1, 2, 4, 8, 16 MPI ranks |
@@ -652,6 +661,74 @@ Performance measurements are always accompanied by an independent numerical
 correctness check based on the maximum relative total-energy drift. Therefore,
 an optimization is considered acceptable only if its performance improvement
 does not compromise the numerical validation criterion.
+
+
+### 4.7 Repository Map and Deliverable Traceability
+
+The project repository is organized so that the numerical implementation,
+benchmark execution, post-processing, container recipe, and report artifacts
+remain separated. The main files used for the final results are:
+
+```text
+Nbody_serial/
+├── nbody_common.h
+│   └── shared particle type, precision type, math helpers, CLI utilities
+│
+├── nbody_core.h, nbody_core.c
+│   └── force kernels, energy diagnostics, Leapfrog/KDK integration helpers
+│
+├── nbody_direct_serial.c
+│   └── serial OpenMP-capable baseline for validation and kernel studies
+│
+├── nbody_mpi_omp.c
+│   └── MPI + OpenMP production solver with ring-shift communication
+│
+├── generate_ic.c
+│   └── Plummer initial-condition generator used by validation and benchmarks
+│
+├── benchmark_layout.c
+├── benchmark_rsqrt_kernel.c
+│   └── focused microbenchmarks for data layout and SIMD reciprocal square root
+│
+├── Makefile
+│   └── native/MPI builds, precision selection, OpenMP flags
+│
+├── container/
+│   ├── Dockerfile
+│   │   └── Docker build environment required by the assignment
+│   └── nbody.def
+│       └── Singularity definition file for the Orfeo .sif image
+│
+├── scripts/
+│   ├── benchmark/
+│   │   └── benchmark drivers for validation, scaling, hybrid mapping,
+│   │       and kernel trade-off experiments
+│   ├── slurm/
+│   │   └── SLURM entry points used on Orfeo
+│   ├── analyze/
+│   │   └── CSV summarization, table generation, and SVG plotting
+│   ├── smoke/
+│   │   └── native, MPI, and container smoke tests
+│   └── utils/
+│       └── system information, MPI binding checks, launch-overhead measurement
+│
+├── report/
+│   ├── data/
+│   │   └── hardware and software stack snapshot
+│   ├── tables/
+│   │   └── final CSV and Markdown tables used in the report
+│   └── figures/
+│       └── final SVG plots used in the report
+│
+└── REPORT.md
+    └── final project report
+```
+
+This layout mirrors the experimental structure of the project: source files
+implement the solver, `scripts/benchmark` and `scripts/slurm` produce the raw
+measurements, `scripts/analyze` converts them into report-ready artifacts, and
+`report/` stores only the final tables, figures, and setup information used in
+the discussion.
 
 
 ## 5. Baseline Validation and Bottleneck Characterization
@@ -829,13 +906,16 @@ $$
 
 Consequently, different threads may attempt to update the same acceleration array concurrently, introducing data races unless synchronization or privatization is used.
 
-Three implementations were therefore compared:
+Three implementations were therefore compared. The `newton-atomic` variant is
+included only as an additional diagnostic experiment: it is not intended as a
+production optimization, but as a way to make the synchronization penalty of a
+naive parallel Newton implementation explicit.
 
 | Kernel | Pair traversal | Parallel update strategy |
 |:---|:---|:---|
 | `direct` | ordered pairs | OpenMP over independent target particles |
 | `newton` | $i<j$ | serial, conflict-free reference |
-| `newton-atomic` | $i<j$ | OpenMP with atomic acceleration updates |
+| `newton-atomic` | $i<j$ | diagnostic OpenMP variant with atomic acceleration updates |
 
 The measured force times are:
 
@@ -856,8 +936,11 @@ The improvement is substantial, although smaller than the ideal factor of two, b
 
 The plain `newton` implementation is intentionally serial. Its execution time therefore remains approximately constant as the requested OpenMP thread count increases. In contrast, the `direct` kernel scales efficiently because each thread owns its target-particle accumulators.
 
-The `newton-atomic` implementation demonstrates the cost of resolving the shared-write conflicts with fine-grained synchronization. Although the number of evaluated pairs is reduced, multiple atomic updates are required for each interaction. The resulting synchronization and cache-coherence cost dominates
-the saved arithmetic.
+The `newton-atomic` implementation is therefore used as a negative control. It
+demonstrates the cost of resolving the shared-write conflicts with fine-grained
+synchronization. Although the number of evaluated pairs is reduced, multiple
+atomic updates are required for each interaction. The resulting synchronization
+and cache-coherence cost dominates the saved arithmetic.
 
 For the production OpenMP/MPI implementation, the direct ownership model is therefore retained. Newton's third law is advantageous only when its arithmetic saving can be combined with a more efficient conflict-resolution strategy, such as privatized force buffers or block-wise reductions.
 
@@ -890,9 +973,42 @@ However, the layout benchmark shows that SoA alone does not improve the performa
 |       4 |           0.226311 |           0.227897 |       0.993 |
 |       8 |           0.115289 |           0.115800 |       0.996 |
 
-The two layouts are effectively equivalent in execution time, with differences below approximately one percent. The computed  accelerations also agree within the reported numerical tolerance.
+The two layouts are effectively equivalent in execution time, with differences below approximately one percent. The computed accelerations also agree within the reported numerical tolerance.
 
-Compiler diagnostics explain this result. GCC successfully vectorizes some auxiliary loops, but reports that the dominant all-pairs force loop cannot be vectorized. The reported causes include control flow inside the loop and the scalar square-root operation.
+To check whether the layout change actually enabled SIMD execution of the
+dominant loop, the benchmark was recompiled with GCC vectorization reporting
+enabled:
+
+```text
+-fopt-info-vec-all=report/tables/layout_vec_all.txt
+```
+
+The relevant loops are the inner all-pairs loops of the SoA and AoS force
+kernels:
+
+```text
+benchmark_layout.c:116  inner j-loop of compute_accelerations_soa
+benchmark_layout.c:159  inner j-loop of compute_accelerations_aos
+```
+
+For both loops, GCC reports missed vectorization:
+
+```text
+benchmark_layout.c:116:29: missed: couldn't vectorize loop
+benchmark_layout.c:116:29: missed: not vectorized: unsupported control flow in loop.
+nbody_common.h:81:10: missed: statement clobbers memory: _86 = sqrt (r2_66);
+
+benchmark_layout.c:159:29: missed: couldn't vectorize loop
+benchmark_layout.c:159:29: missed: not vectorized: unsupported control flow in loop.
+nbody_common.h:81:10: missed: statement clobbers memory: _74 = sqrt (r2_54);
+```
+
+The significant point is therefore not whether GCC can vectorize some minor
+auxiliary code, but that the runtime-dominant all-pairs force loop is not
+effectively vectorized. The relevant obstacles are the conditional
+self-interaction check `if (j != i)`, the scalar inverse-distance calculation
+through `dtype_sqrt`, and the scalar accumulation into the three force
+components.
 
 Therefore, this experiment should not be interpreted as evidence that AoS and SoA are generally equivalent. Rather, it shows that improving the memory layout alone is insufficient when the dominant interaction loop remains scalar.
 
@@ -900,7 +1016,7 @@ SoA is nevertheless retained in the production code because it provides a cleane
 
 ![AoS versus SoA layout trade-off](report/figures/layout_tradeoff.svg)
 
-Hardware-counter tools such as `perf`, `PAPI`, and `LIKWID` were not available in the Orfeo environment used for the measurements. The layout analysis therefore relies on instrumented timings, numerical agreement, derived throughput, and GCC vectorization diagnostics rather than hardware performance counters.
+Hardware-counter tools such as `perf`, `PAPI`, and `LIKWID` were not available in the Orfeo environment used for the measurements. The layout analysis therefore follows the optional compiler-report part of the vectorization study, but cannot confirm the result with counters such as packed floating-point instruction events. The evidence used here is consequently the combination of instrumented timings, numerical agreement, derived throughput, and GCC vectorization diagnostics rather than hardware performance counters.
 
 
 ### 6.3 Reciprocal Square Root
@@ -982,7 +1098,7 @@ ax = ax0 + ax1 + ...
 
 The optimization does not change the number of particle interactions or the physical model. It only increases the amount of independent arithmetic available to the processor.
 
-The measured speedups relative to the baseline direct kernel are:
+The full benchmark tested 1, 2, 4, and 8 partial accumulators for each OpenMP thread count. The table below reports the best variant at each thread count, while the plot shows the full saturation trend.
 
 | Threads | Best variant | Best speedup |
 |---:|:---|---:|
@@ -1134,7 +1250,7 @@ rank, and five repetitions.
 ![MPI ring communication overlap](report/figures/ring_overlap.svg)
 
 Despite the large amount of computation available between the non-blocking MPI
-calls, the measured overlap ranges only from \(0\%\) to \(16.4\%\).
+calls, the measured overlap ranges only from $0\%$ to $16.4\%$.
 
 More importantly, the effect on total runtime is very small. The corresponding runtime ratios remain approximately between
 
@@ -1190,47 +1306,47 @@ S(P)=P,
 E(P)=1.
 $$
 
-![Strong scaling native vs container](report/figures/strong_scaling_native_container_final.svg)
+![Native strong scaling](report/figures/strong_scaling_native_final.svg)
 
 The measured native results are:
 
 | MPI ranks | Median time (s) | Speedup | Efficiency |
 |---:|---:|---:|---:|
-| 1 | 380.690176 | 1.000 | 1.000 |
-| 2 | 187.926352 | 2.026 | 1.013 |
-| 4 | 94.154043 | 4.043 | 1.011 |
-| 8 | 47.149636 | 8.074 | 1.009 |
-| 16 | 23.998809 | 15.863 | 0.991 |
-| 32 | 12.201207 | 31.201 | 0.975 |
+| 1 | 374.387700 | 1.000 | 1.000 |
+| 2 | 187.821448 | 1.993 | 0.997 |
+| 4 | 94.101276 | 3.979 | 0.995 |
+| 8 | 47.148061 | 7.941 | 0.993 |
+| 16 | 23.620087 | 15.850 | 0.991 |
+| 32 | 11.870895 | 31.538 | 0.986 |
 
 At 32 MPI ranks, the native execution achieves
 
 $$
-S(32)=31.20
+S(32)=31.54
 $$
 
 and
 
 $$
-E(32)=0.975.
+E(32)=0.986.
 $$
 
 The scaling is therefore very close to ideal throughout the measured range.
 
-A small superlinear effect is visible between 2 and 8 ranks, where the
-measured efficiency is slightly larger than one. This should not be
-interpreted as a violation of the strong-scaling model. Partitioning the
-particle arrays among more processes changes the size of each local working
-set and may improve cache and memory-locality behaviour relative to the single-rank baseline. Run-to-run system variability can also contribute to such small deviations from the ideal curve.
-
-At larger process counts the efficiency begins to decrease, as expected, but remains $97.5\%$ at 32 ranks. The measured communication contribution is still small, with the largest communication fraction remaining only a few percent of total runtime.
+At larger process counts the efficiency decreases only mildly, remaining
+$98.6\%$ at 32 ranks. The measured communication contribution grows with the
+number of MPI ranks, but remains small: the communication fraction increases
+from zero at one rank to only about $2.5\%$ at 32 ranks.
 
 Therefore, no strong communication or serial bottleneck is reached within the tested process range. The $O(N^2)$ force kernel remains sufficiently
 expensive to amortize ring communication and other fixed parallel overheads.
-
-The containerized execution follows essentially the same scaling trend,
-reaching a speedup of $31.34$ and an efficiency of $0.979$ at 32 ranks.
-The small native/container differences are analyzed separately in Section 8, since they include container execution, compiler-target differences, and measurement variability rather than parallel scalability alone.
+At the largest measured configuration, each rank still owns
+$N_{\mathrm{local}}=1024$ particles, which is enough work per rank for the
+direct all-pairs kernel to dominate the runtime. The expected Amdahl floor is
+therefore not yet visible in this dataset. Reaching it would require either
+increasing the process count further at fixed $N$ or decreasing $N$ until the
+local force work becomes too small to hide communication startup, diagnostics,
+and synchronization.
 
 ### 7.4 Weak Scaling
 
@@ -1281,29 +1397,33 @@ $$
 
 A value close to one indicates that the measured runtime follows the expected growth of the direct all-pairs computation.
 
-![Weak scaling native vs container](report/figures/weak_scaling_native_container_final.svg)
+![Native weak scaling](report/figures/weak_scaling_native_final.svg)
 
 The native weak-scaling measurements are:
 
 | MPI ranks | Global $N$ | Median time (s) | Scaled speedup | Efficiency |
 |---:|---:|---:|---:|---:|
-| 1 | 8,192 | 23.371718 | 1.000 | 1.000 |
-| 2 | 16,384 | 46.938810 | 1.992 | 0.996 |
-| 4 | 32,768 | 94.077820 | 3.975 | 0.994 |
-| 8 | 65,536 | 188.418979 | 7.939 | 0.992 |
-| 16 | 131,072 | 377.175699 | 15.863 | 0.991 |
+| 1 | 8,192 | 24.032469 | 1.000 | 1.000 |
+| 2 | 16,384 | 48.688509 | 1.974 | 0.987 |
+| 4 | 32,768 | 97.615508 | 3.939 | 0.985 |
+| 8 | 65,536 | 195.622070 | 7.862 | 0.983 |
+| 16 | 131,072 | 391.787201 | 15.703 | 0.981 |
 
 The measured runtime follows the expected $P\,T(1)$ trend very closely.
 
 At 16 ranks,
 
 $$
-E_{\mathrm{weak}}(16)=0.991,
+E_{\mathrm{weak}}(16)=0.981,
 $$
 
 showing that the additional communication and parallel overhead introduce only a small deviation from the ideal direct-N-body scaling model.
 
-The communication fraction increases gradually with the number of processes, reaching approximately $1.6\%-1.7\%$ at 16 ranks. Nevertheless, force evaluation remains the dominant component of the execution.
+The communication fraction increases from zero at one rank to a few percent
+for the larger configurations. It reaches approximately $3.1\%$ at 8 ranks
+and remains about $2.6\%$ at 16 ranks. This confirms that MPI communication
+becomes more visible as the ring contains more ranks, but the force
+calculation remains the dominant component of the execution.
 
 Numerical correctness is also preserved as the global problem size grows. The largest energy drift measured in the final weak-scaling experiment is
 
@@ -1319,14 +1439,13 @@ which remains well below the $10^{-4}$ validation threshold.
 The scaling experiments can be interpreted in the context of Amdahl's and Gustafson's laws.
 
 For strong scaling, Amdahl's law highlights the fact that serial work and parallel overhead eventually limit the speedup obtainable at fixed problem size. In the present measurements, however, this saturation regime is not yet
-dominant: the native implementation retains an efficiency of \(0.975\) at
+dominant: the native implementation retains an efficiency of $0.986$ at
 32 MPI ranks.
 
 A small amount of serial and non-scalable work is present in the application, including diagnostics, MPI synchronization, communication startup, and runtime overheads, but the direct force kernel remains sufficiently expensive for
 these components to be strongly amortized.
 
-A numerical fit of an Amdahl serial fraction is not particularly meaningful for the current dataset because some intermediate measurements are slightly
-superlinear due to cache, locality, and measurement effects. Amdahl's law is therefore used here as an interpretive model rather than as a fitted performance law.
+A numerical fit of an Amdahl serial fraction is not particularly meaningful for the current dataset because the measured deviations from ideal strong scaling are still very small over the tested range and comparable to ordinary node-level variability. Amdahl's law is therefore used here as an interpretive model rather than as a fitted performance law.
 
 Gustafson's perspective is more relevant when the problem size grows with the available parallel resources. The weak-scaling experiment follows this idea,
 but direct N-body introduces an important distinction: fixing
@@ -1338,7 +1457,9 @@ $$
 T(P)\propto P,
 $$
 
-rather than constant weak-scaling time. The measured efficiencies of $0.991$ for native execution and $0.988$ for the container at 16 ranks show that the implementation follows this expected growth closely.
+rather than constant weak-scaling time. The measured native efficiency of
+$0.981$ at 16 ranks shows that the implementation follows this expected
+growth closely.
 
 Taken together, the results also show how the bottleneck evolves with parallelism. The baseline application is dominated by the $O(N^2)$ force kernel, and within the measured process range this remains true even after introducing MPI. Communication becomes progressively more visible as $P$ increases, but it does not yet dominate the runtime.
 
@@ -1364,6 +1485,24 @@ The container provides a reproducible userspace and build environment while reus
 
 The image is based on `Ubuntu 24.04`. Ubuntu 22.04, initially considered as the reference base image, was not compatible with the OpenMPI installation available on Orfeo because the host MPI stack required a newer glibc version.
 Ubuntu 24.04 was therefore selected as a general-purpose CPU-oriented base image compatible with the cluster runtime.
+
+The container setup is described by two versioned recipes. `container/Dockerfile` defines the Docker build environment required by the assignment, including the compiler toolchain, OpenMPI headers and runtime tools needed at build time. The Singularity image used on Orfeo is described by `container/nbody.def`, which mirrors the same build dependencies in a Singularity definition file.
+
+The final experiments used the generated image
+
+```text
+container/nbody_latest.sif
+```
+
+as the container artifact. This `.sif` file is not committed to the repository because it is a generated binary artifact; the reproducible source for it is the definition file. On Orfeo, the available container runtime was SingularityCE 4.3.1, while `apptainer` was not available in the measured software stack. Therefore all container runs were executed with Singularity.
+
+The image corresponds to the assignment's definition-file workflow:
+
+```text
+singularity build container/nbody_latest.sif container/nbody.def
+```
+
+This choice keeps the container recipe versioned with the source code and makes the installed build-time dependencies explicit.
 
 OpenMPI is installed inside the container because `mpicc` is required during the build stage. However, the container MPI installation is not used as the runtime communication stack for the production MPI experiments. At execution time, the OpenMPI libraries provided by Orfeo are bound into the container and used together with the host MPI launcher.
 
@@ -1398,8 +1537,11 @@ This ldd verification confirms that the final container runs use the cluster MPI
 
 #### MPI Transport Choice for Native-versus-Container Runs
 
-Initial container diagnostics showed that using the default intra-node
-shared-memory transport could introduce container-specific behaviour.
+Initial container diagnostics showed that using the default OpenMPI transport
+selection could introduce container-specific behaviour. In particular, the
+goal of the container experiments is not only to run the application inside
+Singularity, but also to avoid mistaking MPI transport issues for
+application-level container overhead.
 
 On a single node, the relevant OpenMPI Byte Transfer Layer components are
 
@@ -1409,44 +1551,75 @@ vader  shared-memory communication between ranks on the same node
 tcp    TCP communication
 ```
 
-Under normal native execution, `vader` is expected to provide the efficient shared-memory path for ranks located on the same node. During the initial Singularity tests, however, the default shared-memory configuration produced a warning associated with the creation/removal of the `vader` segment under `/dev/shm`.
+Under normal native execution, `vader` is expected to provide the efficient
+shared-memory path for ranks located on the same node. During the initial
+Singularity tests, however, the default configuration produced warnings from
+MPI components that were not part of the comparison being tested.
+
+The UCX path produced version warnings when libraries from the container
+environment were visible:
+
+```text
+UCX WARN  UCP API version is incompatible:
+required >= 1.17, actual 1.16.0
+```
+
+The intra-node shared-memory path could also produce warnings associated with
+`vader` segments under `/dev/shm`, for example:
+
+```text
+System call: unlink(2) /dev/shm/vader_segment...
+Error: No such file or directory (errno 2)
+```
 
 Although the application still completed correctly, retaining this
 configuration would have made the native-versus-container comparison
 ambiguous: a measured performance difference could have originated from the container/shared-memory interaction rather than from Singularity itself.
 
-For this reason, all final native-versus-container scaling runs use the same explicit OpenMPI BTL configuration:
-
-```text
-OMPI_MCA_btl=self,tcp
-```
-
-for both backends.
-
-The vader shared-memory transport is therefore disabled in this controlled
-comparison. This may make the absolute intra-node communication performance more conservative than the best native configuration, but ensures that native and container executions use the same MPI transport path.
-
-The native-only hybrid-mapping experiment is intentionally different: it uses the host MPI default transport because its objective is to identify the best native MPI/OpenMP mapping rather than to isolate container overhead.
-
-During the initial container smoke `tests`, additional OpenMPI components loaded from the container produced `UCX` version warnings. For this validation stage, UCX-related components were explicitly excluded through
+An intermediate policy excluding UCX and fabric-oriented BTLs,
 
 ```text
 OMPI_MCA_pml=^ucx
 OMPI_MCA_btl=^ofi,usnic,openib
 OMPI_MCA_osc=^ucx
+OMPI_MCA_btl_vader_single_copy_mechanism=none
 ```
 
-After making the runtime configuration explicit, both the serial and MPI
-container smoke tests completed correctly without the previous UCX warnings.
+removed the UCX warnings but still allowed OpenMPI to select `vader` for
+same-node ranks. Since the final comparison is intended to isolate
+native-versus-container overhead rather than benchmark Orfeo's fastest
+shared-memory transport, the final controlled application runs use the more
+conservative and fully reproducible policy
+
+```text
+OMPI_MCA_pml=^ucx
+OMPI_MCA_btl=self,tcp
+OMPI_MCA_osc=^ucx
+```
+
+for both native and container executions. This disables the `vader`
+shared-memory path and avoids the `/dev/shm` warnings. The cost is that
+absolute intra-node communication performance is conservative; the benefit is
+that both backends use the same clean transport path.
+
+The native-only scaling and hybrid-mapping experiments are intentionally
+different: they use the host MPI default transport because their objective is
+to characterize native performance on the GENOA node rather than to isolate
+container overhead.
+
+After making the runtime configuration explicit, the container smoke tests and
+the final native-versus-container benchmarks completed correctly without the
+previous UCX or `vader` warnings.
 
 ### 8.2 Native vs Container Application Performance
 
-The primary measure of container overhead is the execution time of the complete N-body application. Native and Singularity runs use identical physical inputs, numbers of MPI processes, integration steps, repetition counts, and the matched
+The primary measure of container overhead is the execution time of the complete N-body application. Native and Singularity runs use identical physical inputs, numbers of MPI processes, integration steps, repetition counts, and the matched OpenMPI runtime policy described above:
 
 ```text
+OMPI_MCA_pml=^ucx
 OMPI_MCA_btl=self,tcp
+OMPI_MCA_osc=^ucx
 ```
-transport configuration described above.
 
 The comparison is performed for both strong and weak scaling. Each point is the median of five executions and is accompanied by the corresponding sample standard deviation.
 
@@ -1462,35 +1635,57 @@ Therefore, the measured difference represents the complete deployment
 scenario rather than a pure measurement of the Singularity wrapper alone. It can contain effects from the container runtime, compiler target, toolchain, placement, cache behaviour, and normal run-to-run variability.
 
 
-For `strong scaling`, the measured container overhead remains small over the complete range from 1 to 32 MPI ranks:
+The strong-scaling native-versus-container comparison is shown below. The
+percentage labels correspond to
+
+$$
+100\left(\frac{T_{\mathrm{container}}}{T_{\mathrm{native}}}-1\right).
+$$
+
+![Strong scaling native vs container](report/figures/strong_scaling_native_container_final.svg)
+
+For `strong scaling`, the measured container differences remain small over the complete range from 1 to 32 MPI ranks:
 
 | MPI ranks | Native median (s) | Container median (s) | Container overhead |
 |---:|---:|---:|---:|
-| 1 | 380.690176 | 374.386995 | -1.66% |
-| 2 | 187.926352 | 187.987246 | +0.03% |
-| 4 | 94.154043 | 94.208101 | +0.06% |
-| 8 | 47.149636 | 47.236767 | +0.18% |
-| 16 | 23.998809 | 23.708761 | -1.21% |
-| 32 | 12.201207 | 11.947050 | -2.08% |
+| 1 | 377.476774 | 373.803578 | -0.97% |
+| 2 | 192.136294 | 187.832592 | -2.24% |
+| 4 | 96.453229 | 94.165248 | -2.37% |
+| 8 | 48.498850 | 47.260008 | -2.55% |
+| 16 | 24.492627 | 23.766715 | -2.96% |
+| 32 | 12.529375 | 12.164797 | -2.91% |
 
-The observed differences range from approximately $-2.1\%$ to $+0.2\%$.
-No systematic slowdown with increasing process count is visible.
+The observed differences range from approximately $-3.0\%$ to $-1.0\%$.
+Negative values mean that the measured container runtime was lower than the
+corresponding native runtime in that job. They are not interpreted as evidence
+that Singularity accelerates the code. Rather, they indicate that the true
+container overhead is smaller than the combined variability introduced by
+node placement, runtime noise, toolchain differences, cache state, and the
+fact that native and container binaries are not bit-for-bit identical.
 
-The `weak-scaling` comparison gives an even narrower range:
+The `weak-scaling` comparison gives a similarly small range and is especially
+stable at low and intermediate process counts:
+
+![Weak scaling native vs container](report/figures/weak_scaling_native_container_final.svg)
 
 | MPI ranks | Native median (s) | Container median (s) | Container overhead |
 |---:|---:|---:|---:|
-| 1 | 23.371718 | 23.306444 | -0.28% |
-| 2 | 46.938810 | 46.887983 | -0.11% |
-| 4 | 94.077820 | 94.104482 | +0.03% |
-| 8 | 188.418979 | 188.446927 | +0.01% |
-| 16 | 377.175699 | 377.597032 | +0.11% |
+| 1 | 23.332344 | 23.350336 | +0.08% |
+| 2 | 46.981598 | 46.961641 | -0.04% |
+| 4 | 94.373261 | 94.132828 | -0.25% |
+| 8 | 190.051070 | 188.543249 | -0.79% |
+| 16 | 386.723009 | 377.915699 | -2.28% |
 
-The measured difference remains between approximately $-0.3\%$ and
-$+0.1\%$.
+The measured difference remains between approximately $+0.1\%$ and
+$-2.3\%$.
 
-Negative overhead values must not be interpreted as evidence that
-containerization accelerates the application. At this magnitude, the sign of the difference is affected by normal execution variability, placement and cache effects, and the different compilation targets. The relevant observation is that no systematic application-level container penalty is visible above a few percent for these compute-intensive runs.
+Overall, no systematic application-level container penalty is visible above a
+few percent for these compute-intensive runs. The weak-scaling results are
+particularly useful because they cover five different process/problem-size
+configurations and remain close to zero overhead over most of the range. The
+strong-scaling results show the same qualitative conclusion, with the sign of
+the small difference dominated by experimental variability rather than by a
+measurable Singularity cost.
 
 ### 8.3 Container Launch Overhead
 
@@ -1520,23 +1715,57 @@ significant percentage overhead in the application-level scaling results.
 
 ### 8.4 MPI Communication Microbenchmark
 
-To isolate possible MPI-specific container overhead, latency and bandwidth were measured separately using the OSU Micro-Benchmarks.
+To isolate possible MPI-specific container overhead, latency and bandwidth were measured separately using the `OSU Micro-Benchmarks`.
 
-OSU was not available as an Orfeo module and was therefore built in user space using the same OpenMPI environment used by the application. Native and container measurements use two MPI processes and the same host-MPI runtime and transport policy adopted for the controlled application comparison.
+OSU was not available as an Orfeo module and was therefore built in user space using the same OpenMPI environment used by the application. Native and container measurements use two MPI processes and the same host-MPI binding mechanism used by the application container runs.
+
+This microbenchmark is more sensitive to the intra-node MPI transport than the
+full N-body application because it is a two-process communication test rather
+than a long compute-dominated run. During the diagnostic phase, the
+intermediate policy that excluded UCX but still allowed `vader` caused OpenMPI
+to select the `vader` shared-memory BTL for the two same-node ranks, and the
+run again emitted `/dev/shm` warnings of the form
+
+```text
+System call: unlink(2) /dev/shm/vader_segment...
+Error: No such file or directory (errno 2)
+```
+
+The same final controlled transport policy used for the native-versus-container application comparison was therefore also used for OSU:
+
+```text
+OMPI_MCA_pml=^ucx
+OMPI_MCA_btl=self,tcp
+OMPI_MCA_osc=^ucx
+```
+
+This disables the `vader` shared-memory path and forces native and container
+to use the same clean `self,tcp` path. The resulting measurements should not
+be interpreted as the maximum possible intra-node bandwidth of Orfeo; rather,
+they test whether the Singularity wrapper and host-MPI binding introduce a
+systematic communication penalty under a reproducible transport policy.
 
 Each measurement was repeated five times.
 
+![OSU MPI microbenchmark: native vs container](report/figures/mpi_microbenchmark_curve.svg)
+
+The two representative points are:
+
 | Metric | Message size | Native | Container | Difference |
 |:---|---:|---:|---:|---:|
-| Latency | 1 B | \(14.780 \pm 0.267\ \mu s\) | \(15.230 \pm 0.402\ \mu s\) | +3.04% |
-| Bandwidth | 4 MiB | \(1600.150 \pm 83.527\) MB/s | \(1577.820 \pm 11.696\) MB/s | -1.40% |
+| Latency | 1 B | $9.940 \pm 0.161\ \mu s$ | $10.000 \pm 0.088\ \mu s$ | +0.60% |
+| Bandwidth | 4 MiB | $1673.450 \pm 245.560$ MB/s | $1668.570 \pm 244.222$ MB/s | -0.29% |
 
-The container therefore introduces a small increase in one-byte latency and a small reduction in measured large-message bandwidth.
+The complete latency and bandwidth curves are almost superimposed. At one
+byte, the container latency is higher by only $0.60\%$, corresponding to
+approximately $0.06\ \mu s$. At 4 MiB, the measured bandwidth difference is
+$-0.29\%$, much smaller than the run-to-run standard deviation of about
+$245$ MB/s.
 
-These differences are modest relative to the cost of the direct force kernel and are consistent with the application-level measurements: for long, compute-dominated N-body runs, MPI/container overhead remains a secondary component of total execution time.
+These differences are negligible relative to the cost of the direct force kernel and are consistent with the application-level measurements: for long, compute-dominated N-body runs, MPI/container overhead remains a secondary component of total execution time.
 
 The OSU results are consistent with the scaling experiments: the container
-does not remove communication overhead, but neither the Singularity runtime nor the host-MPI binding becomes a dominant performance bottleneck for this compute-intensive application.
+does not remove communication overhead, but neither the Singularity runtime nor the host-MPI binding becomes a dominant performance bottleneck for this compute-intensive application. The important result is not that `self,tcp` is the fastest possible OpenMPI transport on Orfeo, but that, once the transport is controlled and identical for both backends, the container does not introduce a systematic communication penalty.
 
 ---
 Overall, the container study shows that portable execution can be achieved
