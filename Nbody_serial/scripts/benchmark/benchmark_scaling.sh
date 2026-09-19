@@ -22,11 +22,33 @@ CONTAINER_IMAGE=${CONTAINER_IMAGE:-container/nbody_latest.sif}
 CONTAINER_RUNTIME=${CONTAINER_RUNTIME:-}
 HOST_MPI_HOME=${HOST_MPI_HOME:-}
 HOST_MPI_BIND=${HOST_MPI_BIND:-/opt/programs:/opt/programs}
+MPI_POLICY=${MPI_POLICY:-custom}
 OMPI_MCA_pml=${OMPI_MCA_pml:-^ucx}
 OMPI_MCA_btl=${OMPI_MCA_btl:-^ofi,usnic,openib}
 OMPI_MCA_osc=${OMPI_MCA_osc:-^ucx}
 OMPI_MCA_btl_vader_single_copy_mechanism=${OMPI_MCA_btl_vader_single_copy_mechanism:-none}
 EXPORT_MPI_MCA=${EXPORT_MPI_MCA:-0}
+
+case "$MPI_POLICY" in
+  custom)
+    ;;
+  no_ucx)
+    OMPI_MCA_pml=^ucx
+    OMPI_MCA_btl=^ofi,usnic,openib
+    OMPI_MCA_osc=^ucx
+    OMPI_MCA_btl_vader_single_copy_mechanism=none
+    ;;
+  self_tcp)
+    OMPI_MCA_pml=^ucx
+    OMPI_MCA_btl=self,tcp
+    OMPI_MCA_osc=^ucx
+    OMPI_MCA_btl_vader_single_copy_mechanism=none
+    ;;
+  *)
+    echo "error: MPI_POLICY must be custom, no_ucx, or self_tcp" >&2
+    exit 1
+    ;;
+esac
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -126,6 +148,7 @@ fi
 
 echo "# scaling backend=$BACKEND mode=$MODE ring_mode=$RING_MODE configs=$CONFIGS max_ranks=$max_ranks max_threads=$max_threads max_workers=$max_workers"
 echo "# export_mpi_mca=$EXPORT_MPI_MCA"
+echo "# mpi_policy=$MPI_POLICY"
 if [ "$BACKEND" = "container" ] || [ "$EXPORT_MPI_MCA" = "1" ]; then
   echo "# ompi_mca_pml=$OMPI_MCA_pml"
   echo "# ompi_mca_btl=$OMPI_MCA_btl"
