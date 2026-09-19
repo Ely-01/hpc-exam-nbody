@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1660" height="560" viewBox="0 0 1660 560">
+<rect width="100%" height="100%" fill="white"/>
+<style>text{font-family:Arial, Helvetica, sans-serif; fill:#111827;}</style>
+<text x="830.0" y="34" text-anchor="middle" font-size="21" font-weight="700">Native weak scaling</text>
+<text x="830.0" y="58" text-anchor="middle" font-size="12" fill="#4b5563">Weak scaling for direct all-pairs N-body: fixed Nlocal, so ideal runtime grows as P*T1.</text>
+<text x="247.0" y="96.0" text-anchor="middle" font-size="16" font-weight="700">Runtime</text>
+<line x1="72" y1="442" x2="422" y2="442" stroke="#222"/>
+<line x1="72" y1="112" x2="72" y2="442" stroke="#222"/>
+<text x="247.0" y="500.0" text-anchor="middle" font-size="13">Total workers</text>
+<text x="24.0" y="277.0" transform="rotate(-90 24.0,277.0)" text-anchor="middle" font-size="13">Runtime (s)</text>
+<line x1="72" y1="442.0" x2="422" y2="442.0" stroke="#e5e7eb"/>
+<text x="64.0" y="446.0" text-anchor="end" font-size="11">0</text>
+<line x1="72" y1="376.0" x2="422" y2="376.0" stroke="#e5e7eb"/>
+<text x="64.0" y="380.0" text-anchor="end" font-size="11">1e+02</text>
+<line x1="72" y1="310.0" x2="422" y2="310.0" stroke="#e5e7eb"/>
+<text x="64.0" y="314.0" text-anchor="end" font-size="11">2e+02</text>
+<line x1="72" y1="244.0" x2="422" y2="244.0" stroke="#e5e7eb"/>
+<text x="64.0" y="248.0" text-anchor="end" font-size="11">3e+02</text>
+<line x1="72" y1="178.0" x2="422" y2="178.0" stroke="#e5e7eb"/>
+<text x="64.0" y="182.0" text-anchor="end" font-size="11">4e+02</text>
+<line x1="72" y1="112.0" x2="422" y2="112.0" stroke="#e5e7eb"/>
+<text x="64.0" y="116.0" text-anchor="end" font-size="11">5e+02</text>
+<line x1="72.0" y1="442" x2="72.0" y2="447" stroke="#222"/>
+<text x="72.0" y="464.0" text-anchor="middle" font-size="11">1</text>
+<line x1="95.3" y1="442" x2="95.3" y2="447" stroke="#222"/>
+<text x="95.3" y="464.0" text-anchor="middle" font-size="11">2</text>
+<line x1="142.0" y1="442" x2="142.0" y2="447" stroke="#222"/>
+<text x="142.0" y="464.0" text-anchor="middle" font-size="11">4</text>
+<line x1="235.3" y1="442" x2="235.3" y2="447" stroke="#222"/>
+<text x="235.3" y="464.0" text-anchor="middle" font-size="11">8</text>
+<line x1="422.0" y1="442" x2="422.0" y2="447" stroke="#222"/>
+<text x="422.0" y="464.0" text-anchor="middle" font-size="11">16</text>
+<polyline points="72.00,426.14 95.33,410.28 142.00,378.55 235.33,315.11 422.00,188.22" fill="none" stroke="#9ca3af" stroke-width="2.5"/>
+<polyline points="72.00,426.14 95.33,409.87 142.00,377.57 235.33,312.89 422.00,183.42" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+<circle cx="72.00" cy="426.14" r="4" fill="#2563eb"/>
+<circle cx="95.33" cy="409.87" r="4" fill="#2563eb"/>
+<circle cx="142.00" cy="377.57" r="4" fill="#2563eb"/>
+<circle cx="235.33" cy="312.89" r="4" fill="#2563eb"/>
+<circle cx="422.00" cy="183.42" r="4" fill="#2563eb"/>
+<text x="318.0" y="132.0" font-size="12" fill="#6b7280">ideal P*T1</text>
+<circle cx="308.0" cy="146.0" r="4" fill="#2563eb"/>
+<text x="318.0" y="150.0" font-size="12" fill="#2563eb">native</text>
+<text x="649.0" y="96.0" text-anchor="middle" font-size="16" font-weight="700">Scaled speedup</text>
+<line x1="474" y1="442" x2="824" y2="442" stroke="#222"/>
+<line x1="474" y1="112" x2="474" y2="442" stroke="#222"/>
+<text x="649.0" y="500.0" text-anchor="middle" font-size="13">Total workers</text>
+<text x="426.0" y="277.0" transform="rotate(-90 426.0,277.0)" text-anchor="middle" font-size="13">Speedup</text>
+<line x1="474" y1="442.0" x2="824" y2="442.0" stroke="#e5e7eb"/>
+<text x="466.0" y="446.0" text-anchor="end" font-size="11">0</text>
+<line x1="474" y1="376.0" x2="824" y2="376.0" stroke="#e5e7eb"/>
+<text x="466.0" y="380.0" text-anchor="end" font-size="11">4</text>
+<line x1="474" y1="310.0" x2="824" y2="310.0" stroke="#e5e7eb"/>
+<text x="466.0" y="314.0" text-anchor="end" font-size="11">8</text>
+<line x1="474" y1="244.0" x2="824" y2="244.0" stroke="#e5e7eb"/>
+<text x="466.0" y="248.0" text-anchor="end" font-size="11">12</text>
+<line x1="474" y1="178.0" x2="824" y2="178.0" stroke="#e5e7eb"/>
+<text x="466.0" y="182.0" text-anchor="end" font-size="11">16</text>
+<line x1="474" y1="112.0" x2="824" y2="112.0" stroke="#e5e7eb"/>
+<text x="466.0" y="116.0" text-anchor="end" font-size="11">20</text>
+<line x1="474.0" y1="442" x2="474.0" y2="447" stroke="#222"/>
+<text x="474.0" y="464.0" text-anchor="middle" font-size="11">1</text>
+<line x1="497.3" y1="442" x2="497.3" y2="447" stroke="#222"/>
+<text x="497.3" y="464.0" text-anchor="middle" font-size="11">2</text>
+<line x1="544.0" y1="442" x2="544.0" y2="447" stroke="#222"/>
+<text x="544.0" y="464.0" text-anchor="middle" font-size="11">4</text>
+<line x1="637.3" y1="442" x2="637.3" y2="447" stroke="#222"/>
+<text x="637.3" y="464.0" text-anchor="middle" font-size="11">8</text>
+<line x1="824.0" y1="442" x2="824.0" y2="447" stroke="#222"/>
+<text x="824.0" y="464.0" text-anchor="middle" font-size="11">16</text>
+<polyline points="474.00,425.50 497.33,409.00 544.00,376.00 637.33,310.00 824.00,178.00" fill="none" stroke="#9ca3af" stroke-width="2.5"/>
+<polyline points="474.00,425.50 497.33,409.42 544.00,377.00 637.33,312.27 824.00,182.90" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+<circle cx="474.00" cy="425.50" r="4" fill="#2563eb"/>
+<circle cx="497.33" cy="409.42" r="4" fill="#2563eb"/>
+<circle cx="544.00" cy="377.00" r="4" fill="#2563eb"/>
+<circle cx="637.33" cy="312.27" r="4" fill="#2563eb"/>
+<circle cx="824.00" cy="182.90" r="4" fill="#2563eb"/>
+<text x="720.0" y="132.0" font-size="12" fill="#6b7280">ideal</text>
+<circle cx="710.0" cy="146.0" r="4" fill="#2563eb"/>
+<text x="720.0" y="150.0" font-size="12" fill="#2563eb">native</text>
+<text x="1051.0" y="96.0" text-anchor="middle" font-size="16" font-weight="700">Efficiency</text>
+<line x1="876" y1="442" x2="1226" y2="442" stroke="#222"/>
+<line x1="876" y1="112" x2="876" y2="442" stroke="#222"/>
+<text x="1051.0" y="500.0" text-anchor="middle" font-size="13">Total workers</text>
+<text x="828.0" y="277.0" transform="rotate(-90 828.0,277.0)" text-anchor="middle" font-size="13">Parallel efficiency</text>
+<line x1="876" y1="442.0" x2="1226" y2="442.0" stroke="#e5e7eb"/>
+<text x="868.0" y="446.0" text-anchor="end" font-size="11">0</text>
+<line x1="876" y1="376.0" x2="1226" y2="376.0" stroke="#e5e7eb"/>
+<text x="868.0" y="380.0" text-anchor="end" font-size="11">0.22</text>
+<line x1="876" y1="310.0" x2="1226" y2="310.0" stroke="#e5e7eb"/>
+<text x="868.0" y="314.0" text-anchor="end" font-size="11">0.44</text>
+<line x1="876" y1="244.0" x2="1226" y2="244.0" stroke="#e5e7eb"/>
+<text x="868.0" y="248.0" text-anchor="end" font-size="11">0.66</text>
+<line x1="876" y1="178.0" x2="1226" y2="178.0" stroke="#e5e7eb"/>
+<text x="868.0" y="182.0" text-anchor="end" font-size="11">0.88</text>
+<line x1="876" y1="112.0" x2="1226" y2="112.0" stroke="#e5e7eb"/>
+<text x="868.0" y="116.0" text-anchor="end" font-size="11">1.1</text>
+<line x1="876.0" y1="442" x2="876.0" y2="447" stroke="#222"/>
+<text x="876.0" y="464.0" text-anchor="middle" font-size="11">1</text>
+<line x1="899.3" y1="442" x2="899.3" y2="447" stroke="#222"/>
+<text x="899.3" y="464.0" text-anchor="middle" font-size="11">2</text>
+<line x1="946.0" y1="442" x2="946.0" y2="447" stroke="#222"/>
+<text x="946.0" y="464.0" text-anchor="middle" font-size="11">4</text>
+<line x1="1039.3" y1="442" x2="1039.3" y2="447" stroke="#222"/>
+<text x="1039.3" y="464.0" text-anchor="middle" font-size="11">8</text>
+<line x1="1226.0" y1="442" x2="1226.0" y2="447" stroke="#222"/>
+<text x="1226.0" y="464.0" text-anchor="middle" font-size="11">16</text>
+<polyline points="876.00,142.00 899.33,142.00 946.00,142.00 1039.33,142.00 1226.00,142.00" fill="none" stroke="#9ca3af" stroke-width="2.5"/>
+<polyline points="876.00,142.00 899.33,145.84 946.00,146.57 1039.33,147.16 1226.00,147.57" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+<circle cx="876.00" cy="142.00" r="4" fill="#2563eb"/>
+<circle cx="899.33" cy="145.84" r="4" fill="#2563eb"/>
+<circle cx="946.00" cy="146.57" r="4" fill="#2563eb"/>
+<circle cx="1039.33" cy="147.16" r="4" fill="#2563eb"/>
+<circle cx="1226.00" cy="147.57" r="4" fill="#2563eb"/>
+<text x="1122.0" y="132.0" font-size="12" fill="#6b7280">ideal</text>
+<circle cx="1112.0" cy="146.0" r="4" fill="#2563eb"/>
+<text x="1122.0" y="150.0" font-size="12" fill="#2563eb">native</text>
+<text x="1453.0" y="96.0" text-anchor="middle" font-size="16" font-weight="700">Communication fraction</text>
+<line x1="1278" y1="442" x2="1628" y2="442" stroke="#222"/>
+<line x1="1278" y1="112" x2="1278" y2="442" stroke="#222"/>
+<text x="1453.0" y="500.0" text-anchor="middle" font-size="13">Total workers</text>
+<text x="1230.0" y="277.0" transform="rotate(-90 1230.0,277.0)" text-anchor="middle" font-size="13">Communication / total</text>
+<line x1="1278" y1="442.0" x2="1628" y2="442.0" stroke="#e5e7eb"/>
+<text x="1270.0" y="446.0" text-anchor="end" font-size="11">0</text>
+<line x1="1278" y1="376.0" x2="1628" y2="376.0" stroke="#e5e7eb"/>
+<text x="1270.0" y="380.0" text-anchor="end" font-size="11">0.2</text>
+<line x1="1278" y1="310.0" x2="1628" y2="310.0" stroke="#e5e7eb"/>
+<text x="1270.0" y="314.0" text-anchor="end" font-size="11">0.4</text>
+<line x1="1278" y1="244.0" x2="1628" y2="244.0" stroke="#e5e7eb"/>
+<text x="1270.0" y="248.0" text-anchor="end" font-size="11">0.6</text>
+<line x1="1278" y1="178.0" x2="1628" y2="178.0" stroke="#e5e7eb"/>
+<text x="1270.0" y="182.0" text-anchor="end" font-size="11">0.8</text>
+<line x1="1278" y1="112.0" x2="1628" y2="112.0" stroke="#e5e7eb"/>
+<text x="1270.0" y="116.0" text-anchor="end" font-size="11">1</text>
+<line x1="1278.0" y1="442" x2="1278.0" y2="447" stroke="#222"/>
+<text x="1278.0" y="464.0" text-anchor="middle" font-size="11">1</text>
+<line x1="1301.3" y1="442" x2="1301.3" y2="447" stroke="#222"/>
+<text x="1301.3" y="464.0" text-anchor="middle" font-size="11">2</text>
+<line x1="1348.0" y1="442" x2="1348.0" y2="447" stroke="#222"/>
+<text x="1348.0" y="464.0" text-anchor="middle" font-size="11">4</text>
+<line x1="1441.3" y1="442" x2="1441.3" y2="447" stroke="#222"/>
+<text x="1441.3" y="464.0" text-anchor="middle" font-size="11">8</text>
+<line x1="1628.0" y1="442" x2="1628.0" y2="447" stroke="#222"/>
+<text x="1628.0" y="464.0" text-anchor="middle" font-size="11">16</text>
+<polyline points="1278.00,442.00 1301.33,437.16 1348.00,434.19 1441.33,431.78 1628.00,433.29" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+<circle cx="1278.00" cy="442.00" r="4" fill="#2563eb"/>
+<circle cx="1301.33" cy="437.16" r="4" fill="#2563eb"/>
+<circle cx="1348.00" cy="434.19" r="4" fill="#2563eb"/>
+<circle cx="1441.33" cy="431.78" r="4" fill="#2563eb"/>
+<circle cx="1628.00" cy="433.29" r="4" fill="#2563eb"/>
+<circle cx="1514.0" cy="128.0" r="4" fill="#2563eb"/>
+<text x="1524.0" y="132.0" font-size="12" fill="#2563eb">native</text>
+</svg>
