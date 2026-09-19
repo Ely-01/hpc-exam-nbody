@@ -36,6 +36,15 @@ def circles(points: list[tuple[float, float]], color: str) -> str:
     )
 
 
+def markers(points: list[tuple[float, float]], color: str, marker: str) -> str:
+    if marker == "square":
+        return "\n".join(
+            f'<rect x="{x - 4:.2f}" y="{y - 4:.2f}" width="8" height="8" fill="{color}"/>'
+            for x, y in points
+        )
+    return circles(points, color)
+
+
 def draw_panel(
     x_values: list[float],
     y_values: list[float],
@@ -107,6 +116,7 @@ def draw_panel_multi(
     height: float,
     y_max: float,
     ideal_label: str | None = "ideal",
+    overhead_by_x: dict[float, float] | None = None,
 ) -> str:
     x_min = min(x_values)
     x_max = max(x_values)
@@ -152,7 +162,28 @@ def draw_panel_multi(
         ]
         if points:
             parts.append(polyline(points, color))
-            parts.append(circles(points, color))
+            marker = "square" if label == "container" else "circle"
+            parts.append(markers(points, color, marker))
+
+    if overhead_by_x is not None:
+        container_values = next(
+            (
+                values_by_x
+                for label, _, values_by_x in series
+                if label == "container"
+            ),
+            {},
+        )
+        for x in x_values:
+            if x not in overhead_by_x or x not in container_values:
+                continue
+            value = overhead_by_x[x]
+            px = sx(x)
+            py = sy(container_values[x])
+            color = "#dc2626" if value >= 0 else "#16a34a"
+            parts.append(
+                f'<text x="{px:.1f}" y="{py - 10:.1f}" text-anchor="middle" font-size="11" font-weight="700" fill="{color}">{value:+.1f}%</text>'
+            )
 
     legend_x = x0 + width - 104
     legend_y = y0 + 20
@@ -162,7 +193,10 @@ def draw_panel_multi(
         legend_offset = 1
     for index, (label, color, _) in enumerate(series):
         y = legend_y + 18 * (index + legend_offset)
-        parts.append(f'<circle cx="{legend_x - 10:.1f}" cy="{y - 4:.1f}" r="4" fill="{color}"/>')
+        if label == "container":
+            parts.append(f'<rect x="{legend_x - 14:.1f}" y="{y - 8:.1f}" width="8" height="8" fill="{color}"/>')
+        else:
+            parts.append(f'<circle cx="{legend_x - 10:.1f}" cy="{y - 4:.1f}" r="4" fill="{color}"/>')
         parts.append(f'<text x="{legend_x:.1f}" y="{y:.1f}" font-size="12" fill="{color}">{label}</text>')
 
     return "\n".join(parts)
@@ -242,7 +276,28 @@ def draw_overhead_panel(
     return "\n".join(parts)
 
 
-def make_svg(rows: list[dict[str, str]], output: Path) -> None:
+def filter_rows_for_view(rows: list[dict[str, str]], view: str) -> list[dict[str, str]]:
+    if view == "auto":
+        return rows
+    if view == "native":
+        return [row for row in rows if row.get("backend", "native") == "native"]
+    if view == "native-vs-container":
+        filtered = [
+            row
+            for row in rows
+            if row.get("backend", "native") in {"native", "container"}
+        ]
+        backends = {row.get("backend", "native") for row in filtered}
+        if not {"native", "container"}.issubset(backends):
+            raise SystemExit("native-vs-container view requires both native and container rows")
+        return filtered
+    raise SystemExit(f"unknown view: {view}")
+
+
+def make_svg(rows: list[dict[str, str]], output: Path, view: str = "auto") -> None:
+    rows = filter_rows_for_view(rows, view)
+    if not rows:
+        raise SystemExit(f"no rows available for view '{view}'")
     mode = rows[0]["mode"]
     rows = sorted(
         rows,
@@ -267,7 +322,11 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
     has_mpi = any(rank > 1 for rank in ranks)
     has_openmp = any(thread > 1 for thread in threads)
 
-    if len(backends) > 1:
+    if view == "native":
+        backend_label = "Native"
+    elif view == "native-vs-container":
+        backend_label = "Native vs container"
+    elif len(backends) > 1:
         backend_label = "Native vs container"
     elif has_mpi and has_openmp:
         backend_label = "Hybrid MPI+OpenMP"
@@ -344,6 +403,9 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
         plot_title = f"{backend_label} weak scaling"
         speedup_panel_title = "Scaled speedup"
 
+    if has_overhead:
+        note += " Container overhead is annotated on the runtime panel."
+
     ideal_efficiency = [1.0 for _ in all_workers]
     speedup_values = [float(row["speedup"]) for row in rows]
     efficiency_values = [float(row["parallel_efficiency"]) for row in rows]
@@ -384,6 +446,7 @@ def make_svg(rows: list[dict[str, str]], output: Path) -> None:
             330,
             y_max_runtime,
             ideal_label=runtime_ideal_label,
+            overhead_by_x=overhead_by_worker if has_overhead else None,
         ),
         draw_panel_multi(
             all_workers,
@@ -460,6 +523,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("summary_csv", type=Path)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--view",
+        choices=("auto", "native", "native-vs-container"),
+        default="auto",
+        help="which rows and plot narrative to use",
+    )
     return parser.parse_args()
 
 
@@ -468,7 +537,7 @@ def main() -> None:
     rows = read_rows(args.summary_csv)
     if not rows:
         raise SystemExit("empty summary CSV")
-    make_svg(rows, args.output)
+    make_svg(rows, args.output, args.view)
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ OMPI_MCA_pml=${OMPI_MCA_pml:-^ucx}
 OMPI_MCA_btl=${OMPI_MCA_btl:-^ofi,usnic,openib}
 OMPI_MCA_osc=${OMPI_MCA_osc:-^ucx}
 OMPI_MCA_btl_vader_single_copy_mechanism=${OMPI_MCA_btl_vader_single_copy_mechanism:-none}
+EXPORT_MPI_MCA=${EXPORT_MPI_MCA:-0}
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -124,6 +125,13 @@ if [ -n "${SLURM_CPUS_PER_TASK:-}" ] && [ "$max_threads" -gt "$SLURM_CPUS_PER_TA
 fi
 
 echo "# scaling backend=$BACKEND mode=$MODE ring_mode=$RING_MODE configs=$CONFIGS max_ranks=$max_ranks max_threads=$max_threads max_workers=$max_workers"
+echo "# export_mpi_mca=$EXPORT_MPI_MCA"
+if [ "$BACKEND" = "container" ] || [ "$EXPORT_MPI_MCA" = "1" ]; then
+  echo "# ompi_mca_pml=$OMPI_MCA_pml"
+  echo "# ompi_mca_btl=$OMPI_MCA_btl"
+  echo "# ompi_mca_osc=$OMPI_MCA_osc"
+  echo "# ompi_mca_btl_vader_single_copy_mechanism=$OMPI_MCA_btl_vader_single_copy_mechanism"
+fi
 
 extract_final_field () {
   key=$1
@@ -169,6 +177,13 @@ run_mpi_native () {
   if [ $((n_for_run % ranks)) -ne 0 ]; then
     echo "error: N=$n_for_run must be divisible by ranks=$ranks" >&2
     exit 1
+  fi
+
+  if [ "$EXPORT_MPI_MCA" = "1" ]; then
+    export OMPI_MCA_pml
+    export OMPI_MCA_btl
+    export OMPI_MCA_osc
+    export OMPI_MCA_btl_vader_single_copy_mechanism
   fi
 
   if command -v srun >/dev/null 2>&1; then
