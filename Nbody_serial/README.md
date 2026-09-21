@@ -1,371 +1,161 @@
-# Serial C11 direct N-body baseline
+# Direct N-body HPC Exam Repository
 
-This directory contains three stand-alone programs for the direct gravitational N-body exercise:
+This repository contains the implementation, benchmark scripts, container
+recipes, and report artifacts for the direct softened gravitational N-body
+exercise.
 
-- `nbody_direct_serial.c`: serial softened direct solver with selectable KDK
-  or DKD leapfrog integration and selectable direct/Newton/Newton-atomic force
-  kernels.
-- `benchmark_layout.c`: AoS-vs-SoA microbenchmark for the direct force kernel.
-  step and a relative energy-drift verifier.
-- `gen_plummer_sphere.c`: Plummer-sphere initial-condition generator.
-- `gen_uniform_ball_maxwell.c`: uniform-ball generator with isotropic Maxwellian
-  velocities.
-
-The codes are intended as *almost complete* exam skeletons. The default direct force kernel is deliberately correct but naive. It uses an O(N^2) all-pairs loop, scalar `sqrt`, one accumulator per component, and no Newton-third-law reuse. 
-The comments in `compute_accelerations_direct` mark this as the kernel whose optimization is part of the assignment, along with the hybrid parallelization. A serial Newton-third-law kernel is available with `--force-kernel newton` as a controlled comparison point; `--force-kernel newton-atomic` parallelizes the Newton pair loop with atomic accumulator updates to measure write-conflict overhead. Neither Newton variant is the MPI production kernel because pair reuse introduces non-local acceleration updates.
-
-## Script layout
-
-Project scripts are grouped by role:
+The scientific discussion, interpretation of the results, and final exam
+deliverable are in:
 
 ```text
-scripts/benchmark/   repeated benchmark drivers
-scripts/analyze/     CSV summarizers, analyzers, and SVG plot generators
-scripts/slurm/       SLURM submission wrappers
-scripts/smoke/       short correctness and portability smoke tests
-scripts/utils/       environment, container, and system-information helpers
+REPORT.md
 ```
 
-Generated raw outputs stay under `results/`, while report-ready figures live
-under `report/figures/`.
+This README is a practical guide to the repository: what each file does, which
+commands build and run the code, where raw results are written, and how the
+tables and figures used in the report are generated.
 
-## Arithmetic type
+## Repository Map
 
-All physical quantities in the solver and generators use the typedef `dtype`, defined in `nbody_common.h`.
+```text
+Nbody_serial/
+├── nbody_common.h
+│   └── shared particle format, precision type, math helpers, binary I/O constants
+│
+├── nbody_core.h, nbody_core.c
+│   └── shared SoA particle storage, allocation, binary I/O, energy routines
+│
+├── nbody_direct_serial.c
+│   └── serial/OpenMP solver used for validation and kernel trade-off studies
+│
+├── nbody_mpi_omp.c
+│   └── MPI + OpenMP production solver with blocking/overlap ring communication
+│
+├── generate_ic.c
+│   └── Plummer and uniform-sphere initial-condition generator
+│
+├── inspect_particles.c
+│   └── utility for inspecting binary particle files
+│
+├── benchmark_layout.c
+│   └── AoS-vs-SoA force-kernel layout microbenchmark
+│
+├── benchmark_rsqrt_kernel.c
+│   └── isolated SIMD reciprocal-square-root microbenchmark
+│
+├── Makefile
+│   └── native, MPI, OpenMP, precision, and benchmark builds
+│
+├── container/
+│   ├── Dockerfile
+│   │   └── Docker build environment required by the assignment
+│   └── nbody.def
+│       └── Singularity definition file for the Orfeo .sif image
+│
+├── scripts/
+│   ├── benchmark/
+│   │   └── repeated benchmark drivers producing raw CSV files
+│   ├── slurm/
+│   │   └── Orfeo SLURM wrappers for the benchmark drivers
+│   ├── analyze/
+│   │   └── CSV summarization, report tables, and SVG plots
+│   ├── smoke/
+│   │   └── short native/MPI/container smoke tests
+│   └── utils/
+│       └── system information, MPI binding checks, launch-overhead measurement
+│
+├── report/
+│   ├── data/
+│   │   └── hardware and software stack snapshot used in the report
+│   ├── tables/
+│   │   └── final CSV and Markdown tables used in REPORT.md
+│   └── figures/
+│       └── final SVG plots used in REPORT.md
+│
+└── results/
+    └── raw benchmark logs and CSV files generated during runs
+```
 
-Default build, double-precision arithmetic:
+## Build Configuration
+
+Important Makefile variables:
+
+```text
+PRECISION=double|float   arithmetic type used by the solvers
+OPENMP=0|1               enable OpenMP compilation
+CFLAGS=...               optimization and warning flags
+MPICC=...                MPI compiler wrapper
+```
+
+Native final-report flags on Orfeo:
 
 ```sh
-make
+CFLAGS="-O3 -march=native -ffp-contract=fast -Wall -Wextra -Wpedantic"
 ```
 
-Single-precision arithmetic:
+Portable container benchmark flags:
+
+```sh
+CFLAGS="-O3 -march=x86-64-v3 -ffp-contract=fast -Wall -Wextra -Wpedantic"
+```
+
+## Build Commands
+
+Build the serial/OpenMP-capable programs:
 
 ```sh
 make clean
-make PRECISION=float
+make OPENMP=1 PRECISION=double \
+  CFLAGS="-O3 -march=native -ffp-contract=fast -Wall -Wextra -Wpedantic"
 ```
 
-OpenMP force-kernel build:
+Build the MPI + OpenMP solver:
+
+```sh
+make mpi OPENMP=1 PRECISION=double \
+  CFLAGS="-O3 -march=native -ffp-contract=fast -Wall -Wextra -Wpedantic"
+```
+
+Build the isolated reciprocal-square-root microbenchmark:
+
+```sh
+make benchmark_rsqrt_kernel PRECISION=double \
+  CFLAGS="-O3 -march=native -ffp-contract=fast -Wall -Wextra -Wpedantic"
+```
+
+Clean generated executables and temporary binary inputs:
 
 ```sh
 make clean
-make OPENMP=1
-OMP_NUM_THREADS=4 ./nbody_direct_serial --input plummer_1000.bin --nsteps 100 --dt 1e-4 --eps 0.05 --energy-every 10 --timing
 ```
 
-Compare the default all-pairs force kernel with the serial Newton-third-law
-variant:
+## Initial Conditions and File Format
+
+Generate a Plummer sphere:
 
 ```sh
-./nbody_direct_serial --input plummer_4096.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --force-kernel direct --timing --quiet
-./nbody_direct_serial --input plummer_4096.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --force-kernel newton --timing --quiet
-./nbody_direct_serial --input plummer_4096.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --force-kernel newton-atomic --timing --quiet
+./generate_ic \
+  --model 0 \
+  --n 10000 \
+  --seed 123 \
+  --scale 1.0 \
+  --mass 1.0 \
+  --output results/plummer_10000.bin
 ```
 
-Run the repeated Newton trade-off benchmark and generate a summary plus SVG:
+Generate a uniform ball:
 
 ```sh
-THREADS="1 2 4 8" REPEATS=5 N=4096 NSTEPS=10 sh scripts/benchmark/benchmark_newton_tradeoff.sh
-python3 scripts/analyze/analyze_newton_tradeoff.py results/newton_tradeoff_YYYYMMDD_HHMMSS.csv \
-  --csv results/newton_tradeoff_summary.csv \
-  --markdown results/newton_tradeoff_summary.md \
-  --svg report/figures/newton_tradeoff.svg
+./generate_ic \
+  --model 1 \
+  --n 10000 \
+  --seed 123 \
+  --scale 1.0 \
+  --mass 1.0 \
+  --output results/uniform_10000.bin
 ```
 
-Compare the reference `1/sqrt` path against approximate reciprocal-sqrt modes:
-
-```sh
-./nbody_direct_serial --input plummer_4096.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --inv-sqrt libm --timing --quiet
-./nbody_direct_serial --input plummer_4096.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --inv-sqrt rsqrt2 --timing --quiet
-```
-
-Run the repeated reciprocal-sqrt benchmark and generate a summary plus SVG:
-
-```sh
-THREADS="1 2 4 8" REPEATS=5 N=4096 NSTEPS=10 sh scripts/benchmark/benchmark_rsqrt_tradeoff.sh
-python3 scripts/analyze/analyze_rsqrt_tradeoff.py results/rsqrt_tradeoff_YYYYMMDD_HHMMSS.csv \
-  --csv results/rsqrt_tradeoff_summary.csv \
-  --markdown results/rsqrt_tradeoff_summary.md \
-  --svg report/figures/rsqrt_tradeoff.svg
-```
-
-Run the AoS-vs-SoA force-kernel layout microbenchmark:
-
-```sh
-THREADS="1 2 4 8" REPEATS=5 N=8192 sh scripts/benchmark/benchmark_layout_tradeoff.sh
-python3 scripts/analyze/analyze_layout_tradeoff.py results/layout_tradeoff_final.csv \
-  --csv results/layout_tradeoff_summary.csv \
-  --markdown results/layout_tradeoff_summary.md \
-  --svg report/figures/layout_tradeoff.svg
-```
-
-On SLURM:
-
-```sh
-sbatch -A dssc -p GENOA --ntasks=1 --cpus-per-task=8 \
-  --export=ALL,MODULES="openMPI/4.1.6",THREADS="1 2 4 8",N=8192,REPEATS=5 \
-  scripts/slurm/layout_tradeoff.slurm
-```
-
-Run the accumulator-splitting force-kernel benchmark:
-
-```sh
-REPEATS=5 THREADS="1 2 4 8" N=4096 NSTEPS=10 sh scripts/benchmark/benchmark_accumulator_tradeoff.sh
-python3 scripts/analyze/analyze_accumulator_tradeoff.py results/accumulator_tradeoff_YYYYMMDD_HHMMSS.csv \
-  --csv results/accumulator_tradeoff_summary.csv \
-  --markdown results/accumulator_tradeoff_summary.md \
-  --svg report/figures/accumulator_tradeoff.svg
-```
-
-For the final Orfeo run, prefer node-specific optimization flags so that the
-compiler can use the instruction set of the allocated CPU:
-
-```sh
-CFLAGS="-O3 -march=native -ffp-contract=fast -Wall -Wextra -Wpedantic" \
-  REPEATS=5 THREADS="1 2 4 8" N=8192 NSTEPS=20 \
-  sh scripts/benchmark/benchmark_accumulator_tradeoff.sh
-```
-
-The `direct-split2`, `direct-split4`, and `direct-split8` kernels keep the same
-direct all-pairs force law but split the local `ax/ay/az` accumulation into
-multiple independent partial sums. This is the benchmark used to discuss the
-FMA-throughput/critical-path point from the assignment: fewer dependencies can
-increase throughput, but the gain eventually saturates because of extra loop
-bookkeeping, register pressure, and the remaining non-accumulation work.
-
-Run a repeated OpenMP benchmark and save a CSV under `results/`:
-
-```sh
-REPEATS=5 THREADS="1 2 4 8" N=4096 NSTEPS=10 sh scripts/benchmark/benchmark_openmp.sh
-```
-
-Build the first MPI + OpenMP ring-shift solver when an MPI compiler wrapper is
-available:
-
-```sh
-make mpi OPENMP=1
-mpirun -np 4 ./nbody_mpi_omp --input plummer_8192.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --timing
-```
-
-The MPI ring communication mode is selectable:
-
-```sh
-mpirun -np 4 ./nbody_mpi_omp --input plummer_8192.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --ring-mode blocking --timing --quiet
-mpirun -np 4 ./nbody_mpi_omp --input plummer_8192.bin --nsteps 10 --dt 1e-4 --eps 0.05 --energy-every 10 --ring-mode overlap --timing --quiet
-```
-
-`blocking` uses the original `MPI_Sendrecv` ring shift. `overlap` posts
-`MPI_Irecv`/`MPI_Isend` for the next ring block before computing the current
-block, then waits only before swapping buffers. The force calculation is shared
-between the two modes, so the comparison isolates the communication strategy.
-
-On SLURM systems such as Leonardo or Orfeo, the launch command will usually be
-`srun` inside a batch script after loading the appropriate compiler and MPI
-modules.
-
-The repository also includes a conservative MPI smoke test for the first
-cluster validation:
-
-```sh
-sh scripts/smoke/run_mpi_smoke.sh
-sbatch scripts/slurm/mpi_smoke.slurm
-```
-
-After the smoke test, compare the serial KDK solver with MPI KDK runs on the
-same initial conditions:
-
-```sh
-sh scripts/smoke/compare_serial_mpi.sh
-sbatch scripts/slurm/compare_serial_mpi.slurm
-```
-
-Run a first hybrid MPI + OpenMP benchmark over rank/thread combinations:
-
-```sh
-CONFIGS="1x4 2x2 4x1" REPEATS=5 N=4096 NSTEPS=10 sh scripts/benchmark/benchmark_hybrid.sh
-sbatch scripts/slurm/hybrid_benchmark.slurm
-python3 scripts/analyze/summarize_hybrid_csv.py results/hybrid_benchmark_YYYYMMDD_HHMMSS.csv
-```
-
-For the final native mapping study on a 64-core GENOA node, submit one layout
-per job and then summarize the resulting CSV files together:
-
-```sh
-python3 scripts/analyze/summarize_hybrid_csv.py results/hybrid_benchmark_blocking_*.csv \
-  --csv report/tables/hybrid_mapping_summary.csv \
-  --markdown report/tables/hybrid_mapping_summary.md
-```
-
-To compare blocking versus overlap, run the same benchmark twice with a single
-ring mode per CSV:
-
-```sh
-RING_MODE=blocking CONFIGS="4x1 4x2 8x1" REPEATS=5 N=8192 NSTEPS=20 sh scripts/benchmark/benchmark_hybrid.sh
-RING_MODE=overlap CONFIGS="4x1 4x2 8x1" REPEATS=5 N=8192 NSTEPS=20 sh scripts/benchmark/benchmark_hybrid.sh
-python3 scripts/analyze/analyze_ring_overlap.py \
-  results/hybrid_benchmark_blocking_YYYYMMDD_HHMMSS.csv \
-  results/hybrid_benchmark_overlap_YYYYMMDD_HHMMSS.csv \
-  --csv results/ring_overlap_summary.csv \
-  --markdown results/ring_overlap_summary.md \
-  --svg report/figures/ring_overlap.svg
-```
-
-Run strong or weak scaling benchmarks:
-
-```sh
-MODE=strong N=32768 NSTEPS=20 REPEATS=5 CONFIGS="1x1 2x1 4x1 8x1" sh scripts/benchmark/benchmark_scaling.sh
-MODE=weak NLOCAL=4096 NSTEPS=20 REPEATS=5 CONFIGS="1x1 2x1 4x1 8x1" sh scripts/benchmark/benchmark_scaling.sh
-sbatch scripts/slurm/scaling_benchmark.slurm
-python3 scripts/analyze/summarize_scaling_csv.py results/strong_scaling_YYYYMMDD_HHMMSS.csv --markdown results/strong_scaling_summary.md --csv results/strong_scaling_summary.csv
-python3 scripts/analyze/plot_scaling_svg.py results/strong_scaling_summary.csv --output results/strong_scaling.svg
-```
-
-Run the dedicated energy-conservation validation used in the report:
-
-```sh
-N=10000 NSTEPS=100 DT=1e-4 EPS=0.05 ENERGY_EVERY=10 THREADS=8 \
-  sh scripts/benchmark/benchmark_validation.sh
-```
-
-On Orfeo, submit the same validation through SLURM:
-
-```sh
-sbatch -A dssc -p GENOA --ntasks=1 --cpus-per-task=8 \
-  --export=ALL,MODULES="openMPI/4.1.6",THREADS=8 \
-  scripts/slurm/validation.slurm
-```
-
-The script writes `report/tables/validation_energy_summary.{csv,md}` and keeps
-the full solver log under `results/`.
-
-The same validation driver can measure the direct `O(N^2)` growth check used
-to answer the "what if N increases by 10?" report question:
-
-```sh
-VALIDATION_MODE=growth N_BASE=1000 N_FACTOR=10 NSTEPS=50 ENERGY_EVERY=50 THREADS=8 \
-  sh scripts/benchmark/benchmark_validation.sh
-```
-
-This writes `report/tables/n_growth_summary.{csv,md}` and reports both the
-expected pair-count ratio and the measured force-time-per-step ratio.
-
-Override the defaults with environment variables, for example:
-
-```sh
-MPI_RANKS=4 OMP_THREADS=2 N=128 NSTEPS=5 sh scripts/smoke/run_mpi_smoke.sh
-```
-
-## Preliminary Apptainer container
-
-The container layer follows the assignment structure:
-
-- `container/Dockerfile` defines a Docker image with the build-time
-  dependencies;
-- `container/nbody.def` builds the Apptainer/Singularity `.sif` image used on
-  Orfeo.
-
-The base image is Ubuntu 24.04. The assignment examples discuss Ubuntu 22.04,
-but on Orfeo the host OpenMPI module is built against a newer glibc than the one
-available in Ubuntu 22.04. Ubuntu 24.04 keeps a general-purpose Linux userspace
-while allowing the containerized executable to bind the host MPI libraries.
-
-Build the Apptainer image directly on Orfeo:
-
-```sh
-module load apptainer
-apptainer build container/nbody_latest.sif container/nbody.def
-```
-
-Building directly on Orfeo is the preferred first attempt because it validates
-the same Apptainer version, filesystem behavior, and module environment used for
-the runs. If Orfeo requires fakeroot or a site-specific build workflow, use:
-
-```sh
-apptainer build --fakeroot container/nbody_latest.sif container/nbody.def
-```
-
-If a local Docker daemon is available outside the cluster, the equivalent Docker
-path is:
-
-```sh
-docker build -t nbody:latest -f container/Dockerfile .
-apptainer build container/nbody_latest.sif docker-daemon://nbody:latest
-```
-
-Keep the output image at `container/nbody_latest.sif`. The `.sif` image is a
-generated artifact and is not committed.
-
-Run a local smoke test inside the image:
-
-```sh
-BUILD_CFLAGS="-O3 -march=x86-64-v3 -ffp-contract=fast -Wall -Wextra -Wpedantic" \
-  sh scripts/smoke/run_container_smoke.sh
-```
-
-Or under SLURM, after loading the same MPI module used for native runs:
-
-```sh
-module load openMPI/4.1.6
-module load apptainer
-sbatch -A dssc -p EPYC --ntasks=4 --cpus-per-task=1 \
-  --export=ALL,MODULES="openMPI/4.1.6",CONTAINER_IMAGE=container/nbody_latest.sif \
-  scripts/slurm/container_smoke.slurm
-```
-
-For the final comparison, run native and container benchmarks with the same
-input files, rank/thread layout, partition, compiler flags, and number of
-repeats. The `.sif` image is a generated artifact and is not committed.
-
-The container installs OpenMPI to compile the MPI program with `mpicc`. On the
-cluster, Apptainer is expected to launch under the host MPI runtime and bind the
-host environment at execution time. This is why the container MPI is treated as
-a build-time dependency, while the final report must still check MPI linkage and
-runtime behavior on Orfeo.
-
-Check MPI library binding with `ldd`:
-
-```sh
-module load openMPI/4.1.6
-module load apptainer
-make mpi OPENMP=1 PRECISION=double
-CONTAINER_IMAGE=container/nbody_latest.sif sh scripts/utils/check_container_mpi_binding.sh
-```
-
-The report should compare the MPI-related lines in:
-
-```text
-results/mpi_ldd_native.txt
-results/mpi_ldd_container_build_env.txt
-results/mpi_ldd_container_host_mpi.txt
-```
-
-Measure container launch overhead explicitly:
-
-```sh
-python3 scripts/utils/measure_container_launch_overhead.py \
-  --image container/nbody_latest.sif \
-  --repeats 5 \
-  --output results/container_launch_overhead.csv
-```
-
-Use `-march=x86-64-v3` for portable container benchmark binaries. It targets a
-modern x86-64 baseline without hard-coding the exact CPU used during image
-creation. A native `-march=native` build can still be run separately to measure
-how much performance is left on the table by the portable choice.
-
-The equivalent manual switches are:
-
-```sh
--DNBODY_USE_DOUBLE
--DNBODY_USE_FLOAT
-```
-
-Only one of the two should be defined. If neither is defined, the header falls back to double precision.
-
-## Binary file format
-
-All programs use the same native-endian binary format. Particle data are stored in single precision, independently of the selected `dtype` used for arithmetic:
+All solvers use the same compact binary format:
 
 ```text
 byte 0..7       magic: "NBODYF1\0"
@@ -373,98 +163,521 @@ next 8 bytes    uint64_t particle count N
 then N records  x y z vx vy vz, six float values per particle
 ```
 
-The solver assigns one mass to every particle through `--mass`; mass is not stored per particle in the file. This keeps the initial-condition file compact and makes the equal-mass assumption explicit in the command line.
+The solver mass is passed at runtime through `--mass`; the file stores positions
+and velocities only.
 
-Because the format is deliberately minimal and native-endian, it is intended for same-machine teaching runs and benchmarks, not for long-term archival exchange between heterogeneous systems.
+## Direct Solver Runs
 
-## Build
-
-```sh
-make
-```
-
-or explicitly:
+Run the serial/OpenMP solver:
 
 ```sh
-cc -std=c11 -DNBODY_USE_DOUBLE -O2 -Wall -Wextra -Wpedantic nbody_direct_serial.c -lm -o nbody_direct_serial
-cc -std=c11 -DNBODY_USE_DOUBLE -O2 -Wall -Wextra -Wpedantic gen_plummer_sphere.c -lm -o gen_plummer_sphere
-cc -std=c11 -DNBODY_USE_DOUBLE -O2 -Wall -Wextra -Wpedantic gen_uniform_ball_maxwell.c -lm -o gen_uniform_ball_maxwell
+OMP_NUM_THREADS=8 OMP_PLACES=cores OMP_PROC_BIND=close \
+./nbody_direct_serial \
+  --input results/plummer_10000.bin \
+  --nsteps 100 \
+  --dt 1e-4 \
+  --eps 0.05 \
+  --energy-every 10 \
+  --timing
 ```
 
-
-Part of the assignment is to determine the best compiler’s flags and options, and the CPU bindings. List them in the final report.
-
-## Example runs
-
-Generate a small Plummer sphere and evolve it:
+Select the force kernel:
 
 ```sh
-./gen_plummer_sphere --n 1000 --seed 123 --scale 1.0 --mass 1.0 --output plummer_1000.bin
-./nbody_direct_serial --input plummer_1000.bin --nsteps 100 --dt 1e-4 --eps 0.05 --mass 1.0 --energy-every 10 --output final_state.bin
+./nbody_direct_serial --input results/plummer_8192.bin --nsteps 20 \
+  --dt 1e-4 --eps 0.05 --energy-every 20 \
+  --force-kernel direct --timing --quiet
+
+./nbody_direct_serial --input results/plummer_8192.bin --nsteps 20 \
+  --dt 1e-4 --eps 0.05 --energy-every 20 \
+  --force-kernel direct-split4 --timing --quiet
+
+./nbody_direct_serial --input results/plummer_8192.bin --nsteps 20 \
+  --dt 1e-4 --eps 0.05 --energy-every 20 \
+  --force-kernel newton-atomic --timing --quiet
 ```
 
-Generate a uniform ball with Maxwellian velocities. If `--sigma` is negative or omitted, the generator uses the uniform-sphere virial estimate
-`sigma^2 = G M / (5 R)`.
+Select the inverse-square-root path:
 
 ```sh
-./gen_uniform_ball_maxwell --n 1000 --seed 456 --radius 1.0 --mass 1.0 --output ball_1000.bin
-./nbody_direct_serial --input ball_1000.bin --nsteps 100 --dt 1e-4 --eps 0.05 --mass 1.0 --energy-every 10
+./nbody_direct_serial --input results/plummer_8192.bin --nsteps 20 \
+  --dt 1e-4 --eps 0.05 --energy-every 20 \
+  --inv-sqrt libm --timing --quiet
+
+./nbody_direct_serial --input results/plummer_8192.bin --nsteps 20 \
+  --dt 1e-4 --eps 0.05 --energy-every 20 \
+  --inv-sqrt rsqrt2 --timing --quiet
 ```
 
-Add `--timing` to print section timings for I/O, force evaluations,
-integration, energy diagnostics, and output writing:
+## MPI + OpenMP Solver Runs
+
+Run the distributed solver with blocking ring communication:
 
 ```sh
-./nbody_direct_serial --input plummer_1000.bin --nsteps 100 --dt 1e-4 --eps 0.05 --energy-every 10 --timing
+mpirun -np 4 ./nbody_mpi_omp \
+  --input results/plummer_32768.bin \
+  --nsteps 100 \
+  --dt 1e-4 \
+  --eps 0.05 \
+  --energy-every 100 \
+  --ring-mode blocking \
+  --timing
 ```
 
-Run both smoke tests:
+Run the non-blocking overlap variant:
+
+```sh
+mpirun -np 4 ./nbody_mpi_omp \
+  --input results/plummer_32768.bin \
+  --nsteps 100 \
+  --dt 1e-4 \
+  --eps 0.05 \
+  --energy-every 100 \
+  --ring-mode overlap \
+  --timing
+```
+
+`blocking` uses `MPI_Sendrecv`. `overlap` posts `MPI_Irecv`/`MPI_Isend` before
+computing the current ring block and waits before swapping buffers.
+
+## Smoke Tests
+
+Native serial smoke test:
 
 ```sh
 make run-smoke
 ```
 
-## Solver notes
+MPI smoke test:
 
-The default time integrator is Kick-Drift-Kick, selected with
-`--integrator kdk`:
-
-1. compute the initial accelerations before the first step;
-2. kick velocities by `dt/2` using the current accelerations;
-3. drift positions by `dt` with the half-step velocities;
-4. compute accelerations at the new positions;
-5. kick velocities by `dt/2` using the updated accelerations.
-
-The previous Drift-Kick-Drift variant is still available with
-`--integrator dkd` for numerical and performance comparisons.
-
-The energy check uses the same softened potential as the force law:
-
-```text
-U = - sum_{i<j} G m^2 / sqrt(|r_i-r_j|^2 + eps^2)
+```sh
+sh scripts/smoke/run_mpi_smoke.sh
 ```
 
-The reported verification metric is
+Container smoke test:
 
-```text
-abs(E(t) - E(0)) / max(abs(E(0)), dtype_min_normal)
+```sh
+CONTAINER_RUNTIME=singularity \
+CONTAINER_IMAGE=container/nbody_latest.sif \
+sh scripts/smoke/run_container_smoke.sh
 ```
 
-A warning is printed if the maximum observed drift exceeds `--energy-tol` (default `1e-3`). This does not terminate the run, because large drift is often an intentional teaching signal: reduce `dt`, increase `eps`, or inspect the initial conditions.
+Equivalent SLURM wrappers:
 
-## Intended optimisation path
+```sh
+sbatch scripts/slurm/mpi_smoke.slurm
+sbatch scripts/slurm/container_smoke.slurm
+```
 
-The baseline is serial on purpose. Natural extensions are:
+## Orfeo Module Setup
 
-- **Pay attention to the data qualifiers, like `const`, `resatrict`, and so on, to let the compiler optimize the code**
+Typical native setup:
 
-- convert `compute_accelerations_direct` into an OpenMP loop without inner-loop
-  atomics;
-- compare Newton-third-law reuse against thread-private force buffers;  
-  when is it convenient, against the price of using atomics for a non-local write?
-- split accumulators to shorten the floating-point dependency chain;
-- compare scalar `sqrt` with an approximate reciprocal-square-root path and
-  verify that energy conservation remains meaningful;
-- preserve the SoA layout when adding MPI ring-shift communication;
-- can you measure the achieved FLOP/s before and after each change.
-- Instrument your code so that you can tie every section and assess their scalability separately, instead of just the total run-time
+```sh
+module purge
+module load openMPI/4.1.6
+```
+
+Container setup:
+
+```sh
+module purge
+module load openMPI/4.1.6 singularity/4.3.1
+```
+
+Collect hardware/software information:
+
+```sh
+sbatch -A dssc -p GENOA --ntasks=1 --cpus-per-task=1 \
+  scripts/slurm/system_info_genoa.slurm
+```
+
+Final snapshot:
+
+```text
+report/data/system_info_genoa.txt
+```
+
+## Validation and Growth Checks
+
+Energy-conservation validation:
+
+```sh
+N=10000 NSTEPS=100 DT=1e-4 EPS=0.05 ENERGY_EVERY=10 THREADS=8 \
+  sh scripts/benchmark/benchmark_validation.sh
+```
+
+SLURM version:
+
+```sh
+sbatch -A dssc -p GENOA --ntasks=1 --cpus-per-task=8 \
+  --export=ALL,MODULES="openMPI/4.1.6",THREADS=8 \
+  scripts/slurm/validation.slurm
+```
+
+Outputs:
+
+```text
+report/tables/validation_energy_summary.csv
+report/tables/validation_energy_summary.md
+```
+
+Growth check for the direct `O(N^2)` cost:
+
+```sh
+VALIDATION_MODE=growth N_BASE=1000 N_FACTOR=10 NSTEPS=50 \
+ENERGY_EVERY=50 THREADS=1 \
+  sh scripts/benchmark/benchmark_validation.sh
+```
+
+Outputs:
+
+```text
+report/tables/n_growth_summary.csv
+report/tables/n_growth_summary.md
+```
+
+## Kernel-Level Benchmarks
+
+Newton third-law trade-off:
+
+```sh
+THREADS="1 2 4 8" REPEATS=5 N=8192 NSTEPS=20 DT=1e-4 EPS=0.05 \
+  sh scripts/benchmark/benchmark_newton_tradeoff.sh
+
+python3 scripts/analyze/analyze_newton_tradeoff.py results/newton_tradeoff_*.csv \
+  --csv report/tables/newton_tradeoff_summary.csv \
+  --markdown report/tables/newton_tradeoff_summary.md \
+  --svg report/figures/newton_tradeoff.svg
+```
+
+AoS-vs-SoA layout trade-off:
+
+```sh
+THREADS="1 2 4 8" REPEATS=5 N=16384 \
+  sh scripts/benchmark/benchmark_layout_tradeoff.sh
+
+python3 scripts/analyze/analyze_layout_tradeoff.py results/layout_tradeoff_*.csv \
+  --csv report/tables/layout_tradeoff_summary.csv \
+  --markdown report/tables/layout_tradeoff_summary.md \
+  --svg report/figures/layout_tradeoff.svg
+```
+
+Compiler vectorization report for the layout benchmark:
+
+```sh
+make OPENMP=1 PRECISION=double benchmark_layout \
+  CFLAGS="-O3 -march=native -ffp-contract=fast -Wall -Wextra -Wpedantic -fopt-info-vec-all=report/tables/layout_vec_all.txt"
+```
+
+Full-solver reciprocal-square-root trade-off:
+
+```sh
+THREADS="1 2 4 8" REPEATS=5 N=8192 NSTEPS=20 DT=1e-4 EPS=0.05 \
+  sh scripts/benchmark/benchmark_rsqrt_tradeoff.sh
+
+python3 scripts/analyze/analyze_rsqrt_tradeoff.py results/rsqrt_tradeoff_*.csv \
+  --csv report/tables/rsqrt_tradeoff_summary.csv \
+  --markdown report/tables/rsqrt_tradeoff_summary.md
+```
+
+Isolated SIMD reciprocal-square-root microbenchmark:
+
+```sh
+REPEATS=5 N=16777216 \
+  sh scripts/benchmark/benchmark_rsqrt_kernel.sh
+
+python3 scripts/analyze/analyze_rsqrt_kernel.py results/rsqrt_kernel_*.csv \
+  --csv report/tables/rsqrt_kernel_summary.csv \
+  --markdown report/tables/rsqrt_kernel_summary.md \
+  --svg report/figures/rsqrt_kernel.svg
+```
+
+Accumulator-splitting benchmark:
+
+```sh
+THREADS="1 2 4 8" REPEATS=5 N=8192 NSTEPS=20 DT=1e-4 EPS=0.05 \
+  sh scripts/benchmark/benchmark_accumulator_tradeoff.sh
+
+python3 scripts/analyze/analyze_accumulator_tradeoff.py results/accumulator_tradeoff_*.csv \
+  --csv report/tables/accumulator_tradeoff_summary.csv \
+  --markdown report/tables/accumulator_tradeoff_summary.md \
+  --svg report/figures/accumulator_tradeoff.svg
+```
+
+## Hybrid Mapping and Ring Overlap
+
+Hybrid MPI/OpenMP mapping:
+
+```sh
+CONFIGS="2x32 8x8 64x1" REPEATS=5 N=32768 NSTEPS=20 \
+  sh scripts/benchmark/benchmark_hybrid.sh
+
+python3 scripts/analyze/summarize_hybrid_csv.py results/hybrid_benchmark_*.csv \
+  --csv report/tables/hybrid_mapping_summary.csv \
+  --markdown report/tables/hybrid_mapping_summary.md
+```
+
+Blocking-vs-overlap ring comparison:
+
+```sh
+RING_MODE=blocking CONFIGS="4x1 8x1 16x1 32x1" REPEATS=5 N=32768 NSTEPS=20 \
+  sh scripts/benchmark/benchmark_hybrid.sh
+
+RING_MODE=overlap CONFIGS="4x1 8x1 16x1 32x1" REPEATS=5 N=32768 NSTEPS=20 \
+  sh scripts/benchmark/benchmark_hybrid.sh
+
+python3 scripts/analyze/analyze_ring_overlap.py \
+  results/hybrid_benchmark_blocking_*.csv \
+  results/hybrid_benchmark_overlap_*.csv \
+  --csv report/tables/ring_overlap_summary.csv \
+  --markdown report/tables/ring_overlap_summary.md \
+  --svg report/figures/ring_overlap.svg
+```
+
+## Native Strong and Weak Scaling
+
+Native-only scaling uses the host MPI default transport, because it measures
+native node/application performance rather than container overhead isolation.
+
+Strong scaling on Orfeo:
+
+```sh
+sbatch -A dssc -p GENOA --ntasks=32 --cpus-per-task=1 --time=02:00:00 \
+  --export=ALL,MODULES="openMPI/4.1.6",MODE=strong,BACKEND=native,N=32768,NSTEPS=100,REPEATS=5,CONFIGS="1x1 2x1 4x1 8x1 16x1 32x1",CSV=results/final_native_strong_default.csv \
+  scripts/slurm/scaling_benchmark.slurm
+```
+
+Weak scaling on Orfeo:
+
+```sh
+sbatch -A dssc -p GENOA --ntasks=16 --cpus-per-task=1 --time=02:00:00 \
+  --export=ALL,MODULES="openMPI/4.1.6",MODE=weak,BACKEND=native,NLOCAL=8192,NSTEPS=100,REPEATS=5,CONFIGS="1x1 2x1 4x1 8x1 16x1",CSV=results/final_native_weak_default.csv \
+  scripts/slurm/scaling_benchmark.slurm
+```
+
+Generate native scaling tables and figures:
+
+```sh
+python3 scripts/analyze/summarize_scaling_csv.py \
+  results/final_native_strong_default.csv \
+  --csv report/tables/strong_scaling_native_summary.csv \
+  --markdown report/tables/strong_scaling_native_summary.md
+
+python3 scripts/analyze/plot_scaling_svg.py \
+  report/tables/strong_scaling_native_summary.csv \
+  --view native \
+  --output report/figures/strong_scaling_native_final.svg
+
+python3 scripts/analyze/summarize_scaling_csv.py \
+  results/final_native_weak_default.csv \
+  --csv report/tables/weak_scaling_native_summary.csv \
+  --markdown report/tables/weak_scaling_native_summary.md
+
+python3 scripts/analyze/plot_scaling_svg.py \
+  report/tables/weak_scaling_native_summary.csv \
+  --view native \
+  --output report/figures/weak_scaling_native_final.svg
+```
+
+## Container Workflow
+
+The repository contains both the Dockerfile requested by the assignment and the
+Singularity definition file used for Orfeo:
+
+```text
+container/Dockerfile
+container/nbody.def
+```
+
+Build the `.sif` image from the definition file:
+
+```sh
+module load singularity/4.3.1
+singularity build container/nbody_latest.sif container/nbody.def
+```
+
+The generated `.sif` is not committed.
+
+Check MPI library binding:
+
+```sh
+module load openMPI/4.1.6 singularity/4.3.1
+make mpi OPENMP=1 PRECISION=double \
+  CFLAGS="-O3 -march=native -ffp-contract=fast -Wall -Wextra -Wpedantic"
+
+CONTAINER_RUNTIME=singularity \
+CONTAINER_IMAGE=container/nbody_latest.sif \
+sh scripts/utils/check_container_mpi_binding.sh
+```
+
+Expected outputs:
+
+```text
+results/mpi_ldd_native.txt
+results/mpi_ldd_container_build_env.txt
+results/mpi_ldd_container_host_mpi.txt
+```
+
+Measure launch overhead:
+
+The utility option is named `--apptainer` for historical compatibility, but the
+runtime passed on Orfeo is `singularity`.
+
+```sh
+python3 scripts/utils/measure_container_launch_overhead.py \
+  --apptainer singularity \
+  --image container/nbody_latest.sif \
+  --repeats 10 \
+  --output results/container_launch_overhead.csv \
+  --csv report/tables/container_launch_overhead_summary.csv \
+  --markdown report/tables/container_launch_overhead_summary.md
+```
+
+## Native-vs-Container Scaling
+
+The final native-vs-container comparison uses a controlled MPI transport policy
+for both backends:
+
+```text
+MPI_POLICY=self_tcp
+```
+
+Internally this sets:
+
+```text
+OMPI_MCA_pml=^ucx
+OMPI_MCA_btl=self,tcp
+OMPI_MCA_osc=^ucx
+OMPI_MCA_btl_vader_single_copy_mechanism=none
+```
+
+Strong scaling, controlled native:
+
+```sh
+sbatch -A dssc -p GENOA --ntasks=32 --cpus-per-task=1 --time=02:00:00 \
+  --export=ALL,MODULES="openMPI/4.1.6",MODE=strong,BACKEND=native,EXPORT_MPI_MCA=1,MPI_POLICY=self_tcp,N=32768,NSTEPS=100,REPEATS=5,CONFIGS="1x1 2x1 4x1 8x1 16x1 32x1",CSV=results/final_controlled_native_strong.csv \
+  scripts/slurm/scaling_benchmark.slurm
+```
+
+Strong scaling, controlled container:
+
+```sh
+sbatch -A dssc -p GENOA --ntasks=32 --cpus-per-task=1 --time=02:00:00 \
+  --export=ALL,MODULES="openMPI/4.1.6 singularity/4.3.1",MODE=strong,BACKEND=container,CONTAINER_RUNTIME=singularity,CONTAINER_IMAGE=container/nbody_latest.sif,EXPORT_MPI_MCA=1,MPI_POLICY=self_tcp,N=32768,NSTEPS=100,REPEATS=5,CONFIGS="1x1 2x1 4x1 8x1 16x1 32x1",CSV=results/final_controlled_container_strong.csv \
+  scripts/slurm/scaling_benchmark.slurm
+```
+
+Weak scaling, controlled native:
+
+```sh
+sbatch -A dssc -p GENOA --ntasks=16 --cpus-per-task=1 --time=02:00:00 \
+  --export=ALL,MODULES="openMPI/4.1.6",MODE=weak,BACKEND=native,EXPORT_MPI_MCA=1,MPI_POLICY=self_tcp,NLOCAL=8192,NSTEPS=100,REPEATS=5,CONFIGS="1x1 2x1 4x1 8x1 16x1",CSV=results/final_controlled_native_weak.csv \
+  scripts/slurm/scaling_benchmark.slurm
+```
+
+Weak scaling, controlled container:
+
+```sh
+sbatch -A dssc -p GENOA --ntasks=16 --cpus-per-task=1 --time=02:00:00 \
+  --export=ALL,MODULES="openMPI/4.1.6 singularity/4.3.1",MODE=weak,BACKEND=container,CONTAINER_RUNTIME=singularity,CONTAINER_IMAGE=container/nbody_latest.sif,EXPORT_MPI_MCA=1,MPI_POLICY=self_tcp,NLOCAL=8192,NSTEPS=100,REPEATS=5,CONFIGS="1x1 2x1 4x1 8x1 16x1",CSV=results/final_controlled_container_weak.csv \
+  scripts/slurm/scaling_benchmark.slurm
+```
+
+Generate controlled native-vs-container tables and figures:
+
+```sh
+python3 scripts/analyze/summarize_scaling_csv.py \
+  results/final_controlled_native_strong.csv \
+  results/final_controlled_container_strong.csv \
+  --csv report/tables/strong_scaling_native_container_summary.csv \
+  --markdown report/tables/strong_scaling_native_container_summary.md
+
+python3 scripts/analyze/plot_scaling_svg.py \
+  report/tables/strong_scaling_native_container_summary.csv \
+  --view native-vs-container \
+  --output report/figures/strong_scaling_native_container_final.svg
+
+python3 scripts/analyze/summarize_scaling_csv.py \
+  results/final_controlled_native_weak.csv \
+  results/final_controlled_container_weak.csv \
+  --csv report/tables/weak_scaling_native_container_summary.csv \
+  --markdown report/tables/weak_scaling_native_container_summary.md
+
+python3 scripts/analyze/plot_scaling_svg.py \
+  report/tables/weak_scaling_native_container_summary.csv \
+  --view native-vs-container \
+  --output report/figures/weak_scaling_native_container_final.svg
+
+python3 scripts/analyze/container_overhead_table.py \
+  report/tables/strong_scaling_native_container_summary.csv \
+  report/tables/weak_scaling_native_container_summary.csv \
+  --csv report/tables/container_overhead_summary.csv \
+  --markdown report/tables/container_overhead_summary.md
+```
+
+## OSU MPI Microbenchmark
+
+OSU Micro-Benchmarks are not committed. They can be built in user space on
+Orfeo and used to generate raw latency/bandwidth output files. The analyzer
+expects repeated native and container OSU outputs and produces both a compact
+summary and full curves:
+
+```sh
+python3 scripts/analyze/analyze_osu_microbench.py \
+  --native-latency report/tables/osu_runs/osu_latency_native_1.txt report/tables/osu_runs/osu_latency_native_2.txt report/tables/osu_runs/osu_latency_native_3.txt report/tables/osu_runs/osu_latency_native_4.txt report/tables/osu_runs/osu_latency_native_5.txt \
+  --container-latency report/tables/osu_runs/osu_latency_container_1.txt report/tables/osu_runs/osu_latency_container_2.txt report/tables/osu_runs/osu_latency_container_3.txt report/tables/osu_runs/osu_latency_container_4.txt report/tables/osu_runs/osu_latency_container_5.txt \
+  --native-bandwidth report/tables/osu_runs/osu_bw_native_1.txt report/tables/osu_runs/osu_bw_native_2.txt report/tables/osu_runs/osu_bw_native_3.txt report/tables/osu_runs/osu_bw_native_4.txt report/tables/osu_runs/osu_bw_native_5.txt \
+  --container-bandwidth report/tables/osu_runs/osu_bw_container_1.txt report/tables/osu_runs/osu_bw_container_2.txt report/tables/osu_runs/osu_bw_container_3.txt report/tables/osu_runs/osu_bw_container_4.txt report/tables/osu_runs/osu_bw_container_5.txt \
+  --latency-size 1 \
+  --bandwidth-size 4194304 \
+  --csv report/tables/mpi_microbenchmark_summary.csv \
+  --markdown report/tables/mpi_microbenchmark_summary.md \
+  --curve-csv report/tables/mpi_microbenchmark_curve.csv \
+  --curve-markdown report/tables/mpi_microbenchmark_curve.md \
+  --svg report/figures/mpi_microbenchmark_curve.svg
+```
+
+The raw `osu_runs/` files are useful for reproducibility but do not need to be
+tracked if they are kept only on Orfeo.
+
+## Output Locations
+
+Raw benchmark output:
+
+```text
+results/
+```
+
+Report-ready tables:
+
+```text
+report/tables/*.csv
+report/tables/*.md
+```
+
+Report-ready plots:
+
+```text
+report/figures/*.svg
+```
+
+Hardware/software stack snapshot:
+
+```text
+report/data/system_info_genoa.txt
+```
+
+
+## Recommended Final Workflow
+
+1. Build native binaries on Orfeo.
+2. Run smoke tests.
+3. Collect system information.
+4. Run validation and growth checks.
+5. Run kernel-level benchmarks.
+6. Run native strong/weak scaling.
+7. Run controlled native-vs-container scaling.
+8. Run launch-overhead and OSU MPI microbenchmarks.
+9. Generate `report/tables/` and `report/figures/`.
+10. Use `REPORT.md` for the scientific discussion.
