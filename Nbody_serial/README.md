@@ -8,7 +8,7 @@ The scientific discussion, interpretation of the results, and final exam
 deliverable are in:
 
 ```text
-FINAL_REPORT.md
+REPORT.md
 ```
 
 This README is a practical guide to the repository: what each file does, which
@@ -68,9 +68,9 @@ Nbody_serial/
 │   ├── data/
 │   │   └── hardware and software stack snapshot used in the report
 │   ├── tables/
-│   │   └── final CSV and Markdown tables used in FINAL_REPORT.md
+│   │   └── final CSV and Markdown tables used in REPORT.md
 │   └── figures/
-│       └── final SVG plots used in FINAL_REPORT.md
+│       └── final SVG plots used in REPORT.md
 │
 └── results/
     └── raw benchmark logs and CSV files generated during runs
@@ -701,4 +701,4 @@ __pycache__/
 7. Run controlled native-vs-container scaling.
 8. Run launch-overhead and OSU MPI microbenchmarks.
 9. Generate `report/tables/` and `report/figures/`.
-10. Use `FINAL_REPORT.md` for the scientific discussion.
+10. Use `REPORT.md` for the scientific discussion.

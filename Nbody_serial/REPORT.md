@@ -758,7 +758,7 @@ Nbody_serial/
 │   └── figures/
 │       └── final SVG plots used in the report
 │
-└── FINAL_REPORT.md
+└── REPORT.md
     └── final project report
 ```
 
