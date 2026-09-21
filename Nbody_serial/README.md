@@ -8,7 +8,7 @@ The scientific discussion, interpretation of the results, and final exam
 deliverable are in:
 
 ```text
-REPORT.md
+FINAL_REPORT.md
 ```
 
 This README is a practical guide to the repository: what each file does, which
@@ -68,9 +68,9 @@ Nbody_serial/
 │   ├── data/
 │   │   └── hardware and software stack snapshot used in the report
 │   ├── tables/
-│   │   └── final CSV and Markdown tables used in REPORT.md
+│   │   └── final CSV and Markdown tables used in FINAL_REPORT.md
 │   └── figures/
-│       └── final SVG plots used in REPORT.md
+│       └── final SVG plots used in FINAL_REPORT.md
 │
 └── results/
     └── raw benchmark logs and CSV files generated during runs
@@ -469,6 +469,12 @@ python3 scripts/analyze/plot_scaling_svg.py \
   --view native \
   --output report/figures/strong_scaling_native_final.svg
 
+python3 scripts/analyze/analyze_force_throughput.py \
+  report/tables/strong_scaling_native_summary.csv \
+  --nsteps 100 \
+  --csv report/tables/force_throughput_summary.csv \
+  --markdown report/tables/force_throughput_summary.md
+
 python3 scripts/analyze/summarize_scaling_csv.py \
   results/final_native_weak_default.csv \
   --csv report/tables/weak_scaling_native_summary.csv \
@@ -668,6 +674,21 @@ Hardware/software stack snapshot:
 report/data/system_info_genoa.txt
 ```
 
+Generated files that should normally not be committed:
+
+```text
+container/nbody_latest.sif
+container/singularity_cache/
+nbody_direct_serial
+nbody_mpi_omp
+generate_ic
+inspect_particles
+benchmark_layout
+benchmark_rsqrt_kernel
+*.bin
+results/
+__pycache__/
+```
 
 ## Recommended Final Workflow
 
@@ -680,4 +701,4 @@ report/data/system_info_genoa.txt
 7. Run controlled native-vs-container scaling.
 8. Run launch-overhead and OSU MPI microbenchmarks.
 9. Generate `report/tables/` and `report/figures/`.
-10. Use `REPORT.md` for the scientific discussion.
+10. Use `FINAL_REPORT.md` for the scientific discussion.

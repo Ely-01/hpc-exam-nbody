@@ -22,6 +22,10 @@ def fmt_sci(value: float) -> str:
     return f"{value:.6e}"
 
 
+def fmt_percent(value: float) -> str:
+    return f"{100.0 * value:.2f}%"
+
+
 def median(values: list[float]) -> float:
     return statistics.median(values)
 
@@ -69,6 +73,10 @@ def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
         ]
         total_median = median(totals)
         force_median = median(forces)
+        n = int(group[0]["n"])
+        nsteps = int(group[0]["nsteps"])
+        force_evaluations = nsteps + 1
+        interactions = n * (n - 1) * force_evaluations
         total_speedup = base_total / total_median
         force_speedup = base_force / force_median
         max_drift = max(float(row["max_relative_energy_drift"]) for row in group)
@@ -84,10 +92,16 @@ def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
                 "total_stdev_s": stdev(totals),
                 "force_median_s": force_median,
                 "force_stdev_s": stdev(forces),
+                "force_fraction": force_median / total_median,
                 "communication_median_s": median(communications),
                 "integration_median_s": median(integrations),
                 "energy_median_s": median(energies),
                 "initial_acceleration_median_s": median(initial_accelerations),
+                "n": n,
+                "nsteps": nsteps,
+                "force_evaluations": force_evaluations,
+                "interactions": interactions,
+                "ginteractions_per_second": interactions / force_median / 1.0e9,
                 "total_speedup": total_speedup,
                 "total_efficiency": total_speedup / workers,
                 "force_speedup": force_speedup,
@@ -103,13 +117,13 @@ def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
 
 def markdown_table(summary: list[dict[str, object]]) -> str:
     lines = [
-        "| Ranks | Threads | Workers | Repeats | Total median s | Total stdev s | Force median s | Comm median s | Energy median s | Total speedup | Total efficiency | Force speedup | Max drift | Status |",
-        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---|",
+        "| Ranks | Threads | Workers | Repeats | Total median s | Total stdev s | Force median s | Force / total | Ginteraction/s | Comm median s | Energy median s | Total speedup | Force speedup | Max drift | Status |",
+        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---|",
     ]
 
     for row in summary:
         lines.append(
-            "| {ranks} | {threads} | {workers} | {repeats} | {total} | {total_std} | {force} | {comm} | {energy} | {total_speedup} | {total_efficiency} | {force_speedup} | {drift} | {statuses} |".format(
+            "| {ranks} | {threads} | {workers} | {repeats} | {total} | {total_std} | {force} | {force_fraction} | {gint} | {comm} | {energy} | {total_speedup} | {force_speedup} | {drift} | {statuses} |".format(
                 ranks=row["ranks"],
                 threads=row["threads"],
                 workers=row["total_workers"],
@@ -117,10 +131,11 @@ def markdown_table(summary: list[dict[str, object]]) -> str:
                 total=fmt_float(float(row["total_median_s"])),
                 total_std=fmt_float(float(row["total_stdev_s"])),
                 force=fmt_float(float(row["force_median_s"])),
+                force_fraction=fmt_percent(float(row["force_fraction"])),
+                gint=fmt_speedup(float(row["ginteractions_per_second"])),
                 comm=fmt_float(float(row["communication_median_s"])),
                 energy=fmt_float(float(row["energy_median_s"])),
                 total_speedup=fmt_speedup(float(row["total_speedup"])),
-                total_efficiency=fmt_speedup(float(row["total_efficiency"])),
                 force_speedup=fmt_speedup(float(row["force_speedup"])),
                 drift=fmt_sci(float(row["max_relative_energy_drift"])),
                 statuses=row["statuses"],
@@ -140,10 +155,16 @@ def write_summary_csv(path: Path, summary: list[dict[str, object]]) -> None:
         "total_stdev_s",
         "force_median_s",
         "force_stdev_s",
+        "force_fraction",
         "communication_median_s",
         "integration_median_s",
         "energy_median_s",
         "initial_acceleration_median_s",
+        "n",
+        "nsteps",
+        "force_evaluations",
+        "interactions",
+        "ginteractions_per_second",
         "total_speedup",
         "total_efficiency",
         "force_speedup",
