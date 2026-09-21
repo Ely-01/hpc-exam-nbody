@@ -478,6 +478,25 @@ The GENOA node used for the experiments is based on two AMD EPYC 9374F processor
 | Main memory | 503 GiB |
 | Swap | none |
 
+The NUMA layout recorded from the allocated compute node is:
+
+| NUMA node | Logical CPUs | Memory size |
+|---:|:---|---:|
+| 0 | 0-7 | 64053 MB |
+| 1 | 8-15 | 64508 MB |
+| 2 | 16-23 | 64508 MB |
+| 3 | 24-31 | 64437 MB |
+| 4 | 32-39 | 64508 MB |
+| 5 | 40-47 | 64508 MB |
+| 6 | 48-55 | 64508 MB |
+| 7 | 56-63 | 64480 MB |
+
+The `numactl -H` distance matrix has distance 10 within each NUMA node,
+12 between NUMA domains on the same socket, and 32 between domains belonging
+to different sockets. This is why the hybrid mapping study distinguishes
+between one MPI rank per socket, one rank per NUMA domain, and one rank per
+physical core.
+
 The eight NUMA domains are particularly relevant for the hybrid MPI/OpenMP
 experiments. Different rank/thread configurations can change both memory
 locality and the number of MPI ring participants, so the optimal configuration
@@ -521,7 +540,14 @@ The relevant options have the following roles:
 - `-O3` enables aggressive compiler optimization;
 - `-march=native` allows GCC to generate instructions specifically for the
 allocated GENOA processor;
-- `-ffp-contract=fast` allows floating-point contraction such as fusedmultiply-add operations where applicable;
+- `-ffp-contract=fast` allows floating-point contraction such as fused
+  multiply-add operations where applicable;
+- `-Wall -Wextra -Wpedantic` enable progressively stricter compiler warnings,
+  including warnings beyond the default set and warnings required by strict ISO
+  C conformance;
+- `-std=c11` selects the C11 language standard;
+- `-DNBODY_USE_DOUBLE` selects the double-precision scalar type used by the
+  final numerical experiments;
 - `-fopenmp` is enabled for the OpenMP and hybrid executables.
 
 For the containerized benchmark, the application was instead compiled with
@@ -532,6 +558,8 @@ For the containerized benchmark, the application was instead compiled with
 
 The portable `x86-64-v3` target was chosen to avoid tying the container image to the exact CPU on which it was built. This improves portability but may prevent the compiler from exploiting all GENOA-specific instruction-set
 features available to the native `-march=native` build.
+
+On the measured GENOA nodes, the CPU supports AVX-512. A native build may therefore use wider vectors and more architecture-specific scheduling choices than an `x86-64-v3` build, whose portable baseline includes AVX2 but not AVX-512. In an ideal, fully vectorized double-precision kernel, moving from 256-bit AVX2 vectors to 512-bit AVX-512 vectors could in principle double the vector width. This is an upper bound rather than an expected application speedup: the current dominant force loop is not effectively vectorized, includes scalar inverse-square-root work, and is also affected by loop control, reductions, and MPI/runtime effects. The possible loss associated with the portable target is therefore discussed through this architectural bound, compiler vectorization diagnostics, and kernel microbenchmarks; the native-versus-container runs are interpreted separately as complete deployment comparisons rather than as an isolated measurement of the compilation target.
 
 This difference is explicitly considered when interpreting the native versus
 container measurements: the comparison includes not only the Singularity
@@ -550,7 +578,7 @@ $$
 The corresponding SLURM execution follows the form
 
 ```text
-srun -n <ranks> -c <threads> ...
+srun -n <ranks> -c <threads> ./nbody_mpi_omp [solver options]
 ```
 
 where `-n` specifies the number of MPI processes and `-c` the number of CPU cores allocated to each process.
@@ -566,21 +594,25 @@ OMP_PROC_BIND   = close
 
 so that OpenMP threads are placed on physical cores and kept close within the resources allocated to each MPI rank.
 
+The rank binding used for the hybrid configurations was verified explicitly
+with a dedicated SLURM check using `taskset -pc` inside each `srun` process.
+The observed CPU affinities were:
+
+| Configuration | Observed rank affinity | Interpretation |
+|:---|:---|:---|
+| $2\times32$ | rank 0: CPUs 0-31; rank 1: CPUs 32-63 | one rank per socket |
+| $8\times8$ | each rank bound to one 8-core block: 0-7, 8-15, ..., 56-63 | one rank per NUMA domain |
+| $64\times1$ | each rank bound to one distinct CPU | one rank per physical core |
+
+The rank numbering is not necessarily monotonic with the NUMA-domain order,
+especially in the $8\times8$ and $64\times1$ cases, but the affinity masks
+confirm that the physical core allocation matches the intended mapping.
+
 For the controlled native-versus-container scaling experiments, both backends
-were executed with the same explicit OpenMPI runtime policy,
-
-```text
-OMPI_MCA_pml=^ucx
-OMPI_MCA_btl=self,tcp
-OMPI_MCA_osc=^ucx
-```
-
-in order to avoid attributing UCX or shared-memory transport behaviour to
-Singularity itself. This choice followed diagnostic runs in which the default
-container execution generated UCX warnings and `vader` shared-memory warnings.
-The `self,tcp` policy is deliberately conservative: it is used to make the
-native/container comparison reproducible, not to claim the maximum possible
-intra-node MPI bandwidth of Orfeo.
+were executed with the same explicit OpenMPI runtime policy. The motivation and
+exact environment variables are described in Section 8.1. The native-only
+experiments do not use this restricted policy unless explicitly stated, because
+they are intended to measure native performance on the host MPI stack.
 
 The native-only hybrid mapping experiment was treated separately and used the host MPI default transport, since its objective was to characterize the best
 native MPI/OpenMP mapping on the GENOA node rather than to isolate container overhead.
@@ -632,8 +664,14 @@ $$
 
 particles.
 
-The strong- and weak-scaling problem sizes are smaller than the values suggested in the original assignment. This adaptation was necessary because the final experiments were executed on Orfeo, where the available job allocation had a maximum wall time of two hours. The overall structure of the requested experiments was preserved: multiple process counts, 100 integration steps for the final scaling runs, and repeated measurements for every
-configuration.
+The strong- and weak-scaling problem sizes are smaller than the values suggested in the original assignment. The reference configurations in the assignment use larger cases, such as $N=10^5$ for strong scaling and $N/P=10^4$ for weak scaling. These sizes were not practical under the Orfeo account limits available for this project: the GENOA association used for the final campaign imposed a two-hour maximum wall time per job. The experiment was therefore scaled down to $N=32768$ for strong scaling and $N_{\mathrm{local}}=8192$ for weak scaling.
+
+The adaptation preserves the structure of the requested measurements: the
+final scaling runs still use multiple process counts, 100 integration steps,
+five repeated executions per configuration, median and sample standard
+deviation reporting, and explicit strong/weak scaling analysis. The limitation
+is that the measured saturation point may occur at a different process count
+than it would for the larger assignment reference sizes.
 
 
 ### 4.6 Measurement and Statistical Methodology
@@ -720,7 +758,7 @@ Nbody_serial/
 │   └── figures/
 │       └── final SVG plots used in the report
 │
-└── REPORT.md
+└── FINAL_REPORT.md
     └── final project report
 ```
 
@@ -855,6 +893,41 @@ The energy diagnostic is also based on pairwise interactions, but it is evaluate
 The baseline application can therefore be characterized as being primarily
 limited by the direct interaction kernel for the tested problem sizes.
 
+On a single socket, the peak FLOP/s achievable by this kernel is determined by the number of active physical cores, the floating-point execution units available per core, the SIMD width actually reached by the compiled loop, and the ability of the instruction scheduler to keep independent multiply/add/FMA operations in flight. In this implementation the practical peak is lower than the architectural peak because the runtime-dominant interaction loop is scalar rather than fully vectorized, repeatedly evaluates an inverse distance, and carries reductions through the force accumulators. This is why the report uses measured Ginteraction/s as the main kernel-throughput indicator rather than claiming a hardware peak FLOP/s value.
+
+To make the bottleneck claim quantitative, the performance analysis uses the
+ordered particle-interaction throughput rather than raw GFLOP/s. This is a
+cleaner metric for this code because the exact floating-point operation count
+depends on how the square root, inverse distance, division, and fused
+multiply-add instructions are counted. For the direct non-Newton formulation,
+each force evaluation visits
+
+$$
+N(N-1)
+$$
+
+ordered source-target interactions. Since the KDK implementation computes the initial acceleration and then one new acceleration per integration step, the number of force evaluations is
+
+$$
+N_{\mathrm{force}} = N_{\mathrm{steps}} + 1.
+$$
+
+The reported interaction throughput is therefore
+
+$$
+R_{\mathrm{int}} =
+\frac{N(N-1)N_{\mathrm{force}}}{t_{\mathrm{force}}}.
+$$
+
+For MPI runs, $t_{\mathrm{force}}$ is the maximum force time across ranks,
+matching the timing reduction used by the solver. Ginteraction/s is the primary
+kernel-throughput metric because it directly measures the rate at which the
+algorithm processes its fundamental unit of work.
+
+The detailed force-throughput table is presented after the native
+strong-scaling results in Section 7.3, where the process counts and timing data
+are introduced.
+
 This observation determines the optimization strategy used in the following section. Rather than optimizing auxiliary $O(N)$ operations, the performance study focuses on the force kernel itself, investigating
 
 - reduction of the number of pair evaluations through Newton's third law;
@@ -870,7 +943,7 @@ After identifying the direct force evaluation as the dominant computational cost
 
 The experiments consider four complementary aspects of the force kernel: Newton's third-law reuse, particle data layout, reciprocal-square-root evaluation, and the dependency chain created by force accumulation.
 
-Unless stated otherwise, numerical correctness is checked through the same energy-drift criterion used for the baseline implementation.
+Unless stated otherwise, optimization timings are reported as median $\pm$ sample standard deviation over five repetitions, and numerical correctness is checked through the same energy-drift criterion used for the baseline implementation.
 
 ### 6.1 Newton's Third Law
 
@@ -917,14 +990,14 @@ naive parallel Newton implementation explicit.
 | `newton` | $i<j$ | serial, conflict-free reference |
 | `newton-atomic` | $i<j$ | diagnostic OpenMP variant with atomic acceleration updates |
 
-The measured force times are:
+The measured force times are reported as median $\pm\sigma$ over five repetitions:
 
 | Threads | `direct` (s) | `newton` (s) | `newton-atomic` (s) |
 |---:|---:|---:|---:|
-| 1 | 5.865157 | 3.510821 | 8.407843 |
-| 2 | 3.119743 | 3.553018 | 8.587850 |
-| 4 | 1.734899 | 3.510410 | 7.214137 |
-| 8 | 0.893647 | 3.520837 | 6.265592 |
+| 1 | $5.865157 \pm 0.008173$ | $3.510821 \pm 0.003258$ | $8.407843 \pm 0.011617$ |
+| 2 | $3.119743 \pm 0.159910$ | $3.553018 \pm 0.022864$ | $8.587850 \pm 0.074676$ |
+| 4 | $1.734899 \pm 0.036081$ | $3.510410 \pm 0.000948$ | $7.214137 \pm 0.037040$ |
+| 8 | $0.893647 \pm 0.002144$ | $3.520837 \pm 0.025837$ | $6.265592 \pm 0.018730$ |
 
 With one thread, Newton reuse reduces the force time from $5.87$ s to $3.51$ s, corresponding to a speedup of
 
@@ -968,19 +1041,23 @@ However, the layout benchmark shows that SoA alone does not improve the performa
 
 | Threads | AoS force time (s) | SoA force time (s) | SoA speedup |
 | ------: | -----------------: | -----------------: | ----------: |
-|       1 |           0.903034 |           0.910895 |       0.991 |
-|       2 |           0.451970 |           0.455871 |       0.991 |
-|       4 |           0.226311 |           0.227897 |       0.993 |
-|       8 |           0.115289 |           0.115800 |       0.996 |
+|       1 | $0.903034 \pm 0.000151$ | $0.910895 \pm 0.000439$ |       0.991 |
+|       2 | $0.451970 \pm 0.000151$ | $0.455871 \pm 0.001764$ |       0.991 |
+|       4 | $0.226311 \pm 0.000205$ | $0.227897 \pm 0.001877$ |       0.993 |
+|       8 | $0.115289 \pm 0.001032$ | $0.115800 \pm 0.025404$ |       0.996 |
 
-The two layouts are effectively equivalent in execution time, with differences below approximately one percent. The computed accelerations also agree within the reported numerical tolerance.
+The two layouts are effectively equivalent in median execution time, with
+differences below approximately one percent. The eight-thread SoA measurement
+shows higher run-to-run variability than the corresponding AoS case, but its
+median remains within one percent of the AoS median. The computed
+accelerations also agree within the reported numerical tolerance.
 
 To check whether the layout change actually enabled SIMD execution of the
 dominant loop, the benchmark was recompiled with GCC vectorization reporting
 enabled:
 
 ```text
--fopt-info-vec-all=report/tables/layout_vec_all.txt
+-fopt-info-vec-all=<vectorization-report>
 ```
 
 The relevant loops are the inner all-pairs loops of the SoA and AoS force
@@ -1038,12 +1115,12 @@ The optimization was evaluated at two different levels: an isolated SIMD microbe
 
 The SIMD microbenchmark compares a scalar `sqrtf` reference with an AVX reciprocal-square-root estimate and zero, one, or two Newton refinements.
 
-| Method | Median time (s) | Gvalues/s | Speedup | Max relative error |
+| Method | Time (s) | Gvalues/s | Speedup | Max relative error |
 |:---|---:|---:|---:|---:|
-| `sqrtf` | 0.032575 | 0.515 | 1.000 | $8.94\times10^{-8}$ |
-| `rsqrt0` | 0.001599 | 10.494 | 20.376 | $2.58\times10^{-4}$ |
-| `rsqrt1` | 0.001633 | 10.277 | 19.953 | $1.72\times10^{-7}$ |
-| `rsqrt2` | 0.002469 | 6.796 | 13.195 | $1.17\times10^{-7}$ |
+| `sqrtf` | $0.032575 \pm 0.000021$ | 0.515 | 1.000 | $8.94\times10^{-8}$ |
+| `rsqrt0` | $0.001599 \pm 0.000011$ | 10.494 | 20.376 | $2.58\times10^{-4}$ |
+| `rsqrt1` | $0.001633 \pm 0.000006$ | 10.277 | 19.953 | $1.72\times10^{-7}$ |
+| `rsqrt2` | $0.002469 \pm 0.000004$ | 6.796 | 13.195 | $1.17\times10^{-7}$ |
 
 ![SIMD reciprocal-square-root microbenchmark](report/figures/rsqrt_kernel.svg)
 
@@ -1058,17 +1135,19 @@ At eight OpenMP threads:
 
 | Method | Force time (s) | Speedup vs `libm` | Max energy drift |
 |:---|---:|---:|---:|
-| `libm` | 0.894669 | 1.000 | $4.083561\times10^{-8}$ |
-| `rsqrt1` | 1.028367 | 0.870 | $4.085352\times10^{-8}$ |
-| `rsqrt2` | 1.290443 | 0.693 | $4.083561\times10^{-8}$ |
-| `rsqrt3` | 1.476621 | 0.606 | $4.083561\times10^{-8}$ |
+| `libm` | $0.894669 \pm 0.055731$ | 1.000 | $4.083561\times10^{-8}$ |
+| `rsqrt1` | $1.028367 \pm 0.045048$ | 0.870 | $4.085352\times10^{-8}$ |
+| `rsqrt2` | $1.290443 \pm 0.104594$ | 0.693 | $4.083561\times10^{-8}$ |
+| `rsqrt3` | $1.476621 \pm 0.010179$ | 0.606 | $4.083561\times10^{-8}$ |
 
-In the current full solver, the reciprocal-square-root variants are therefore slower than the `libm` baseline.
+In the current full solver, the median runtime of all reciprocal-square-root
+variants is higher than the `libm` baseline, with the degradation becoming
+particularly clear as additional refinement steps are introduced.
 
 The reason is that the two experiments expose different levels of the implementation. The isolated benchmark directly exploits SIMD reciprocal square root instructions. The complete force loop, however, is not vectorized, and its scalar approximation path includes conversion through a single-precision estimate followed by Newton refinement in double precision.
 The operation-level SIMD advantage therefore does not translate directly into a solver-level speedup.
 
-The full-solver experiment is nevertheless important from the numerical point of view. After sufficient Newton refinement, the measured energy drift converges to the `libm` reference value. In particular, `rsqrt2` already reproduces the baseline drift within the resolution of this experiment.
+The full-solver experiment is nevertheless important from the numerical point of view. After sufficient Newton refinement, the measured energy drift converges to the `libm` reference value. In particular, `rsqrt2` already reproduces the baseline drift within the resolution of this experiment. This is the check that the energy-conservation diagnostic is still testing the time integrator rather than being dominated by reciprocal-square-root approximation error: if the approximation error were saturating the diagnostic, the refined `rsqrt` variants would show a persistent drift offset relative to the `libm` baseline. Instead, the refined variants converge back to the same measured drift level.
 
 The production solver therefore retains the conservative `libm` path, while the reciprocal-square-root experiments demonstrate both the potential SIMD performance advantage and the accuracy requirements that would need to be satisfied by a future vectorized implementation.
 
@@ -1100,12 +1179,12 @@ The optimization does not change the number of particle interactions or the phys
 
 The full benchmark tested 1, 2, 4, and 8 partial accumulators for each OpenMP thread count. The table below reports the best variant at each thread count, while the plot shows the full saturation trend.
 
-| Threads | Best variant | Best speedup |
-|---:|:---|---:|
-| 1 | `direct-split8` | 1.029 |
-| 2 | `direct-split4` | 1.083 |
-| 4 | `direct-split8` | 1.094 |
-| 8 | `direct-split8` | 1.151 |
+| Threads | Best variant | Best force time (s) | Best speedup |
+|---:|:---|---:|---:|
+| 1 | `direct-split8` | $5.656612 \pm 0.008691$ | 1.029 |
+| 2 | `direct-split4` | $2.857590 \pm 0.001465$ | 1.083 |
+| 4 | `direct-split8` | $1.592580 \pm 0.002604$ | 1.094 |
+| 8 | `direct-split8` | $0.780765 \pm 0.022961$ | 1.151 |
 
 The largest improvement is observed with eight OpenMP threads, where
 `direct-split8` reduces the force time from
@@ -1170,7 +1249,8 @@ $$
 where $P\times T$ denotes $P$ MPI ranks and $T$ OpenMP threads per rank.
 All three configurations therefore use 64 workers in total.
 
-They correspond nominally to the following decomposition strategies:
+The verified affinity masks correspond to the following decomposition
+strategies:
 
 | Configuration | Interpretation |
 |:---|:---|
@@ -1180,28 +1260,43 @@ They correspond nominally to the following decomposition strategies:
 
 The experiment uses $N=32768$, 20 integration steps, and five repetitions per configuration.
 
-The measured median timings are:
+Total times are reported as median $\pm$ sample standard deviation over five
+repetitions; force and communication columns report the corresponding median
+values. Since all configurations use the same global problem size and the same
+number of force evaluations, the force-kernel interaction throughput can also
+be compared directly:
 
-| Ranks | Threads | Total (s) | Force (s) | Communication (s) |
-|---:|---:|---:|---:|---:|
-| 2 | 32 | 1.359377 | 1.208972 | 0.015317 |
-| 8 | 8 | 1.476009 | 1.264202 | 0.132987 |
-| 64 | 1 | 1.360195 | 1.211975 | 0.141971 |
+| Ranks | Threads | Total time (s) | Force time (s) | Force / total | Ginteraction/s | Communication time (s) |
+|---:|---:|---:|---:|---:|---:|---:|
+| 2 | 32 | $1.357946 \pm 0.002116$ | 1.208748 | 89.01% | 18.654 | 0.015178 |
+| 8 | 8 | $1.356582 \pm 0.009521$ | 1.205893 | 88.89% | 18.698 | 0.094987 |
+| 64 | 1 | $1.362196 \pm 0.006402$ | 1.215686 | 89.24% | 18.547 | 0.143501 |
 
-The $2\times32$ configuration gives the lowest measured runtime, although
-the $64\times1$ pure-MPI configuration is effectively tied with it. Their total execution times differ by less than $0.1\%$.
+The three mappings are essentially equivalent in total runtime. The lowest
+median is obtained by the $8\times8$ configuration, but the full spread between
+the fastest and slowest median runtimes is only about $0.4\%$, which is smaller
+than the run-to-run variability of the $8\times8$ case. Therefore, this result
+should not be interpreted as a decisive win for any single mapping.
 
-The $8\times8$ configuration is slower, reaching approximately $1.48$ s.
-Its force time is slightly larger and its measured communication time is
-substantially higher than for the two-rank case.
+The force-kernel throughput confirms the same conclusion. All configurations
+sustain approximately $18.5$--$18.7$ Ginteraction/s, and the force kernel
+accounts for about $89\%$ of the total runtime in every case. Thus, changing
+the MPI/OpenMP decomposition affects the communication pattern more strongly
+than it affects the dominant arithmetic kernel.
 
 The result illustrates the trade-off inherent in hybrid programming. Using
 fewer MPI ranks reduces the number of participants in the ring communication
 and leaves more parallel work to OpenMP. Using one rank per core eliminates OpenMP scheduling within each rank but introduces many more MPI ring phases.
-For this workload, both extremes perform similarly, whereas the intermediate configuration does not provide a measurable advantage.
+This trend is visible in the communication timer: the median communication time
+increases from $0.015$ s for $2\times32$ to $0.095$ s for $8\times8$ and
+$0.144$ s for $64\times1$.
 
-The $2\times32$ configuration is therefore a reasonable hybrid mapping for this node and problem size, although the near-identical $64\times1$ result
-shows that the optimal balance cannot be inferred from topology alone.
+For this problem size on a single GENOA node, however, this increase in MPI
+communication is too small to change the total runtime substantially, because
+the direct force calculation still dominates. The main conclusion is therefore
+that topology suggests useful candidate mappings, but the optimal mapping
+cannot be inferred from topology alone; it must be measured for the actual
+kernel and problem size.
 
 
 
@@ -1238,14 +1333,16 @@ f_{\mathrm{overlap}} = \frac{T_{\mathrm{hidden}}} {T_{\mathrm{comm,blocking}}}.
 $$
 
 The experiment uses $N=32768$, 20 integration steps, one thread per MPI
-rank, and five repetitions.
+rank, and five repetitions. Total times are reported as median $\pm\sigma$;
+communication columns report the corresponding median exposed communication
+times used to compute the overlap fraction.
 
 | Ranks | Blocking total (s) | Overlap total (s) | Blocking comm. (s) | Hidden comm. (s) | Achieved overlap |
 | ----: | -----------------: | ----------------: | -----------------: | ---------------: | ---------------: |
-|     4 |          20.987808 |         20.868140 |           1.036399 |         0.169679 |            16.4% |
-|     8 |          10.513724 |         10.510297 |           0.678918 |         0.020134 |             3.0% |
-|    16 |           5.358677 |          5.361461 |           0.478483 |         0.000000 |             0.0% |
-|    32 |           2.729329 |          2.716461 |           0.226680 |         0.014705 |             6.5% |
+|     4 | $20.987808 \pm 0.078594$ | $20.868140 \pm 0.007770$ |           1.036399 |         0.169679 |            16.4% |
+|     8 | $10.513724 \pm 0.083738$ | $10.510297 \pm 0.007663$ |           0.678918 |         0.020134 |             3.0% |
+|    16 | $5.358677 \pm 0.006079$ | $5.361461 \pm 0.001656$ |           0.478483 |         0.000000 |             0.0% |
+|    32 | $2.729329 \pm 0.083506$ | $2.716461 \pm 0.002813$ |           0.226680 |         0.014705 |             6.5% |
 
 ![MPI ring communication overlap](report/figures/ring_overlap.svg)
 
@@ -1308,16 +1405,16 @@ $$
 
 ![Native strong scaling](report/figures/strong_scaling_native_final.svg)
 
-The measured native results are:
+The measured native results are reported as median $\pm$ sample standard deviation over five repetitions:
 
-| MPI ranks | Median time (s) | Speedup | Efficiency |
+| MPI ranks | Total time (s) | Speedup | Efficiency |
 |---:|---:|---:|---:|
-| 1 | 374.387700 | 1.000 | 1.000 |
-| 2 | 187.821448 | 1.993 | 0.997 |
-| 4 | 94.101276 | 3.979 | 0.995 |
-| 8 | 47.148061 | 7.941 | 0.993 |
-| 16 | 23.620087 | 15.850 | 0.991 |
-| 32 | 11.870895 | 31.538 | 0.986 |
+| 1 | $374.387700 \pm 0.490059$ | 1.000 | 1.000 |
+| 2 | $187.821448 \pm 0.065840$ | 1.993 | 0.997 |
+| 4 | $94.101276 \pm 0.017829$ | 3.979 | 0.995 |
+| 8 | $47.148061 \pm 0.005166$ | 7.941 | 0.993 |
+| 16 | $23.620087 \pm 0.005129$ | 15.850 | 0.991 |
+| 32 | $11.870895 \pm 0.015770$ | 31.538 | 0.986 |
 
 At 32 MPI ranks, the native execution achieves
 
@@ -1331,7 +1428,7 @@ $$
 E(32)=0.986.
 $$
 
-The scaling is therefore very close to ideal throughout the measured range.
+The scaling is therefore very close to ideal throughout the measured range. The reported standard deviations are small compared with the median runtimes, so the trend is stable across the five repetitions.
 
 At larger process counts the efficiency decreases only mildly, remaining
 $98.6\%$ at 32 ranks. The measured communication contribution grows with the
@@ -1347,6 +1444,49 @@ therefore not yet visible in this dataset. Reaching it would require either
 increasing the process count further at fixed $N$ or decreasing $N$ until the
 local force work becomes too small to hide communication startup, diagnostics,
 and synchronization.
+
+#### Force-kernel interaction throughput
+
+The strong-scaling timings can also be read as a throughput measurement of the
+dominant force kernel. For this experiment, $N=32768$ and the KDK integrator
+performs 101 force evaluations: one initial acceleration evaluation and one new
+force evaluation after each drift step. The measured throughput is therefore
+
+$$
+R_{\mathrm{int}} =
+\frac{32768\cdot32767\cdot101}{t_{\mathrm{force}}}.
+$$
+
+The throughput efficiency is defined as
+
+$$
+E_{\mathrm{throughput}}(P)
+=
+\frac{R_{\mathrm{int}}(P)}
+{P\,R_{\mathrm{int}}(1)}.
+$$
+
+A value close to one indicates that the interaction throughput grows
+proportionally to the number of MPI ranks. Values slightly above unity are
+within measurement variability and should not be interpreted as super-linear
+algorithmic scaling.
+
+| MPI ranks | Force time (s) | Force / total | Ginteraction/s | Ideal Ginteraction/s | Throughput efficiency |
+|---:|---:|---:|---:|---:|---:|
+| 1 | $370.531173 \pm 0.489564$ | 98.97% | 0.293 | 0.293 | 1.000 |
+| 2 | $185.020960 \pm 0.084704$ | 98.51% | 0.586 | 0.585 | 1.001 |
+| 4 | $92.475055 \pm 0.019084$ | 98.27% | 1.173 | 1.171 | 1.002 |
+| 8 | $46.242101 \pm 0.003023$ | 98.08% | 2.345 | 2.341 | 1.002 |
+| 16 | $23.142003 \pm 0.001770$ | 97.98% | 4.686 | 4.683 | 1.001 |
+| 32 | $11.584479 \pm 0.006580$ | 97.59% | 9.361 | 9.366 | 1.000 |
+
+The interaction rate increases from approximately $0.293$ Ginteraction/s on
+one MPI rank to $9.361$ Ginteraction/s on 32 MPI ranks. This is almost exactly
+a $32\times$ increase, matching the strong-scaling result from the wall-clock
+timings. At the same time, the force kernel accounts for $97.6$--$99.0\%$ of
+the total runtime, confirming that the measured speedup is driven primarily by
+parallelizing the direct all-pairs computation rather than by changes in the
+auxiliary integration or diagnostic phases.
 
 ### 7.4 Weak Scaling
 
@@ -1399,17 +1539,17 @@ A value close to one indicates that the measured runtime follows the expected gr
 
 ![Native weak scaling](report/figures/weak_scaling_native_final.svg)
 
-The native weak-scaling measurements are:
+The native weak-scaling measurements are reported as median $\pm$ sample standard deviation over five repetitions:
 
-| MPI ranks | Global $N$ | Median time (s) | Scaled speedup | Efficiency |
+| MPI ranks | Global $N$ | Total time (s) | Scaled speedup | Efficiency |
 |---:|---:|---:|---:|---:|
-| 1 | 8,192 | 24.032469 | 1.000 | 1.000 |
-| 2 | 16,384 | 48.688509 | 1.974 | 0.987 |
-| 4 | 32,768 | 97.615508 | 3.939 | 0.985 |
-| 8 | 65,536 | 195.622070 | 7.862 | 0.983 |
-| 16 | 131,072 | 391.787201 | 15.703 | 0.981 |
+| 1 | 8,192 | $24.032469 \pm 0.022871$ | 1.000 | 1.000 |
+| 2 | 16,384 | $48.688509 \pm 0.049339$ | 1.974 | 0.987 |
+| 4 | 32,768 | $97.615508 \pm 0.098695$ | 3.939 | 0.985 |
+| 8 | 65,536 | $195.622070 \pm 0.250037$ | 7.862 | 0.983 |
+| 16 | 131,072 | $391.787201 \pm 1.201007$ | 15.703 | 0.981 |
 
-The measured runtime follows the expected $P\,T(1)$ trend very closely.
+The measured runtime follows the expected $P\,T(1)$ trend very closely. The reported standard deviations remain small relative to the total times, indicating that the weak-scaling trend is not driven by outlier runs.
 
 At 16 ranks,
 
@@ -1486,6 +1626,8 @@ The container provides a reproducible userspace and build environment while reus
 The image is based on `Ubuntu 24.04`. Ubuntu 22.04, initially considered as the reference base image, was not compatible with the OpenMPI installation available on Orfeo because the host MPI stack required a newer glibc version.
 Ubuntu 24.04 was therefore selected as a general-purpose CPU-oriented base image compatible with the cluster runtime.
 
+A general-purpose Ubuntu image was used instead of a vendor HPC image because the project does not depend on GPU libraries, vendor math libraries, or a pre-packaged HPC software stack. The goal is to keep the build environment small, transparent, and reproducible, while deliberately injecting the cluster MPI implementation at runtime. A vendor image would add components that are not used by this CPU-only direct N-body code and could obscure which MPI stack is active during execution.
+
 The container setup is described by two versioned recipes. `container/Dockerfile` defines the Docker build environment required by the assignment, including the compiler toolchain, OpenMPI headers and runtime tools needed at build time. The Singularity image used on Orfeo is described by `container/nbody.def`, which mirrors the same build dependencies in a Singularity definition file.
 
 The final experiments used the generated image
@@ -1534,6 +1676,8 @@ from the Orfeo OpenMPI installation under
 matching the native executable.
 
 This ldd verification confirms that the final container runs use the cluster MPI stack rather than silently falling back to the MPI implementation shipped inside the image.
+
+If the MPI implementation inside the container and the host MPI runtime are incompatible, the failure mode can range from explicit loader/runtime errors to more subtle hangs or degraded communication performance. Without inspecting the source code, the mismatch can be detected by comparing `ldd` output for the executable in the native environment, inside the container build environment, and inside the host-MPI-bound container run. Runtime smoke tests and simple MPI microbenchmarks then check that the selected libraries also behave correctly at execution time.
 
 #### MPI Transport Choice for Native-versus-Container Runs
 
@@ -1595,6 +1739,7 @@ conservative and fully reproducible policy
 OMPI_MCA_pml=^ucx
 OMPI_MCA_btl=self,tcp
 OMPI_MCA_osc=^ucx
+OMPI_MCA_btl_vader_single_copy_mechanism=none
 ```
 
 for both native and container executions. This disables the `vader`
@@ -1613,13 +1758,11 @@ previous UCX or `vader` warnings.
 
 ### 8.2 Native vs Container Application Performance
 
-The primary measure of container overhead is the execution time of the complete N-body application. Native and Singularity runs use identical physical inputs, numbers of MPI processes, integration steps, repetition counts, and the matched OpenMPI runtime policy described above:
-
-```text
-OMPI_MCA_pml=^ucx
-OMPI_MCA_btl=self,tcp
-OMPI_MCA_osc=^ucx
-```
+The primary application-level comparison is the execution time of the complete
+N-body code in the native and Singularity deployment configurations. Native
+and Singularity runs use identical physical inputs, numbers of MPI processes,
+integration steps, repetition counts, and the matched OpenMPI runtime policy
+defined in Section 8.1.
 
 The comparison is performed for both strong and weak scaling. Each point is the median of five executions and is accompanied by the corresponding sample standard deviation.
 
@@ -1631,61 +1774,67 @@ native:     -march=native
 container:  -march=x86-64-v3
 ```
 
-Therefore, the measured difference represents the complete deployment
-scenario rather than a pure measurement of the Singularity wrapper alone. It can contain effects from the container runtime, compiler target, toolchain, placement, cache behaviour, and normal run-to-run variability.
+Therefore, the reported percentage is the measured container overhead requested
+by the assignment,
+
+$$
+100\left(\frac{T_{\mathrm{container}}}{T_{\mathrm{native}}}-1\right),
+$$
+
+but it should be interpreted as the overhead of the complete containerized
+deployment relative to the native deployment, not as a pure decomposition of
+the Singularity wrapper alone. It can contain effects from the container
+runtime, compiler target, toolchain, placement, cache behaviour, and normal
+run-to-run variability.
 
 
 The strong-scaling native-versus-container comparison is shown below. The
-percentage labels correspond to
-
-$$
-100\left(\frac{T_{\mathrm{container}}}{T_{\mathrm{native}}}-1\right).
-$$
+percentage labels use the same overhead definition.
 
 ![Strong scaling native vs container](report/figures/strong_scaling_native_container_final.svg)
 
-For `strong scaling`, the measured container differences remain small over the complete range from 1 to 32 MPI ranks:
+For `strong scaling`, the measured container overhead remains small over the complete range from 1 to 32 MPI ranks:
 
-| MPI ranks | Native median (s) | Container median (s) | Container overhead |
+| MPI ranks | Native time (s) | Container time (s) | Measured container overhead |
 |---:|---:|---:|---:|
-| 1 | 377.476774 | 373.803578 | -0.97% |
-| 2 | 192.136294 | 187.832592 | -2.24% |
-| 4 | 96.453229 | 94.165248 | -2.37% |
-| 8 | 48.498850 | 47.260008 | -2.55% |
-| 16 | 24.492627 | 23.766715 | -2.96% |
-| 32 | 12.529375 | 12.164797 | -2.91% |
+| 1 | $377.476774 \pm 1.575675$ | $373.803578 \pm 0.225742$ | -0.97% |
+| 2 | $192.136294 \pm 0.051788$ | $187.832592 \pm 0.087729$ | -2.24% |
+| 4 | $96.453229 \pm 0.070562$ | $94.165248 \pm 0.044843$ | -2.37% |
+| 8 | $48.498850 \pm 0.009672$ | $47.260008 \pm 0.013726$ | -2.55% |
+| 16 | $24.492627 \pm 0.008468$ | $23.766715 \pm 0.018591$ | -2.96% |
+| 32 | $12.529375 \pm 0.044831$ | $12.164797 \pm 0.007646$ | -2.91% |
 
 The observed differences range from approximately $-3.0\%$ to $-1.0\%$.
 Negative values mean that the measured container runtime was lower than the
 corresponding native runtime in that job. They are not interpreted as evidence
-that Singularity accelerates the code. Rather, they indicate that the true
-container overhead is smaller than the combined variability introduced by
-node placement, runtime noise, toolchain differences, cache state, and the
-fact that native and container binaries are not bit-for-bit identical.
+that Singularity accelerates the code. Since the native and container binaries
+use different compilation targets and are measured as complete deployment
+configurations, the observed offset cannot be uniquely attributed to the
+container runtime alone.
+The reported $\sigma$ values quantify repeatability within each benchmark configuration; they do not include all cross-job effects such as different node placement or the native/container compilation-target difference.
 
 The `weak-scaling` comparison gives a similarly small range and is especially
 stable at low and intermediate process counts:
 
 ![Weak scaling native vs container](report/figures/weak_scaling_native_container_final.svg)
 
-| MPI ranks | Native median (s) | Container median (s) | Container overhead |
+| MPI ranks | Native time (s) | Container time (s) | Measured container overhead |
 |---:|---:|---:|---:|
-| 1 | 23.332344 | 23.350336 | +0.08% |
-| 2 | 46.981598 | 46.961641 | -0.04% |
-| 4 | 94.373261 | 94.132828 | -0.25% |
-| 8 | 190.051070 | 188.543249 | -0.79% |
-| 16 | 386.723009 | 377.915699 | -2.28% |
+| 1 | $23.332344 \pm 0.036565$ | $23.350336 \pm 0.001905$ | +0.08% |
+| 2 | $46.981598 \pm 0.055411$ | $46.961641 \pm 0.002709$ | -0.04% |
+| 4 | $94.373261 \pm 0.032592$ | $94.132828 \pm 0.026092$ | -0.25% |
+| 8 | $190.051070 \pm 0.027471$ | $188.543249 \pm 0.047304$ | -0.79% |
+| 16 | $386.723009 \pm 1.094676$ | $377.915699 \pm 0.162304$ | -2.28% |
 
-The measured difference remains between approximately $+0.1\%$ and
-$-2.3\%$.
+The measured overhead remains between approximately $+0.1\%$ and $-2.3\%$.
 
 Overall, no systematic application-level container penalty is visible above a
 few percent for these compute-intensive runs. The weak-scaling results are
 particularly useful because they cover five different process/problem-size
 configurations and remain close to zero overhead over most of the range. The
-strong-scaling results show the same qualitative conclusion, with the sign of
-the small difference dominated by experimental variability rather than by a
-measurable Singularity cost.
+strong-scaling results show the same qualitative conclusion: no positive
+container penalty is visible, but the negative offsets should be interpreted as
+deployment-level differences rather than as a Singularity speedup.
 
 ### 8.3 Container Launch Overhead
 
@@ -1703,15 +1852,22 @@ and comparing it with native execution of `true`.
 | Container |      10 |   0.102052 |  0.196828 | 0.100407 | 0.724725 |
 | Native    |      10 |   0.000444 |  0.000120 | 0.000432 | 0.000823 |
 
-The median fixed Singularity startup overhead is therefore approximately
+The median Singularity launch time is therefore approximately
 
 $$ 0.102\ \mathrm{s}. $$
+
+Relative to the native `true` command, the corresponding fixed launch overhead
+is approximately
+
+$$
+0.102052 - 0.000444 \simeq 0.1016\ \mathrm{s}.
+$$
 
 One container launch is substantially slower than the remaining measurements, reaching $0.725$ s. No observation is removed from the reported statistics; the median is therefore particularly useful for representing the typical launch cost in the presence of this outlier.
 
 For the multi-second and multi-minute N-body runs, a fixed cost of roughly
-$0.1$ s is strongly amortized, explaining why it is not visible as a
-significant percentage overhead in the application-level scaling results.
+$0.1$ s is strongly amortized, explaining why startup is not visible as a
+significant percentage contribution in the application-level scaling results.
 
 ### 8.4 MPI Communication Microbenchmark
 
@@ -1721,29 +1877,12 @@ OSU was not available as an Orfeo module and was therefore built in user space u
 
 This microbenchmark is more sensitive to the intra-node MPI transport than the
 full N-body application because it is a two-process communication test rather
-than a long compute-dominated run. During the diagnostic phase, the
-intermediate policy that excluded UCX but still allowed `vader` caused OpenMPI
-to select the `vader` shared-memory BTL for the two same-node ranks, and the
-run again emitted `/dev/shm` warnings of the form
-
-```text
-System call: unlink(2) /dev/shm/vader_segment...
-Error: No such file or directory (errno 2)
-```
-
-The same final controlled transport policy used for the native-versus-container application comparison was therefore also used for OSU:
-
-```text
-OMPI_MCA_pml=^ucx
-OMPI_MCA_btl=self,tcp
-OMPI_MCA_osc=^ucx
-```
-
-This disables the `vader` shared-memory path and forces native and container
-to use the same clean `self,tcp` path. The resulting measurements should not
-be interpreted as the maximum possible intra-node bandwidth of Orfeo; rather,
-they test whether the Singularity wrapper and host-MPI binding introduce a
-systematic communication penalty under a reproducible transport policy.
+than a long compute-dominated run. For this reason, the same controlled policy
+defined in Section 8.1 was also used for OSU. The resulting measurements should
+not be interpreted as the maximum possible intra-node bandwidth of Orfeo;
+rather, they test whether the Singularity wrapper and host-MPI binding
+introduce a systematic communication penalty under a reproducible transport
+configuration.
 
 Each measurement was repeated five times.
 
@@ -1780,8 +1919,53 @@ The resulting `.sif` remains portable at the application level, but MPI
 portability is necessarily cluster-dependent. On a different HPC system, the source code and container image could remain largely unchanged, while the host MPI module, library bind paths, transport components, and interconnect support
 would need to be revalidated. The appropriate procedure would again be to bind the target cluster's MPI stack, verify library resolution with `ldd`, perform a small MPI smoke test, and repeat latency/bandwidth validation before interpreting application-level performance.
 
+On a cluster with InfiniBand rather than Orfeo's local GENOA environment, the application source code, binary input format, container recipe, and high-level MPI ring algorithm would remain unchanged. What would need to change is the runtime integration layer: the loaded MPI module, the bound host-library paths, and the OpenMPI transport policy should be chosen for the target interconnect. In particular, disabling fabric transports for a controlled single-node comparison is not the same as configuring a production multi-node InfiniBand run.
 
-## 9. Conclusions
+The ring-shift communication pattern itself is safe to containerize because it uses standard point-to-point MPI operations and does not rely directly on vendor-specific APIs in the application source. However, the MPI implementation may use shared-memory mechanisms, single-copy protocols, XPMEM-like facilities, or fabric plugins underneath. These mechanisms can be unavailable or restricted inside a container, as illustrated by the observed `vader` `/dev/shm` warnings. For this reason, the report treats MPI transport validation as part of the container experiment rather than assuming that containerization is transparent.
+
+
+## 9. Limitations and Reproducibility
+
+The final benchmark campaign was designed to follow the structure of the
+assignment while adapting it to the resources actually available on Orfeo.
+The main limitations are explicit:
+
+- the experiments were executed on Orfeo GENOA rather than on LEONARDO;
+- all final MPI scaling and container comparisons are single-node experiments;
+- the strong- and weak-scaling problem sizes were reduced relative to the
+  assignment reference values because of the two-hour wall-time limit;
+- hardware performance counters were not available through `perf`, `PAPI`, or
+  `LIKWID`, so vectorization was assessed through GCC reports and derived
+  throughput rather than counter events;
+- the native/container application comparison uses complete deployment
+  configurations: native `-march=native` versus container `-march=x86-64-v3`,
+  with the same controlled MPI transport policy;
+- native-only performance experiments and native/container comparisons use
+  different MPI transport policies intentionally, because they answer different
+  questions.
+
+The repository records the commands and scripts used to regenerate the report
+artifacts. The most important traceability links are:
+
+| Assignment item | Report section | Reproducible artifact |
+|:---|:---|:---|
+| Energy validation | Section 2.4 | `report/tables/validation_energy_summary.md` |
+| $O(N^2)$ growth | Section 5.2 | `report/tables/n_growth_summary.md` |
+| Kernel profiling and throughput | Sections 5.3, 7.3 | `report/tables/force_throughput_summary.md` |
+| Newton, layout, rsqrt, accumulators | Section 6 | `report/tables/*_tradeoff_summary.md` |
+| Hybrid MPI/OpenMP mapping and binding | Sections 4.4, 7.1 | `scripts/slurm/binding_check.slurm`, `report/tables/hybrid_mapping_summary.md` |
+| Communication overlap | Section 7.2 | `report/tables/ring_overlap_summary.md` |
+| Strong/weak scaling | Sections 7.3, 7.4 | `report/tables/*scaling*_summary.md` |
+| Container launch and MPI tests | Sections 8.3, 8.4 | `report/tables/container_launch_overhead_summary.md`, `report/tables/mpi_microbenchmark_summary.md` |
+| Native/container comparison | Section 8.2 | `report/tables/container_overhead_summary.md` |
+
+This structure makes the report reproducible from CSV-level data products
+rather than from hand-edited tables. Where a derived metric is reported, such
+as Ginteraction/s, the corresponding analysis script is included under
+`scripts/analyze/`.
+
+
+## 10. Conclusions
 
 The experiments highlight that the performance of a direct N-body solver
 depends on the interaction between numerical formulation, low-level kernel
