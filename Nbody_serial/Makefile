@@ -2,7 +2,7 @@ CC        ?= cc
 MPICC     ?= mpicc
 STD       ?= -std=c11
 CPPFLAGS  ?=
-CFLAGS    ?= -O2 -Wall -Wextra -Wpedantic
+CFLAGS    ?= -O3 -march=native -ffp-contract=fast -Wall -Wextra -Wpedantic
 LDLIBS    ?= -lm
 PRECISION ?= double
 OPENMP    ?= 0
