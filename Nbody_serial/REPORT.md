@@ -20,148 +20,173 @@ All final experiments were performed on the Orfeo HPC cluster using its AMD EPYC
 
 
 ## 1. Introduction
-Direct N-body simulation is a classical computational problem in which the motion of a system of particles is determined by their mutual interactions. In the gravitational case, every particle interacts with every other particle, making a straightforward implementation computationally expensive: evaluating the forces requires $O(N^2)$ pair interactions at every integration step.
+Direct **N-body simulation** models the motion of particles interacting through mutual gravitational forces. Since each particle interacts with every other particle, direct force evaluation requires $O(N^2)$ interactions at each time step, making the problem computationally demanding for large systems.
 
-Although more scalable algorithms such as Barnes-Hut trees or Fast Multipole Methods can reduce this asymptotic complexity, the objective of this project is deliberately different. The direct formulation provides a regular and arithmetic-intensive kernel in which the effects of parallel decomposition, vectorization, floating-point throughput, data layout, synchronization, and communication can be studied without being obscured by irregular hierarchical data structures.
+Although more scalable approaches, such as tree-based methods, can reduce this complexity, this project focuses on the **direct formulation** because its regular computational structure provides a clear setting for studying high-performance computing techniques.
 
-The project therefore addresses three complementary aspects of high-performance computing. First, the numerical solver must preserve the physical behaviour of the simulated system, which is verified through total-energy conservation. Second, the computational kernel is optimized and parallelized using OpenMP and MPI, with particular attention to the trade-off between computation, synchronization, memory access, and communication. Finally, the native implementation is compared with a containerized execution environment to determine whether portability through Singularity introduces measurable performance overhead on an HPC system.
+The work is organized around four main aspects:
 
-The resulting study is therefore not limited to obtaining the shortest execution time. Its main goal is to **measure and explain** how the different architectural and algorithmic choices affect correctness, single-node performance, parallel scalability, and portability.
+1. **Numerical correctness**  
+Verify that the simulation preserves the physical behaviour of the system through total-energy conservation.
+2. **Computational optimization**  
+Analyze the main computational bottleneck and evaluate different strategies to improve the performance of the force calculation.
+3. **Parallel scalability**  
+Use OpenMP and MPI to study shared- and distributed-memory parallelism, communication costs, hybrid configurations, and strong and weak scaling.
+4. **Portability and containerization**  
+Compare native and Singularity executions to evaluate the performance impact and portability of the containerized application.
+
+The overall goal is to **measure and explain** how implementation, optimization, and runtime choices affect correctness, performance, scalability, and portability.
 
 
 ## 2. Physical Model and Numerical Method
-
 ### 2.1 Gravitational N-body Model
 
-The system consists of $N$ equal-mass particles evolving in three-dimensional space under their mutual gravitational attraction and open boundary conditions. Each particle $i$ is described by its *position* $\mathbf{x}_i$, *velocity* $\mathbf{v}_i$, and *mass* $m$.
+The system consists of **$N$ equal-mass particles** moving in three-dimensional space under mutual gravitational attraction and open boundary conditions.
+
+Each particle $i$ is described by:
+
+- **position** $\mathbf{x}_i$
+- **velocity** $\mathbf{v}_i$
+- **mass** $m$
+
+In all final experiments, the particle mass is fixed to
+
+$$
+m=1.0,
+$$
+
+so the total mass of the system is $M=N$.
 
 The equations of motion are
 
 $$
-\frac{d\mathbf{x}_i}{dt} = \mathbf{v}_i,
-\qquad
-\frac{d\mathbf{v}_i}{dt} = \mathbf{a}_i ,
+ \frac{d\mathbf{x}_i}{dt}=\mathbf{v}_i, \qquad \frac{d\mathbf{v}_i}{dt}=\mathbf{a}_i. 
 $$
 
-where the acceleration is computed through direct summation over all the other particles:
+The acceleration of particle $i$ is computed by summing the gravitational contribution of all the other particles:
 
-$$
-\mathbf{a}_i =
-Gm
-\sum_{j\neq i}
-\frac{\mathbf{x}_j-\mathbf{x}_i}
-{\left(
-|\mathbf{x}_j-\mathbf{x}_i|^2+\epsilon^2
-\right)^{3/2}} .
+$$ 
+\mathbf{a}_i = Gm \sum_{j\neq i} \frac{\mathbf{x}_j-\mathbf{x}_i} {\left(|\mathbf{x}_j-\mathbf{x}_i|^2+\epsilon^2\right)^{3/2}}. 
 $$
 
-The parameter $\epsilon$ is the *gravitational softening length*. It removes the singularity of the Newtonian force for very small particle separations and prevents close encounters from producing arbitrarily large accelerations. Importantly, softening is part of the physical model rather than a hidden numerical correction: changing $\epsilon$ modifies the short-range interaction between particles.
+The parameter $\epsilon$ is the **gravitational softening length**.
 
-The same softened potential is used in the energy diagnostic,
+Its role is to prevent the Newtonian force from becoming singular when two particles get extremely close. Without softening, the force would grow without bound as the distance approaches zero. With $\epsilon>0$, very close encounters remain finite and numerically manageable.
 
-$$
-V =
--\sum_{i<j}
-\frac{Gm^2}
-{\sqrt{|\mathbf{x}_i-\mathbf{x}_j|^2+\epsilon^2}},
-$$
+The same softening is also used in the potential energy,
 
-ensuring consistency between the force evaluation and the physical quantity used for validation.
-
-### 2.2 Initial Conditions and Softening
-
-The main initial condition used in the experiments is a Plummer sphere, a spherically symmetric self-gravitating distribution commonly used as a controlled test case for gravitational dynamics. The repository also provides a uniform-ball generator with Maxwellian velocities, but the final validation and scalability experiments use Plummer initial conditions.
-
-For the final experiments, the numerical parameters are
-
-$$
-\epsilon = 0.05,
-\qquad
-\Delta t = 10^{-4}.
+$$ 
+V = -\sum_{i<j} \frac{Gm^2} {\sqrt{|\mathbf{x}_i-\mathbf{x}_j|^2+\epsilon^2}}, 
 $$
 
-The choice of $\epsilon$ must balance physical fidelity and numerical stability. A useful order-of-magnitude reference is the characteristic mean interparticle spacing,
+so the force computation and the energy diagnostic remain physically consistent.
+
+### 2.2 Initial Conditions and Choice of Softening
+
+The main initial condition used in the experiments is a **Plummer sphere**, a spherically symmetric self-gravitating particle distribution commonly used as a controlled test case.
+
+The final experiments use:
 
 $$
-\ell \sim \frac{R}{N^{1/3}},
+\text{softening length}\quad\epsilon=0.05, 
+\qquad \text{and integration timestep}\quad\Delta t=10^{-4}.
+$$
+
+The value of $\epsilon$ controls how strongly close particle encounters are smoothed:
+
+- **small $\epsilon$**
+the interaction remains closer to the Newtonian force at short distances, but close encounters can produce very *large accelerations*. These rapid changes in the motion may require a *smaller timestep to maintain numerical stability and good energy conservation*;
+- **large $\epsilon$**
+the interaction becomes smoother and easier to integrate numerically, but *gravitational forces are weakened over a larger short-range region*. Therefore, increasing $\epsilon$ also *changes the physical dynamics represented by the model*.
+
+A useful reference is the **typical distance between particles**,
+
+$$ 
+\ell \sim \frac{R}{N^{1/3}}, 
 $$
 
 where $R$ is the characteristic size of the system.
 
-For the validation problem with $N=10^4$ and a unit characteristic scale,
+This estimate comes from assuming that $N$ particles occupy a volume of order $R^3$: the average volume per particle is then $R^3/N$, and its characteristic linear size is approximately $(R^3/N)^{1/3}$.
 
+For the validation case with $N=10^4$ and $R\approx1$,
+
+$$ 
+\ell \approx 0.046, 
 $$
-\ell \sim 10^{-4/3} \approx 0.046,
+
+which is close to the chosen value
+
+$$ 
+\epsilon=0.05. 
 $$
 
-which is of the same order as the selected softening length $\epsilon=0.05$.
+Therefore, the selected softening acts on a scale comparable to the typical particle separation. This provides a practical compromise: it limits excessively strong close encounters without smoothing the gravitational interaction over much larger spatial scales.
 
-A substantially smaller softening would preserve stronger close encounters but would also require finer temporal resolution. Conversely, an excessively large $\epsilon$ would suppress small-scale gravitational structure. The selected value therefore provides a practical compromise for the benchmark configuration used in this work.
-
-Changing $\epsilon$ therefore changes both the physical model and the practical cost of a simulation. For fixed $N$ and a fixed number of integration steps, the cost per force evaluation remains $O(N^2)$ because every particle pair is still visited. However, a smaller $\epsilon$ permits larger close-encounter accelerations and usually requires a smaller timestep, or more steps, to keep the energy drift below a fixed tolerance. A larger $\epsilon$ smooths those close encounters and can make the integration less stiff, but at the price of modifying the dynamics below scales comparable to $\epsilon$. This is why the relevant physical scale is the typical interparticle spacing $\ell$: choosing $\epsilon \ll \ell$ makes individual encounters dynamically important, while choosing $\epsilon \gg \ell$ over-smooths the system.
+Changing $\epsilon$ does **not change** the $O(N^2)$ cost of a single force evaluation, because every particle still interacts with every other particle.  
+However, it can affect the **total simulation cost indirectly**. A smaller $\epsilon$ allows stronger close-range accelerations and faster changes in particle trajectories, which may require a smaller timestep to keep the integration stable and preserve energy conservation. Simulating the same physical time would then require *more integration steps and* therefore more $O(N^2)$ *force evaluations*.
 
 
 ### 2.3 Kick-Drift-Kick Leapfrog Integration
 
-The system is advanced in time using a second-order leapfrog integrator in Kick-Drift-Kick (KDK) form.
+The system is advanced in time using a second-order **Kick-Drift-Kick (KDK) leapfrog integrator**.  
+Each timestep $\Delta t$ is divided into three stages:
 
-Given positions $\mathbf{x}(t)$, velocities $\mathbf{v}(t)$, and accelerations $\mathbf{a}(t)$, one integration step is
+1. **First half kick $-$ update the velocity:**
 
-$$
-\mathbf{v}\left(t+\frac{\Delta t}{2}\right)
-=
-\mathbf{v}(t)
-+
-\frac{\Delta t}{2}\mathbf{a}(t),
-$$
+    The current acceleration is used to advance the velocity by half a timestep
 
-$$
-\mathbf{x}(t+\Delta t)
-=
-\mathbf{x}(t)
-+
-\Delta t\,
-\mathbf{v}\left(t+\frac{\Delta t}{2}\right),
-$$
+    $$ 
+    \mathbf{v}\left(t+\frac{\Delta t}{2}\right) = \mathbf{v}(t) + \frac{\Delta t}{2}\mathbf{a}(t). 
+    $$
 
-followed by a new force evaluation at the updated positions,
+2. **Drift $-$ update the position:**
 
-$$
-\mathbf{a}(t+\Delta t)
-=
-\mathbf{a}\!\left[\mathbf{x}(t+\Delta t)\right],
-$$
+    The intermediate velocity is then used to advance the particle positions over a full timestep
 
-and the second half kick,
+    $$ 
+    \mathbf{x}(t+\Delta t) = \mathbf{x}(t) + \Delta t\, \mathbf{v}\left(t+\frac{\Delta t}{2}\right).
+    $$
 
-$$
-\mathbf{v}(t+\Delta t)
-=
-\mathbf{v}\left(t+\frac{\Delta t}{2}\right)
-+
-\frac{\Delta t}{2}\mathbf{a}(t+\Delta t).
-$$
+    Since the particles have moved, the gravitational ***forces** must be recomputed* at the new positions
 
-The KDK leapfrog scheme is second-order, symplectic, and time-reversible for this separable Hamiltonian system. These properties make it particularly suitable for gravitational simulations, where long-term conservation properties are more important than minimizing the local truncation error of a single step.
+    $$ 
+    \mathbf{a}(t+\Delta t) = \mathbf{a}\!\left[\mathbf{x}(t+\Delta t)\right]. 
+    $$
+
+3. **Second half kick $-$ complete the velocity update:**
+
+    The newly computed acceleration is used to advance the velocity by the remaining half timestep
+
+    $$ 
+    \mathbf{v}(t+\Delta t) = \mathbf{v}\left(t+\frac{\Delta t}{2}\right) + \frac{\Delta t}{2}\mathbf{a}(t+\Delta t). 
+    $$
+
+After these three stages, both positions and velocities are available at time $t+\Delta t$, and the procedure is repeated for the next timestep.
+
+The KDK leapfrog method is **second-order, symplectic, and time-reversible**. These properties make it particularly suitable for gravitational simulations, because it provides good long-term behaviour and *limits artificial drift* in the system energy.
+
 
 ### 2.4 Energy Conservation as a Correctness Criterion
 
-Correctness is evaluated independently of execution time through conservation of the total mechanical energy,
+For an isolated gravitational system, the total mechanical energy should remain constant over time. Energy conservation therefore provides a simple physical criterion for checking that the numerical solver evolves the system correctly, independently of its execution time.
 
+The total energy is
 $$
 E = T + V,
 $$
 
-with kinetic energy
+where the kinetic energy is
 
 $$
 T = \frac{1}{2}
 \sum_i m |\mathbf{v}_i|^2
 $$
 
-and the softened gravitational potential $V$ defined previously.
+and $V$ is the softened gravitational potential defined previously.
 
-The solver monitors the relative energy drift,
+Because numerical integration introduces small errors, the energy is *not expected to remain exactly constant*.  
+The solver therefore monitors the **relative energy drift**
 
 $$
 \delta_E(t)
@@ -170,16 +195,20 @@ $$
 {\max(|E(0)|,\mathrm{tiny})},
 $$
 
-and records its maximum value over the simulated interval.
+which measures the relative change in total energy with respect to its initial value.
 
-The final validation run uses a Plummer sphere with
+A small value of $\delta_E$ indicates that the numerical evolution remains close to the expected conservative behaviour.  
+The **maximum drift** over the sampled simulation times is used as the **validation metric**.
 
-- $N=10\,000$,
+The final validation run uses:
+
+- $N=10\,000$ particles,
 - $100$ KDK integration steps,
-- $\Delta t = 10^{-4}$,
-- $\epsilon = 0.05$,
+- timestep $\Delta t = 10^{-4}$,
+- softening length $\epsilon = 0.05$,
 - $8$ OpenMP threads,
-- energy sampling every $10$ integration steps.
+- energy sampling every $10$ integration steps,
+- validation tolerance $\delta_E^{\max}<10^{-4}$.
 
 The measured maximum relative energy drift is
 
@@ -193,43 +222,16 @@ $$
 
 which is well below the adopted validation threshold of $10^{-4}.$
 
-This confirms that, for the benchmark configuration used throughout the project, the numerical integration preserves the total energy with a margin of more than two orders of magnitude relative to the acceptance criterion.
+This confirms that the numerical integration preserves the total mechanical energy with a large margin relative to the selected correctness threshold.
 
 
 ## 3. Parallel Implementation
 
-The computational core of the solver is the direct evaluation of all pairwise
-gravitational interactions. For each target particle $i$, the contribution of
-every source particle $j \neq i$ is accumulated into its acceleration:
-
-$$
-\mathbf{a}_i =
-Gm
-\sum_{j\neq i}
-\frac{\mathbf{x}_j-\mathbf{x}_i}
-{\left(|\mathbf{x}_j-\mathbf{x}_i|^2+\epsilon^2\right)^{3/2}}.
-$$
-
-A direct evaluation therefore requires approximately $N(N-1)$ ordered
-particle interactions per force evaluation, giving an asymptotic computational
-cost of
-
-$$
-O(N^2).
-$$
-
-No tree-based, Fast Multipole, particle-mesh, or cutoff approximation is used.
-The direct formulation is intentionally preserved because its regular
-computational structure makes the effects of shared-memory parallelism,
-distributed-memory communication, data layout, and low-level floating-point
-optimizations directly measurable.
-
+This section describes how the direct N-body force computation is parallelized using **OpenMP**, **MPI**, and a hybrid combination of the two.
 
 ### 3.1 Data Layout
 
-Particle data are stored using a Structure-of-Arrays (SoA) representation.
-Instead of storing all properties of one particle contiguously in a single
-structure, each physical quantity is stored in a separate array:
+Particle data are stored using a Structure-of-Arrays (SoA) representation. Each physical quantity is kept in a separate contiguous array:
 
 ```text
 x[0 ... N-1]
@@ -245,221 +247,177 @@ ay[0 ... N-1]
 az[0 ... N-1]
 ```
 
-This layout separates the data streams actually required by the force kernel.
-For example, force evaluation primarily accesses the position arrays and writes
-the acceleration arrays, without loading unrelated velocity components.
+This organization keeps together the values of the same physical quantity. During the force computation, the kernel mainly reads the position arrays and writes the acceleration arrays, without accessing unrelated velocity data.
 
-SoA also provides a convenient representation for MPI communication, since
-particle coordinates can be transferred as contiguous arrays, and exposes a
-data organization that is suitable for SIMD-oriented optimization.
+SoA is also convenient for MPI communication, since particle coordinates are stored in contiguous arrays, and provides a data organization suitable for SIMD-oriented optimizations.
 
-The project also includes a controlled Array-of-Structures (AoS) versus SoA
-benchmark. The corresponding performance results are discussed later in the
-kernel-optimization section; the production implementation uses SoA
-throughout.
+The production implementation uses SoA throughout. A controlled comparison with an Array-of-Structures (AoS) representation is presented later in the optimization experiments.
 
 ### 3.2 OpenMP Parallelization
 
-Within a shared-memory node, the force computation is parallelized with OpenMP
-over the outer target-particle loop.
+Within a shared-memory node, OpenMP parallelizes the outer loop **over the target particles**.
 
-Conceptually, the computation is
+Conceptually:
 
 ```text
-parallel for i = 0 ... N-1:
+parallel for each target particle i:
     ax_i = 0
     ay_i = 0
     az_i = 0
 
-    for j = 0 ... N-1:
+    for each source particle j:
         if i != j:
             compute interaction(i, j)
-            accumulate into ax_i, ay_i, az_i
+            accumulate into acceleration of i
 ```
 
-Each OpenMP iteration is responsible for one target particle $i$. Therefore,
-a thread updates only the acceleration associated with the target particles
-assigned to it, while source-particle data are read-only.
+Each OpenMP iteration is responsible for one target particle $i$. Therefore, **each thread** writes only to the accelerations of the particles assigned to it, while the source-particle positions are shared and read-only.
 
-This ownership pattern has two important advantages. First, iterations of the
-outer loop are independent and can be distributed across threads with little
-synchronization. Second, the inner force loop does not require atomic operations, since no two threads update the same target acceleration.
+This makes the iterations independent and **avoids atomic** operations or other synchronization inside the force loop.
 
-The production kernel deliberately evaluates both ordered interactions
-$(i,j)$ and $(j,i)$ instead of exploiting Newton's third law. Although
-Newton's third law can nearly halve the number of pair evaluations, a parallel
-$i<j$ traversal requires updating the accelerations of both particles in each
-pair, introducing shared writes and synchronization. This trade-off is studied
-experimentally in Section 6.
+The drift and kick stages of the KDK integrator are also parallelized, but their $O(N)$ cost is much smaller than the $O(N^2)$ force computation.
 
-The remaining drift and kick stages of the leapfrog integrator are only
-$O(N)$ and can also be parallelized, but their computational cost is small
-compared with the $O(N^2)$ force evaluation.
+### 3.3 MPI Ring Decomposition
 
-### 3.3 MPI Domain Decomposition
+For distributed-memory execution, the $N$ particles are divided into equal contiguous blocks across $P$ MPI ranks.
 
-For distributed-memory execution, the global particle set is divided into equal contiguous blocks across $P$ MPI ranks.
+Each rank owns
 
-Each rank permanently owns
+$$
+N_{\mathrm{local}}=\frac{N}{P}
+$$
 
-$$ N_{\mathrm{local}} = \frac{N}{P} $$
+particles. These particles remain the rank's **local target particles** throughout the simulation.
 
-target particles, referred to as its home block. Accelerations are computed
-only for these local targets.
+However, each local target must interact with all $N$ particles in the system. To make every source particle available without storing the complete system on every rank, the implementation uses a ring communication pattern.
 
-A rank cannot compute their complete acceleration using only its local
-particles, because each target interacts with all $N$ particles in the
-system. Instead of replicating the complete particle set on every process, the
-implementation uses a **ring-shift** communication pattern.
+Each rank therefore works with:
 
-Each MPI rank maintains:
+- a fixed block of **local target particles**;
+- a **source block** that moves between MPI ranks.
 
-- its permanent home block of target particles;
-- a temporary source block used for force evaluation.
+Initially, each rank uses its own local block as the source block. After computing those interactions, the source block is passed to the next MPI rank and a new block is received from the previous rank.
 
-Initially, the source block contains the rank's own particles. After computing
-the corresponding interactions, the source block is sent to the next rank in
-the ring while a new block is received from the previous rank.
-
-For $P$ ranks, the procedure is
+For $P$ ranks, the procedure is:
 
 ```text
-for ring phase = 0 ... P-1:
-
+for each ring phase:
     compute interactions between
-        local home targets
+        local targets
         and current source block
 
-    rotate source block to next MPI rank
+    send current source block to next rank
+    receive next source block from previous rank
 ```
 
-After $P$ phases, every rank has processed every source block and therefore
-has accumulated the complete gravitational acceleration for all particles in
-its home block.
+After $P$ phases, every rank has seen every source block. Therefore, each local target has interacted with all $N$ particles.
 
-For example, with four MPI ranks:
+For four MPI ranks:
 
 ```text
-phase 0:
-    R0 <- block 0
-    R1 <- block 1
-    R2 <- block 2
-    R3 <- block 3
-
-phase 1:
-    R0 <- block 3
-    R1 <- block 0
-    R2 <- block 1
-    R3 <- block 2
-
-phase 2:
-    R0 <- block 2
-    R1 <- block 3
-    R2 <- block 0
-    R3 <- block 1
-
-phase 3:
-    R0 <- block 1
-    R1 <- block 2
-    R2 <- block 3
-    R3 <- block 0
+phase 0:   R0 uses B0   R1 uses B1   R2 uses B2   R3 uses B3
+phase 1:   R0 uses B3   R1 uses B0   R2 uses B1   R3 uses B2
+phase 2:   R0 uses B2   R1 uses B3   R2 uses B0   R3 uses B1
+phase 3:   R0 uses B1   R1 uses B2   R2 uses B3   R3 uses B0
 ```
 
-The target particles never migrate: only the source blocks rotate. As a result,
-each rank remains the unique owner of the accelerations of its local particles.
+The target particles never move between ranks: only the source blocks circulate around the ring.
 
-This ownership rule is particularly useful because *no distributed reduction* of
-the force arrays is required after the ring traversal.
+As a consequence, *each rank remains the unique owner of the accelerations of its local particles, so no global reduction of the acceleration arrays is required* after the ring traversal.
 
-The current implementation assumes that $N$ is divisible by the number of MPI ranks. This restriction is sufficient for the benchmark configurations used in this work and avoids additional MPI_Scatterv/MPI_Gatherv bookkeeping.
-
+The current implementation assumes that $N$ is divisible by the number of MPI ranks, which is sufficient for all benchmark configurations used in this work.
 
 ### 3.4 Hybrid MPI + OpenMP Execution
 
-The distributed ring decomposition is combined with OpenMP parallelism inside
-each MPI rank.
+The MPI ring decomposition and OpenMP parallelization are combined in the hybrid solver.
 
-For every ring phase, a rank evaluates
+The two levels have distinct roles:
 
-$$ N_{\mathrm{local}} \times N_{\mathrm{source}} $$
+- **MPI** divides the target particles among ranks and circulates the source blocks;
+- **OpenMP** divides the local target particles among the threads of each rank.
 
-particle interactions. The outer loop over the local target particles is
-parallelized among the OpenMP threads assigned to that rank.
+Therefore, during each ring phase, a rank receives one source block and its OpenMP threads collaboratively compute the interactions between that block and the rank's local targets.
 
-The resulting hierarchy is therefore
-
+Conceptually:
 ```text
-MPI
- └── distributes target-particle blocks across ranks
-     └── ring-shifts source blocks between ranks
-         └── OpenMP parallelizes the local target loop
-             └── direct gravitational interaction kernel
+MPI rank owns a block of target particles
+
+for each source block in the ring:
+    OpenMP threads divide the local targets
+    each thread computes interactions with the source block
+
+    rotate the source block to the next MPI rank
 ```
 
-This hybrid organization separates the two levels of parallelism:
+The total number of cores can be distributed between MPI ranks and OpenMP threads in different ways. For example, the same hardware resources can be used with a small number of ranks and many threads per rank, or with many ranks and fewer threads.
 
-- MPI handles particle distribution and communication across memory domains;
-- OpenMP exploits the cores that share memory within each MPI rank.
-
-The number of MPI ranks and OpenMP threads per rank is not fixed by the
-algorithm. Different configurations change the balance between shared-memory
-parallelism, MPI communication, and NUMA locality. This is particularly
-important on the dual-socket GENOA node used for the experiments, which
-contains multiple NUMA domains.
-
-For this reason, the project explicitly compares different hybrid mappings,
-including *one rank per socket, one rank per NUMA domain, and one rank per
-physical core*. Their performance is analyzed later rather than assumed from
-the hardware topology alone.
-
+These configurations change the balance between shared-memory computation, MPI communication, and NUMA locality. Their performance is compared experimentally later in the report.
 
 ### 3.5 Blocking and Non-Blocking Ring Communication
 
-The reference MPI implementation uses a blocking ring exchange based on
-`MPI_Sendrecv`. A ring phase therefore consists conceptually of
+Two communication strategies are implemented for the MPI ring.
+
+#### $-$ Blocking communication $-$
+
+The reference implementation uses `MPI_Sendrecv`.
+
+For each ring phase, the rank first computes the interactions with its current source block and then exchanges that block with its neighbours:
 
 ```text
-compute current block
-        ↓
-exchange source block
-        ↓
-compute next block
+compute using current source block
+            ↓
+exchange source blocks
+            ↓
+compute using next source block
 ```
 
-A second implementation uses *non-blocking communication*. The receive and send
-for the next source block are posted before processing the current one:
+The communication and computation therefore occur one after the other.
 
+#### $-$ Non-blocking communication $-$
+
+The non-blocking implementation uses `MPI_Irecv` and `MPI_Isend`.
+
+The main idea is to *start the communication for the next ring phase while the rank is still computing the current one*.
+
+Conceptually:
 ```text
-post MPI_Irecv / MPI_Isend
-        ↓
-compute current source block
-        ↓
-MPI_Waitall
-        ↓
-use received source block
+start transfer of next source block
+            ↓
+compute using current source block
+            ↓
+wait only if communication is not finished
+            ↓
+continue with the received source block
 ```
 
-The goal is to overlap communication with useful force computation.
+Unlike a blocking call, `MPI_Isend` and `MPI_Irecv` return immediately, allowing the rank to continue computing while the data transfer progresses.
 
-However, non-blocking MPI calls do not imply that communication is completely
-hidden. Effective overlap depends on MPI progress, message latency, resource
-contention, workload balance, and the amount of computation available between
-the non-blocking calls and the corresponding wait.
+If the communication finishes before the current force computation, part or all of its cost is hidden behind useful computation. Before the received block can be used in the next phase, `MPI_Waitall` ensures that the transfer has completed.
 
-The blocking implementation is therefore used as the reference execution path,
-while the non-blocking version is treated as a controlled optimization
-experiment. The amount of communication actually hidden is measured in the
-performance-analysis section.
+The intended execution is therefore:
+
+$$ 
+\boxed{ \text{communication} \quad \text{overlaps with} \quad \text{force computation} } 
+$$
+
+rather than
+
+$$
+\boxed{ \text{force computation} \rightarrow \text{communication} }
+$$
+
+as in the blocking version.
+
+However, non-blocking communication *does not guarantee complete overlap*. The actual benefit depends on factors such as message size, MPI progress, communication latency, and the amount of computation available while the transfer is in progress.
+
+The *blocking implementation is therefore used as the reference*, while the non-blocking version is evaluated experimentally to determine how much communication can actually be hidden.
 
 
 ## 4. Experimental Setup and Methodology
 
 All final experiments were performed on the Orfeo HPC cluster, using the `GENOA` CPU partition. The original assignment targeted LEONARDO; however, LEONARDO was not available, so the benchmark campaign was moved to Orfeo while preserving the required experimental methodology.
 
-System information was collected directly inside a SLURM allocation on a
-GENOA compute node rather than on the login node. This is important because
-processor topology, NUMA configuration, available memory, and software modules
-may differ between login and compute nodes.
+System information was collected directly inside a SLURM allocation on a GENOA compute node rather than on the login node. This is important because processor topology, NUMA configuration, available memory, and software modules may differ between login and compute nodes.
 
 ### 4.1 Hardware Platform
 
@@ -491,221 +449,1950 @@ The NUMA layout recorded from the allocated compute node is:
 | 6 | 48-55 | 64508 MB |
 | 7 | 56-63 | 64480 MB |
 
-The `numactl -H` distance matrix has distance 10 within each NUMA node,
-12 between NUMA domains on the same socket, and 32 between domains belonging
-to different sockets. This is why the hybrid mapping study distinguishes
-between one MPI rank per socket, one rank per NUMA domain, and one rank per
-physical core.
-
-The eight NUMA domains are particularly relevant for the hybrid MPI/OpenMP
-experiments. Different rank/thread configurations can change both memory
-locality and the number of MPI ring participants, so the optimal configuration
-cannot be inferred from the total core count alone and must be measured
-experimentally.
+ The `numactl -H` distance matrix reports distance: 10 within each NUMA domain, 12 between domains on the same socket, and 32 between domains on different sockets.
+ 
+ This topology is relevant for the hybrid MPI/OpenMP experiments, because different rank/thread mappings affect both memory locality and the number of MPI ring participants. For this reason, one rank per socket, one rank per NUMA domain, and one rank per physical core are compared experimentally.
 
 
 ### 4.2 Software Environment
 
-The final native runs used the following software environment:
+The final native experiments were performed using the following software environment:
 
-| Component | Version |
-|:---|:---|
-| C compiler | GCC 14.3.1 |
-| MPI implementation | Open MPI 4.1.6 |
-| OpenMP runtime | GNU `libgomp` |
-| Container runtime | SingularityCE 4.3.1 |
-| Hardware-locality library | hwloc 2.12.0 |
-| GNU C library | glibc 2.40 |
-| External numerical libraries | none |
+| Component                    | Version             |
+| :--------------------------- | :------------------ |
+| C compiler                   | GCC 14.3.1          |
+| MPI implementation           | Open MPI 4.1.6      |
+| MPI compiler wrapper         | `mpicc`             |
+| OpenMP runtime               | GNU `libgomp`       |
+| Container runtime            | SingularityCE 4.3.1 |
+| Hardware-locality library    | hwloc 2.12.0        |
+| GNU C library                | glibc 2.40          |
+| External numerical libraries | none                |
 
-The MPI executable was built through the `mpicc` compiler wrapper provided by
-the cluster OpenMPI module. No BLAS or external numerical library is used in
-the force computation: the dominant kernel is implemented directly in C.
+The MPI executable is compiled through `mpicc`, the Open MPI compiler wrapper. It uses the underlying GCC compiler while automatically adding the MPI headers and libraries required for compilation and linking.
 
-All numerical experiments reported in the final benchmark campaign use
-double-precision arithmetic.
+The force kernel is implemented directly in C and does not rely on BLAS or other external numerical libraries.
+
+All final numerical experiments use double-precision arithmetic.
 
 ### 4.3 Compilation Configuration
 
-Native performance binaries were compiled with
+The final native benchmarks were built using double precision and OpenMP support. The reference build commands were:
 
 ```text
--O3 -march=native -ffp-contract=fast -Wall -Wextra -Wpedantic
+make OPENMP=1 PRECISION=double \
+  CFLAGS="-O3 -march=native -ffp-contract=fast -Wall -Wextra -Wpedantic"
+```
+```text
+make mpi OPENMP=1 PRECISION=double \
+  CFLAGS="-O3 -march=native -ffp-contract=fast -Wall -Wextra -Wpedantic"
 ```
 
-together with C11, double-precision selection, and OpenMP support where required.
+The first command builds the serial/OpenMP executables and microbenchmarks, while the second builds the MPI/OpenMP executable through `mpicc`.
 
-The relevant options have the following roles:
+The build configuration used for the final benchmarks is:
 
-- `-O3` enables aggressive compiler optimization;
-- `-march=native` allows GCC to generate instructions specifically for the
-allocated GENOA processor;
-- `-ffp-contract=fast` allows floating-point contraction such as fused
-  multiply-add operations where applicable;
-- `-Wall -Wextra -Wpedantic` enable progressively stricter compiler warnings,
-  including warnings beyond the default set and warnings required by strict ISO
-  C conformance;
-- `-std=c11` selects the C11 language standard;
-- `-DNBODY_USE_DOUBLE` selects the double-precision scalar type used by the
-  final numerical experiments;
-- `-fopenmp` is enabled for the OpenMP and hybrid executables.
+- `OPENMP=1`: enables OpenMP support where required;
+- `PRECISION=double`: selects double-precision floating-point arithmetic.
 
-For the containerized benchmark, the application was instead compiled with
+The main compiler flags are:
+
+- `-O3`: enables aggressive compiler optimizations;
+- `-march=native`: optimizes the generated code for the GENOA processor used in the native experiments;
+- `-ffp-contract=fast`: allows floating-point contraction, including fused multiply-add operations where applicable;
+- `-Wall -Wextra -Wpedantic`: enable additional compiler warnings.
+
+Depending on the selected target, the Makefile also adds:
+
+- `-std=c11`: selects the C11 language standard;
+- `-DNBODY_USE_DOUBLE`: selects the double-precision scalar type;
+- `-fopenmp`: enables OpenMP compilation and linking.
+
+#### Optional diagnostic flags
+
+Additional compiler options were used only for specific diagnostic experiments and are not part of the standard benchmark build.
+
+For the AoS/SoA layout experiment, compiler vectorization information was generated using:
 
 ```text
--O3 -march=x86-64-v3 -ffp-contract=fast -Wall -Wextra -Wpedantic
+-fopt-info-vec-all=report/tables/layout_vec_all.txt
 ```
 
-The portable `x86-64-v3` target was chosen to avoid tying the container image to the exact CPU on which it was built. This improves portability but may prevent the compiler from exploiting all GENOA-specific instruction-set
-features available to the native `-march=native` build.
+This produces a report indicating which loops were vectorized and which could not be vectorized.
 
-On the measured GENOA nodes, the CPU supports AVX-512. A native build may therefore use wider vectors and more architecture-specific scheduling choices than an `x86-64-v3` build, whose portable baseline includes AVX2 but not AVX-512. In an ideal, fully vectorized double-precision kernel, moving from 256-bit AVX2 vectors to 512-bit AVX-512 vectors could in principle double the vector width. This is an upper bound rather than an expected application speedup: the current dominant force loop is not effectively vectorized, includes scalar inverse-square-root work, and is also affected by loop control, reductions, and MPI/runtime effects. The possible loss associated with the portable target is therefore discussed through this architectural bound, compiler vectorization diagnostics, and kernel microbenchmarks; the native-versus-container runs are interpreted separately as complete deployment comparisons rather than as an isolated measurement of the compilation target.
+No profile-guided or feedback-directed optimization was used.
 
-This difference is explicitly considered when interpreting the native versus
-container measurements: the comparison includes not only the Singularity
-runtime layer but also a deliberately more portable compilation target.
+#### Container compilation target
+
+The containerized benchmarks use the same build configuration, except that:
+
+```text
+-march=x86-64-v3
+```
+
+is used instead of:
+
+```text
+-march=native
+```
+
+The reason is portability: `-march=native` generates code specifically for the processor used during compilation, whereas `x86-64-v3` defines a portable baseline that can run on a wider range of modern x86-64 processors.
+
+The main difference is:
+
+- `x86-64-v3`
+  - provides a portable modern x86-64 baseline;
+  - includes instructions such as AVX2 and FMA;
+  - does not assume newer extensions such as AVX-512.
+- `-march=native`
+  - detects the exact GENOA processor;
+  - enables the instruction-set extensions supported by that CPU;
+  - allows GCC to apply more CPU-specific tuning and instruction scheduling.
+
+Therefore, the *native* build can potentially exploit more *specialized hardware features*, while the *container* build prioritizes *portability*. Whether these additional features produce a measurable performance benefit depends on how effectively the compiler can use them in the application kernel.
 
 
 ### 4.4 Parallel Execution Configuration
 
-Parallel executions were launched through SLURM using `srun`. Each configuration is described by the number of MPI ranks $P$ and the number of OpenMP threads
-per rank $T$, giving a total number of workers
+Parallel executions were launched through SLURM using `srun`.
 
-$$
-W = P \times T.
-$$
+Each configuration is identified by:
+- $P$: number of MPI ranks;
+- $T$: number of OpenMP threads per rank;
+- $W=P\times T$: total number of workers.
 
-The corresponding SLURM execution follows the form
+For example, a $2\times32$ configuration uses 2 MPI ranks with 32 OpenMP threads per rank, for a total of 64 workers.
+
+The general execution command is
 
 ```text
 srun -n <ranks> -c <threads> ./nbody_mpi_omp [solver options]
 ```
 
-where `-n` specifies the number of MPI processes and `-c` the number of CPU cores allocated to each process.
+where:
+- `-n` sets the number of MPI ranks;
+- `-c` allocates the CPUs required by each rank.
 
-No additional explicit `mpirun --bind-to` option is used in the benchmark scripts. Process placement is delegated to the SLURM `srun` allocation, while thread placement is fixed through the OpenMP binding variables below. In the report this is the relevant `MPI_BIND`-equivalent run configuration: MPI ranks are created by `srun -n <ranks> -c <threads>`, and OpenMP threads are then bound within the cores assigned to each rank.
+Since SMT is not exposed on the GENOA node, one allocated CPU corresponds to one physical core.
 
-OpenMP execution is configured through
+#### OpenMP thread placement
+Within each MPI rank, OpenMP thread placement is controlled using
+
 ```text
-OMP_NUM_THREADS = <threads>
-OMP_PLACES      = cores
-OMP_PROC_BIND   = close
+OMP_NUM_THREADS=<threads>
+OMP_PLACES=cores
+OMP_PROC_BIND=close
 ```
 
-so that OpenMP threads are placed on physical cores and kept close within the resources allocated to each MPI rank.
+with the following roles:
+- `OMP_NUM_THREADS` sets the number of threads created by each rank;
+- `OMP_PLACES=cores` places threads on physical cores;
+- `OMP_PROC_BIND=close` keeps the threads of the same rank close to each other within the allocated cores.
 
-The rank binding used for the hybrid configurations was verified explicitly
-with a dedicated SLURM check using `taskset -pc` inside each `srun` process.
-The observed CPU affinities were:
+MPI rank placement itself is handled by the SLURM `srun` allocation; no additional `mpirun --bind-to` option is used.
 
-| Configuration | Observed rank affinity | Interpretation |
-|:---|:---|:---|
-| $2\times32$ | rank 0: CPUs 0-31; rank 1: CPUs 32-63 | one rank per socket |
-| $8\times8$ | each rank bound to one 8-core block: 0-7, 8-15, ..., 56-63 | one rank per NUMA domain |
-| $64\times1$ | each rank bound to one distinct CPU | one rank per physical core |
+#### Verified hybrid mappings
 
-The rank numbering is not necessarily monotonic with the NUMA-domain order,
-especially in the $8\times8$ and $64\times1$ cases, but the affinity masks
-confirm that the physical core allocation matches the intended mapping.
+The actual CPU affinity of each MPI rank was explicitly checked inside the SLURM allocation using taskset `-pc`.
 
-For the controlled native-versus-container scaling experiments, both backends
-were executed with the same explicit OpenMPI runtime policy. The motivation and
-exact environment variables are described in Section 8.1. The native-only
-experiments do not use this restricted policy unless explicitly stated, because
-they are intended to measure native performance on the host MPI stack.
+The observed mappings were:
+| Configuration | Observed affinity                                | Physical interpretation        |
+| :------------ | :----------------------------------------------- | :----------------------------- |
+| $2\times32$ | rank 0: CPUs 0-31; rank 1: CPUs 32-63            | one MPI rank per socket        |
+| $8\times8$  | one 8-core block per rank: 0-7, 8-15, ..., 56-63 | one MPI rank per NUMA domain   |
+| $64\times1$ | one distinct CPU per rank                        | one MPI rank per physical core |
 
-The native-only hybrid mapping experiment was treated separately and used the host MPI default transport, since its objective was to characterize the best
-native MPI/OpenMP mapping on the GENOA node rather than to isolate container overhead.
+These checks confirm that the three hybrid configurations correspond to the intended hardware mappings:
 
-Each benchmark records the number of ranks, threads per rank, and total workers, so that the measured performance can be related directly to the selected parallel configuration.
+$$ 2\times32 \rightarrow \text{rank per socket} $$
+$$ 8\times8 \rightarrow \text{rank per NUMA domain} $$
+$$ 64\times1 \rightarrow \text{rank per core} $$
+
+The numerical MPI rank order is not always identical to the NUMA-domain order, but the observed affinity masks confirm that the physical placement is correct.
+
+#### MPI runtime policy
+
+For the controlled native-versus-container experiments, both executions use the same explicit Open MPI runtime policy so that the communication environment is as comparable as possible. The exact settings are described in Section 8.1.
+
+Native-only experiments instead use the *default host MPI* transport unless otherwise stated.
+
+For every benchmark, the number of MPI ranks, OpenMP threads per rank, and total workers are recorded together with the performance measurements.
 
 
 ### 4.5 Benchmark Configurations
 
-The final benchmark campaign consists of several complementary experiments, each designed to isolate a different aspect of numerical correctness or parallel performance.
+The final benchmark campaign includes a set of experiments designed to evaluate numerical correctness, kernel performance, communication behaviour, and parallel scalability.
 
-| Experiment | Problem size | Steps | Parallel configuration |
-|:---|:---|---:|:---|
-| Energy validation | $N=10\,000$ | 100 | 8 OpenMP threads |
-| Complexity growth | $N=1\,000$ and $N=10\,000$ | 50 | 1 OpenMP thread |
-| Hybrid mapping | $N=32\,768$ | 20 | $2\times32$, $8\times8$, $64\times1$ |
-| MPI overlap | $N=32\,768$ | 20 | 4, 8, 16, 32 MPI ranks |
-| Strong scaling | $N=32\,768$ | 100 | 1, 2, 4, 8, 16, 32 MPI ranks |
-| Weak scaling | $N_{\mathrm{local}}=8192$ | 100 | 1, 2, 4, 8, 16 MPI ranks |
+#### Main application benchmarks
 
-Here, a hybrid configuration $P\times T$ denotes $P$ MPI ranks and $T$
-OpenMP threads per rank.
+| Experiment        | Problem size                | Steps | Parallel configuration               |
+| :---------------- | :-------------------------- | ----: | :----------------------------------- |
+| Energy validation | $N=10\,000$               |   100 | 8 OpenMP threads                     |
+| Complexity growth | $N=1\,000,\;10\,000$      |    50 | 1 OpenMP thread                      |
+| Hybrid mapping    | $N=32\,768$               |    20 | $2\times32,\;8\times8,\;64\times1$ |
+| MPI overlap       | $N=32\,768$               |    20 | 4, 8, 16, 32 MPI ranks               |
+| Strong scaling    | $N=32\,768$               |   100 | 1, 2, 4, 8, 16, 32 MPI ranks         |
+| Weak scaling      | $N_{\mathrm{local}}=8192$ |   100 | 1, 2, 4, 8, 16 MPI ranks             |
 
-For *strong scaling*, the global particle count is kept fixed at
+#### Kernel optimization benchmarks
+The kernel-level experiments use dedicated configurations chosen to isolate specific implementation effects:
+
+| Experiment | Problem size | Execution type |
+|:---|:---|:---|
+| Newton's third law | $N=8192$, 20 KDK steps | Full solver |
+| Reciprocal square root | $N=8192$, 20 KDK steps | Full solver |
+| Accumulator splitting | $N=8192$, 20 KDK steps | Full solver |
+| AoS vs SoA layout | $N=16\,384$ | Force-kernel microbenchmark |
+| Isolated reciprocal square root | $2^{24}$ scalar values | Operation-level microbenchmark |
+
+The three full-solver optimization experiments use the same $N=8192$ configuration to make their performance results directly comparable. The AoS/SoA and isolated reciprocal-square-root tests instead use dedicated microbenchmarks, since their purpose is to isolate a specific kernel property rather than measure the complete N-body simulation.
+
+#### Common numerical parameters
+Unless otherwise stated, the time-integration benchmarks use:
+
+| Parameter                     | Value            |
+| :---------------------------- | :--------------- |
+| Initial condition             | Plummer sphere   |
+| Random seed                   | 123              |
+| Plummer scale parameter       | 1.0              |
+| Timestep $\Delta t$         | $10^{-4}$      |
+| Softening length $\epsilon$ | 0.05             |
+| Arithmetic precision          | double precision |
+
+The dedicated correctness test uses the validation criterion 
 
 $$
-N = 32768,
+\delta_E^{max}\le 10^{-4}
+$$,   
+with energy sampled every 10 integration steps, as described in Section 2.4.
+For the performance experiments, energy is evaluated only at the end of the run by setting
+
+```text
+--energy-every = nsteps
+```
+
+so that the diagnostic introduces minimal additional overhead. The default solver threshold 
+```text
+--energy-tol 1e-3
+```
+is used only as a runtime warning threshold in these runs and is not the correctness criterion adopted for validation.
+
+#### Adaptation to the available resources
+
+The scaling problem sizes are smaller than those suggested in the original assignment. The reference configuration proposed approximately
+
+$$
+N=10^5
 $$
 
-while the number of MPI ranks is increased.
-
-For *weak scaling*, the number of particles owned by each rank is kept fixed at
+for strong scaling and
 
 $$
-N_{\mathrm{local}} = 8192,
+N/P=10^4
 $$
 
-and the global problem size therefore grows according to
+for weak scaling.
 
+These sizes were not practical under the available Orfeo allocation, where jobs on the GENOA partition were limited to a maximum wall time of two hours.
+
+The final campaign therefore uses:
+
+- $N=32\,768$ for strong scaling;
+- $N_{\mathrm{local}}=8192$ for weak scaling.
+
+With 16 MPI ranks, the largest weak-scaling case therefore reaches
+
+$$ 
+N=16\times8192=131\,072. 
 $$
-N = P N_{\mathrm{local}}.
-$$
 
-The largest weak-scaling configuration consequently contains
-
-$$
-N = 16 \times 8192 = 131072
-$$
-
-particles.
-
-The strong- and weak-scaling problem sizes are smaller than the values suggested in the original assignment. The reference configurations in the assignment use larger cases, such as $N=10^5$ for strong scaling and $N/P=10^4$ for weak scaling. These sizes were not practical under the Orfeo account limits available for this project: the GENOA association used for the final campaign imposed a two-hour maximum wall time per job. The experiment was therefore scaled down to $N=32768$ for strong scaling and $N_{\mathrm{local}}=8192$ for weak scaling.
-
-The adaptation preserves the structure of the requested measurements: the
-final scaling runs still use multiple process counts, 100 integration steps,
-five repeated executions per configuration, median and sample standard
-deviation reporting, and explicit strong/weak scaling analysis. The limitation
-is that the measured saturation point may occur at a different process count
-than it would for the larger assignment reference sizes.
+These reduced sizes preserve the structure of the requested scaling experiments while keeping the complete benchmark campaign feasible within the available resource limits.
 
 
 ### 4.6 Measurement and Statistical Methodology
 
-Unless otherwise stated, each benchmark configuration is executed five times
-under the same numerical and parallel configuration.
+To obtain reproducible performance measurements, the same methodology is used throughout the benchmark campaign unless otherwise stated.
 
-The *median* execution time is used as the representative performance value,
-since it is less sensitive than the arithmetic mean to occasional system
-noise. Run-to-run *variability* is reported through the sample standard
-deviation.
+#### Repeated measurements
+- Unless otherwise stated, each benchmark configuration is executed *five times* with the same numerical parameters and parallel setup.
+- The **median** execution time is used as the representative value, since it is less sensitive to occasional system noise than the arithmetic mean.
+- Run-to-run variability is reported using the **sample standard deviation**.
+- No repetitions are removed as outliers, and no dedicated warm-up run is discarded.
 
-No measured repetitions are removed as outliers from the final benchmark
-sets, and no dedicated warm-up execution is discarded. Compilation and
-initial-condition generation are performed before the repeated application
-runs and are not included in the reported execution times.
+#### Timing scope
 
-The implementation contains explicit timing instrumentation for the main
-execution phases, including total runtime, force evaluation, MPI
-communication, integration operations, energy diagnostics, and initial force
-evaluation. These measurements are used to distinguish computational cost
-from communication and auxiliary work.
+Compilation and initial-condition generation are performed before the benchmark runs and are therefore excluded from the reported execution times.
 
-Performance measurements are always accompanied by an independent numerical
-correctness check based on the maximum relative total-energy drift. Therefore,
-an optimization is considered acceptable only if its performance improvement
-does not compromise the numerical validation criterion.
+The solver provides timing instrumentation for the main execution phases:
+
+| Timing component       | Meaning                                                                                                                          |
+| :--------------------- | :-------------------------------------------------------------- |
+| **Kick time**          | Velocity-update operations of the KDK integrator                |
+| **Drift time**         | Position-update operations of the KDK integrator                |
+| **MPI communication**  | Exposed time spent in ring communication; in the non-blocking implementation, this represents the communication time not hidden by concurrent force computation. |
+| **Initial force**      | First complete force evaluation, performed before the KDK time-stepping loop |
+| **Energy diagnostics** | Computation of kinetic and potential energy for energy-conservation checks   |
+| **Force time**         | All gravitational force evaluations, including the initial force and the force evaluations performed during the KDK steps |
+| **Integration time**   | Complete KDK time-stepping loop, including kick, drift, per-step force evaluations, and diagnostics performed during integration |
+| **Total time**         | Complete timed simulation; the broadest application-level timing              |
+
+These timers are not all mutually exclusive. For example, MPI communication is part of the distributed force evaluation, while kick, drift, and per-step force evaluations occur inside the integration loop. They are therefore used to identify the cost of individual execution phases rather than summed to reconstruct the total runtime.
 
 
-### 4.7 Repository Map and Deliverable Traceability
+## 5. Baseline Characterization
 
-The project repository is organized so that the numerical implementation,
-benchmark execution, post-processing, container recipe, and report artifacts
-remain separated. The main files used for the final results are:
+Before introducing kernel optimizations and parallel scaling, the baseline solver is characterized from three complementary viewpoints:
+
+1. numerical correctness;
+2. expected $O(N^2)$ computational growth;
+3. distribution of the runtime among the main execution phases.
+
+These measurements establish the reference behaviour of the implementation before optimization.
+
+
+### 5.1 Numerical Correctness
+
+$$ \boxed{\text{Is it correct?}} $$
+
+The numerical validation procedure is described in Section 2.4.
+
+For the reference Plummer-sphere test, the measured maximum relative energy drift is
+
+$$
+\delta_E^{\max}=2.67\times10^{-7},
+$$
+
+well below the adopted validation threshold
+
+$$ 10^{-4}. $$
+
+The baseline implementation therefore satisfies the required energy-conservation criterion and provides a numerically valid reference for the following performance experiments.
+
+### 5.2 Verification of $O(N^2)$ Computational Growth
+
+ $$ \boxed{\text{Does it really scale as }N^2\text{?}} $$
+
+The direct force computation evaluates all ordered particle pairs except self-interactions, giving
+
+$$
+N(N-1)
+$$
+
+interactions per force evaluation.
+
+To verify the expected quadratic growth experimentally, two problem sizes were executed for 50 integration steps using one OpenMP thread:
+
+|       $N$ | Force time (s) |
+| ----------: | -------------: |
+|  $1\,000$ |       0.180952 |
+| $10\,000$ |      18.124287 |
+
+Increasing $N$ from $1\,000$ to $10\,000$ increases the theoretical number of interactions by
+
+$$
+\frac{10000(10000-1)} {1000(1000-1)} = 100.090.
+$$
+
+The measured force-time ratio is
+
+$$
+\frac{18.124287}{0.180952} \approx 100.16.
+$$
+
+Therefore,
+
+$$
+\text{theoretical ratio}=100.09, \qquad \text{measured ratio}\approx100.16.
+$$
+
+The close agreement confirms that the dominant force computation follows the expected $O(N^2)$ growth.
+
+### 5.3 Runtime Bottleneck
+
+$$ \boxed{\text{Where is the time spent?}} $$
+
+The timing instrumentation introduced in Section 4.6 is used to determine where the baseline execution time is spent.
+
+For the $N=10\,000$, 100-step reference run:
+
+| Component          |         Time (s) | Fraction of total |
+| :----------------- | ---------------: | ----------------: |
+| Force evaluation   |         4.431348 |             90.2% |
+| Energy diagnostics |         0.447601 |              9.1% |
+| Other operations   | $\approx0.032$ |               <1% |
+| **Total**          |     **4.910674** |          **100%** |
+
+Approximately $90\%$ of the execution time is spent evaluating gravitational forces.
+
+This is consistent with the structure of the solver:
+
+- **force evaluation**: $O(N^2)$, since every target interacts with every source;
+- **kick and drift**: $O(N)$, since each particle is updated once;
+- **energy diagnostics**: also involve pairwise interactions, but are evaluated only periodically.
+
+The direct force kernel is therefore the main computational bottleneck of the baseline implementation and becomes the primary target of the optimization study in the following section.
+
+## 6. Kernel-Level Optimization Study
+
+The baseline analysis identified the direct force kernel as the dominant computational cost. This section therefore investigates how different implementation choices affect its performance.
+
+Four aspects are studied:
+- **Newton's third law** $-$ reduce the number of pair evaluations;
+- **AoS vs SoA layout** $-$ evaluate the effect of particle-data organization;
+- **reciprocal square root** $-$ investigate the cost of the inverse-distance calculation;
+- **accumulator splitting** $-$ reduce dependency chains in force accumulation. 
+
+Each experiment isolates one specific optimization trade-off. The corresponding benchmark configurations are summarized in Section 4.5.
+
+
+### 6.1 Newton's Third Law
+
+The baseline force kernel evaluates both ordered interactions $(i,j)$ and $(j,i)$. 
+
+Using Newton's third law, each pair can instead be evaluated once,
+
+$$
+i<j,
+$$
+
+and the equal and opposite force contributions are applied to both particles. This reduces the number of pair evaluations from approximately
+
+$$
+N(N-1)
+$$
+
+to
+
+$$
+\frac{N(N-1)}{2}.
+$$
+
+The *potential arithmetic saving* is therefore close to $2\times$.  
+
+The main difficulty is parallel force ownership:
+- **direct kernel**: each thread updates only its own target acceleration $\mathbf a_i$;
+- **Newton reuse**: each pair updates both $\mathbf a_i$ and $\mathbf a_j$, creating possible write conflicts between threads.  
+
+Three implementations were compared:
+
+| Kernel | Pair traversal | Update strategy |
+|:---|:---|:---|
+| `direct` | ordered pairs | independent target ownership |
+| `newton` | $i<j$ | serial, conflict-free |
+| `newton-atomic` | $i<j$ | parallel updates protected by atomics |
+
+The `newton-atomic` implementation is included as a *diagnostic case* to measure the cost of a simple synchronization-based solution rather than as a production kernel.
+
+The experiment uses $N=8192$, 20 KDK steps, and five repetitions per configuration.
+
+| Threads | `direct` (s) | `newton` (s) | `newton-atomic` (s) |
+|---:|---:|---:|---:|
+| 1 | $5.865157 \pm 0.008173$ | $3.510821 \pm 0.003258$ | $8.407843 \pm 0.011617$ |
+| 2 | $3.119743 \pm 0.159910$ | $3.553018 \pm 0.022864$ | $8.587850 \pm 0.074676$ |
+| 4 | $1.734899 \pm 0.036081$ | $3.510410 \pm 0.000948$ | $7.214137 \pm 0.037040$ |
+| 8 | $0.893647 \pm 0.002144$ | $3.520837 \pm 0.025837$ | $6.265592 \pm 0.018730$ |
+
+The `newton` kernel is serial, so its runtime is expected to remain approximately constant when the requested OpenMP thread count changes.
+
+![Newton third-law trade-off](report/figures/newton_tradeoff.svg)
+
+#### Main observations
+
+- **Serial Newton reuse is effective.**  
+  With one thread, the force time decreases from $5.87$ s to $3.51$ s:
+  $$
+  \frac{5.865157}{3.510821}\approx1.67\times.
+  $$
+  The speedup is lower than the ideal $2\times$ because only the pair-evaluation work is halved; loop overhead, memory operations, and force updates remain.
+- **The direct kernel scales much better with OpenMP.**  
+  Its runtime decreases from $5.87$ s with one thread to $0.89$ s with eight threads.
+- **The serial Newton kernel does not benefit from additional threads.**  
+  Its runtime remains close to $3.5$ s, so the direct kernel becomes faster from two threads onward.
+- **Atomic conflict resolution is too expensive.**  
+  `newton-atomic` is slower than both alternatives, because the synchronization and cache-coherence cost of repeated atomic updates outweighs the arithmetic saved by halving the pair count.
+
+At eight threads:
+$$
+T_{\mathrm{direct}}=0.89\ \mathrm{s},
+\qquad
+T_{\mathrm{newton}}=3.52\ \mathrm{s},
+\qquad
+T_{\mathrm{atomic}}=6.27\ \mathrm{s}.
+$$
+
+The direct implementation is therefore approximately $3.9\times$ faster than serial Newton and about $7\times$ faster than the atomic variant.
+
+#### Conclusion
+
+The experiment highlights a key trade-off:
+
+$$
+\boxed{
+\text{reducing arithmetic work does not necessarily improve parallel performance}
+}
+$$
+
+Newton's third law is beneficial in the serial case, but the direct target-ownership strategy is better suited to the current OpenMP implementation because it avoids shared writes and synchronization.
+
+For this reason, the production kernel retains the direct formulation. A parallel Newton implementation would require a more efficient conflict-resolution strategy, such as thread-private buffers or block-wise reductions.
+
+
+### 6.2 AoS versus SoA
+
+The experiment compares two representations of the same particle data:
+
+```text
+AoS:
+particle[i] = {x, y, z, vx, vy, vz, ax, ay, az}
+```
+```text
+SoA:
+x[]  y[]  z[]
+vx[] vy[] vz[]
+ax[] ay[] az[]
+```
+
+In **AoS**, all quantities belonging to one particle are stored together, while in **SoA** each physical quantity is stored in a separate contiguous array.
+
+The production solver uses SoA. To isolate the effect of data organization, the same force computation was benchmarked with both layouts.
+
+The experiment uses $N=16\,384$ and 1, 2, 4, and 8 OpenMP threads. Force times are reported as median $\pm$ sample standard deviation over five repetitions.
+
+The SoA speedup is defined as
+
+$$
+S_{\mathrm{SoA}}
+=
+\frac{T_{\mathrm{AoS}}}{T_{\mathrm{SoA}}},
+$$
+so $S_{\mathrm{SoA}}>1$ favors SoA, while $S_{\mathrm{SoA}}<1$ favors AoS.
+
+| Threads | AoS force time (s) | SoA force time (s) | SoA speedup |
+|---:|---:|---:|---:|
+| 1 | $0.903034 \pm 0.000151$ | $0.910895 \pm 0.000439$ | 0.991 |
+| 2 | $0.451970 \pm 0.000151$ | $0.455871 \pm 0.001764$ | 0.991 |
+| 4 | $0.226311 \pm 0.000205$ | $0.227897 \pm 0.001877$ | 0.993 |
+| 8 | $0.115289 \pm 0.001032$ | $0.115800 \pm 0.025404$ | 0.996 |
+
+
+![AoS versus SoA layout trade-off](report/figures/layout_tradeoff.svg)
+
+#### Main observations
+- **No measurable SoA speedup is observed.**  
+  The median difference remains below approximately $1\%$ for every thread count.
+- **Both layouts scale similarly with OpenMP.**  
+  Their force times decrease at nearly the same rate as the number of threads increases.
+- **The 8-thread SoA measurement shows higher variability.**  
+  Its standard deviation is larger than in the other cases, but the median remains very close to the corresponding AoS result.
+- The computed accelerations agree within the numerical tolerance, confirming that the two implementations perform the same calculation.
+
+To *investigate* why SoA does not provide the expected SIMD-related benefit, GCC vectorization diagnostics were inspected. Since hardware-counter tools such as `perf` and PAPI were not available on Orfeo, the analysis relies on measured timings and compiler reports.
+
+The relevant GCC output includes:
+```text
+benchmark_layout.c:116:29: missed: couldn't vectorize loop
+benchmark_layout.c:116:29: missed: not vectorized: unsupported control flow in loop.
+nbody_common.h:81:10: missed: statement clobbers memory: ... sqrt(...)
+
+benchmark_layout.c:159:29: missed: couldn't vectorize loop
+benchmark_layout.c:159:29: missed: not vectorized: unsupported control flow in loop.
+nbody_common.h:81:10: missed: statement clobbers memory: ... sqrt(...)
+```
+
+The dominant inner force loop is therefore not effectively vectorized in either layout. The reported obstacles include the self-interaction control flow and the scalar square-root path.
+
+#### Interpretation
+
+The result does **not** imply that AoS and SoA are generally equivalent.  
+Rather, it shows that changing the memory layout alone provides little benefit when the computation that should exploit contiguous SoA data is not vectorized.  
+In this implementation,
+
+$$
+\boxed{
+\text{SoA layout alone does not guarantee SIMD speedup}
+}
+$$
+
+The production solver nevertheless retains SoA because it:
+- separates the data streams used by the force kernel;
+- provides contiguous arrays convenient for MPI block communication;
+- remains a suitable layout for future SIMD-oriented optimization.
+
+
+### 6.3 Reciprocal Square Root
+
+The gravitational force repeatedly requires the computation of
+
+$$
+\frac{1}{\sqrt{x}},
+\qquad
+x=r^2+\epsilon^2.
+$$
+
+The reference implementation evaluates this quantity through the standard mathematical-library square-root path.
+
+A possible alternative is the hardware **reciprocal-square-root estimate** (`rsqrt`), which directly approximates
+
+$$
+\frac{1}{\sqrt{x}}.
+$$
+
+The hardware estimate is *fast but less accurate*. Its precision can be improved using **Newton-Raphson refinement**. Starting from an approximation
+
+$$
+y_k \approx \frac{1}{\sqrt{x}},
+$$
+
+one refinement step computes
+
+$$
+y_{k+1}
+=
+y_k
+\left(
+\frac{3}{2}
+-
+\frac{1}{2}xy_k^2
+\right).
+$$
+
+Additional refinement steps generally *improve accuracy*, but also require *extra arithmetic*.
+
+The optimization is evaluated at two levels:
+1. **isolated SIMD operation**, to measure the potential of the hardware `rsqrt` instruction;
+2. **complete N-body solver**, to determine whether this potential translates into an actual application-level improvement.
+
+#### 6.3.1 Isolated SIMD reciprocal-square-root benchmark
+The microbenchmark processes $2^{24}$ independent single-precision values.
+The tested methods are:
+- `sqrtf`: standard-library single-precision reference;
+- `rsqrt0`: raw hardware reciprocal-square-root estimate;
+- `rsqrt1`: `rsqrt0` + one Newton refinement;
+- `rsqrt2`: `rsqrt0` + two Newton refinements.
+
+The speedup is defined as
+$$
+S=
+\frac{T_{\mathrm{sqrtf}}}{T_{\mathrm{method}}},
+$$
+so values above 1 indicate faster execution than the sqrtf reference.
+
+| Method | Time (s) | Gvalues/s | Speedup | Max relative error |
+|:---|---:|---:|---:|---:|
+| `sqrtf` | $0.032575 \pm 0.000021$ | 0.515 | 1.000 | $8.94\times10^{-8}$ |
+| `rsqrt0` | $0.001599 \pm 0.000011$ | 10.494 | 20.376 | $2.58\times10^{-4}$ |
+| `rsqrt1` | $0.001633 \pm 0.000006$ | 10.277 | 19.953 | $1.72\times10^{-7}$ |
+| `rsqrt2` | $0.002469 \pm 0.000004$ | 6.796 | 13.195 | $1.17\times10^{-7}$ |
+
+![SIMD reciprocal-square-root microbenchmark](report/figures/rsqrt_kernel.svg)
+
+#### Main observations
+- **`rsqrt0` is extremely fast but less accurate.**  
+  It reaches about $20.4\times$ the speed of `sqrtf`, but its maximum relative error increases to
+  $$
+  2.58\times10^{-4}.
+  $$
+- **One Newton refinement gives the best speed-accuracy balance.**  
+  `rsqrt1` reduces the error to
+  $$
+  1.72\times10^{-7},
+  $$
+  while retaining almost the full $20\times$ speedup.
+- **The throughput increase is substantial.**  
+  The reference sqrtf path processes about $0.515$ Gvalues/s, while `rsqrt0` and `rsqrt1` exceed $10$ Gvalues/s.
+- **Further refinement adds cost**.  
+  `rsqrt2` slightly improves accuracy, but throughput decreases to $6.796$ Gvalues/s and the speedup falls to about $13.2\times$.
+
+#### Interpretation
+
+The isolated benchmark shows that reciprocal-square-root instructions can provide very high SIMD throughput.  
+
+However, this experiment measures only the mathematical operation itself. It does **not** imply that the complete N-body solver will obtain the same speedup.
+
+
+#### 6.3.2 Full-solver experiment
+
+The same optimization was then tested inside the complete N-body force kernel.
+
+The reference is the standard **double-precision `sqrt` path provided by `libm`**, consistent with the double-precision solver.
+
+The unrefined `rsqrt0` variant is excluded because its approximation error is too large for the energy-conservation study. The tested variants are:
+
+- `libm`: standard double-precision reference;
+- `rsqrt1`: one Newton refinement;
+- `rsqrt2`: two refinements;
+- `rsqrt3`: three refinements.
+
+The experiment uses $N=8192$, 20 KDK steps, and 8 OpenMP threads.
+The solver-level speedup is defined as
+
+$$
+S=
+\frac{T_{\mathrm{libm}}}{T_{\mathrm{method}}}.
+$$
+
+| Method | Force time (s) | Speedup vs `libm` | Max energy drift |
+|:---|---:|---:|---:|
+| `libm` | $0.894669 \pm 0.055731$ | 1.000 | $4.083561\times10^{-8}$ |
+| `rsqrt1` | $1.028367 \pm 0.045048$ | 0.870 | $4.085352\times10^{-8}$ |
+| `rsqrt2` | $1.290443 \pm 0.104594$ | 0.693 | $4.083561\times10^{-8}$ |
+| `rsqrt3` | $1.476621 \pm 0.010179$ | 0.606 | $4.083561\times10^{-8}$ |
+
+#### Main observations
+- **No `rsqrt` variant accelerates the complete solver.**  
+  Even `rsqrt1` is slower than the `libm` reference:
+  $$
+  1.028\ \mathrm{s}
+  \quad\text{vs}\quad
+  0.895\ \mathrm{s}.
+  $$
+- **Additional Newton refinements further increase runtime.**  
+  The speedup decreases from $0.870$ for `rsqrt1` to $0.606$ for `rsqrt3`.
+- **Numerical accuracy is recovered after refinement.**  
+  From `rsqrt2` onward, the measured energy drift matches the `libm` reference.
+
+#### Interpretation
+
+The two experiments expose different levels of performance:
+- the isolated benchmark shows that **SIMD `rsqrt`** is very fast;
+- the full solver shows that **this advantage is not automatically transferred to the application**;
+- the refined variants recover the required numerical accuracy, but at additional computational cost.
+The key result is
+
+$$
+\boxed{
+\text{the SIMD rsqrt advantage is lost in the current non-vectorized force kernel}
+}
+$$
+
+In the current solver, the dominant force loop is not effectively vectorized, so it **cannot exploit** the same SIMD throughput observed in the microbenchmark. At the same time, the `rsqrt` path still pays the cost of the approximation and Newton refinement steps.
+
+Therefore:
+- `libm` remains the fastest option for the current full solver;
+- refined `rsqrt` variants achieve comparable numerical accuracy;
+- `rsqrt` may become advantageous only in a future force kernel that is effectively vectorized.
+
+For this reason, the production implementation retains the standard `libm` path.
+
+
+### 6.4 Accumulator Splitting and Critical Path
+
+For a fixed target particle, the direct force kernel repeatedly updates the same acceleration components:
+
+$$
+a_x \mathrel{+}= \Delta x\,s,
+\qquad
+a_y \mathrel{+}= \Delta y\,s,
+\qquad
+a_z \mathrel{+}= \Delta z\,s.
+$$
+
+With a single accumulator, each update depends on the result of the previous one:
+
+```text
+ax += contribution_0
+ax += contribution_1
+ax += contribution_2
+...
+```
+
+This creates a **loop-carried dependency chain**, which limits instruction-level parallelism (ILP).
+
+Accumulator splitting replaces this single chain with several independent partial sums:
+
+```text
+ax0 += contribution_0
+ax1 += contribution_1
+ax2 += contribution_2
+ax3 += contribution_3
+...
+ax = ax0 + ax1 + ax2 + ax3 + ...
+```
+
+The number of particle interactions is unchanged. The purpose is only to expose *more independent arithmetic*, allowing the processor to **overlap more operations**.
+
+The benchmark compares 1, 2, 4, and 8 accumulators for each OpenMP thread count. One accumulator corresponds to the original direct kernel.
+
+`Ginteraction/s` measures billions of particle-pair interactions processed per second and is used as the force-kernel throughput metric. The marginal gain measures the improvement relative to the previous accumulator configuration.
+
+| Threads | Accumulators | Force time (s) | Speedup vs direct | Marginal gain | Ginteraction/s |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 1 | $5.821120 \pm 0.024255$ | 1.000 | - | 0.242 |
+| 1 | 2 | $5.659731 \pm 0.003013$ | 1.029 | +2.85% | 0.249 |
+| 1 | 4 | $5.697840 \pm 0.003039$ | 1.022 | -0.67% | 0.247 |
+| 1 | 8 | $5.656612 \pm 0.008691$ | 1.029 | +0.73% | 0.249 |
+| 2 | 1 | $3.094624 \pm 0.208808$ | 1.000 | - | 0.455 |
+| 2 | 2 | $2.879254 \pm 0.012164$ | 1.075 | +7.48% | 0.489 |
+| 2 | 4 | $2.857590 \pm 0.001465$ | 1.083 | +0.76% | 0.493 |
+| 2 | 8 | $2.894601 \pm 0.027718$ | 1.069 | -1.28% | 0.487 |
+| 4 | 1 | $1.743009 \pm 0.008529$ | 1.000 | - | 0.808 |
+| 4 | 2 | $1.595104 \pm 0.057314$ | 1.093 | +9.27% | 0.883 |
+| 4 | 4 | $1.594307 \pm 0.056764$ | 1.093 | +0.05% | 0.884 |
+| 4 | 8 | $1.592580 \pm 0.002604$ | 1.094 | +0.11% | 0.885 |
+| 8 | 1 | $0.898525 \pm 0.056340$ | 1.000 | - | 1.568 |
+| 8 | 2 | $0.805495 \pm 0.030483$ | 1.115 | +11.55% | 1.749 |
+| 8 | 4 | $0.796616 \pm 0.029899$ | 1.128 | +1.11% | 1.769 |
+| 8 | 8 | $0.780765 \pm 0.022961$ | 1.151 | +2.03% | 1.805 |
+
+![Accumulator splitting critical-path trade-off](report/figures/accumulator_tradeoff.svg)
+
+#### Main observations
+- **The first split provides most of the throughput improvement.** 
+  Moving from 1 to 2 accumulators improves performance at every thread count. The gain ranges from $2.85\%$ at 1 thread to $11.55\%$ at 8 threads.
+- **Additional accumulators give progressively smaller benefits.**  
+  From 2 to 4 accumulators, the marginal gain is below $1.2\%$ in all configurations. Increasing from 4 to 8 produces similarly small changes and can even reduce performance.
+- **The gain therefore shows clear diminishing returns after the first few accumulators.**  
+  For 1-4 threads, performance is essentially saturated by 2-4 accumulators.
+- **At 8 threads, split8 gives the best median result, but the extra gain beyond split2 is small.**  
+  Throughput increases from $1.749$ Ginteraction/s with 2 accumulators to $1.805$ Ginteraction/s with 8 accumulators. This improvement is much smaller than the initial jump from 1 to 2 accumulators and should also be interpreted in light of the observed run-to-run variability.
+- **The largest measured overall improvement occurs at 8 threads with 8 accumulators.**
+  $$
+  0.898525\ \mathrm{s}
+  \rightarrow
+  0.780765\ \mathrm{s},
+  $$
+  corresponding to
+  $$
+  1.151\times
+  $$
+  speedup and approximately a $13\%$ reduction in force-kernel runtime.
+
+All tested variants reproduce the same measured energy drift, so the optimization changes performance without affecting the numerical result.
+
+#### Interpretation
+
+The results explain why multiple partial accumulators improve throughput:
+
+```text
+1 accumulator
+→ one long dependency chain
+→ limited ILP
+
+2-4 accumulators
+→ several independent chains
+→ more arithmetic can overlap
+→ higher throughput
+
+further splitting
+→ little additional ILP
+→ diminishing returns
+```
+
+The first few accumulators remove most of the **dependency bottleneck**. After that, the processor already has enough independent arithmetic to keep its execution units busy, so additional accumulators provide little extra benefit.
+
+More accumulators also introduce costs:
+- more live registers;
+- greater register pressure;
+- a final reduction of the partial sums.
+
+The exact best configuration therefore depends on the execution setup, but the overall trend is clear: most of the useful gain is obtained with the first few partial accumulators.
+
+$$
+\boxed{
+\text{most of the ILP gain is obtained with 2--4 partial accumulators; further splitting gives diminishing returns}
+}
+$$
+
+Accumulator splitting therefore provides a moderate but measurable optimization, reaching a maximum observed speedup of $1.151\times$ while preserving the numerical result.
+
+
+#### 6.5 Optimization Summary
+- **Newton**: fewer interactions, but more difficult parallel updates.
+- **SoA**: suitable layout, but little benefit without vectorization.
+- **rsqrt**: high SIMD throughput in isolation, but no solver-level speedup.
+- **Accumulator splitting**: best practical improvement, up to $1.151\times$.
+
+Overall, the results show that an optimization is effective only when it matches the structure of the complete kernel.
+
+The next section examines MPI communication and parallel scaling.
+
+## 7. Parallel Performance Analysis
+
+This section evaluates the parallel behaviour of the complete solver.
+
+The analysis focuses on four aspects:
+
+- **MPI/OpenMP balance**: how performance changes with different rank/thread combinations;
+- **communication overlap**: whether non-blocking ring communication can hide part of the MPI cost;
+- **strong scaling**: how runtime decreases for a fixed problem size;
+- **weak scaling**: how performance evolves when the workload per rank is kept constant.
+
+The goal is to determine *whether the application remains compute-bound* as parallelism increases, or whether MPI communication and synchronization *begin to limit scalability*.
+
+### 7.1 Hybrid MPI/OpenMP Mapping
+
+The GENOA node provides 64 physical cores across two sockets and eight NUMA domains. Three hybrid configurations using all 64 cores were compared:
+
+| Configuration | Mapping |
+|:---|:---|
+| $2\times32$ | one MPI rank per socket |
+| $8\times8$ | one MPI rank per NUMA domain |
+| $64\times1$ | one MPI rank per physical core |
+
+The experiment uses $N=32768$ and 20 integration steps.
+
+`Ginteraction/s` measures billions of particle interactions processed per second.
+
+| Ranks | Threads | Total time (s) | Force time (s) | Force / total | Ginteraction/s | Communication time (s) |
+|---:|---:|---:|---:|---:|---:|---:|
+| 2 | 32 | $1.357946 \pm 0.002116$ | 1.208748 | 89.01% | 18.654 | 0.015178 |
+| 8 | 8 | $1.356582 \pm 0.009521$ | 1.205893 | 88.89% | 18.698 | 0.094987 |
+| 64 | 1 | $1.362196 \pm 0.006402$ | 1.215686 | 89.24% | 18.547 | 0.143501 |
+
+#### Main observations
+- **Total runtime is almost unchanged across the three mappings.**  
+  The medians differ by only about $0.4\%$.
+- **The $8\times8$ configuration has the lowest median runtime**, but the difference is too small relative to the observed variability to identify a clear winner.
+- **The force kernel behaves almost identically in all configurations.**  
+  It accounts for about $89\%$ of total runtime and sustains approximately
+  $$
+  18.5\text{--}18.7\ \mathrm{Ginteraction/s}.
+  $$
+- **Communication cost increases with the number of MPI ranks.**
+  $$
+  0.015\ \mathrm{s}
+  \rightarrow
+  0.095\ \mathrm{s}
+  \rightarrow
+  0.144\ \mathrm{s}
+  $$
+  for $2$, $8$, and $64$ ranks respectively.
+
+#### Interpretation
+
+Using more MPI ranks increases the number of ring communication phases, while using fewer ranks shifts more parallel work to OpenMP.
+However, the communication cost remains small compared with the force computation. Therefore, the increase in MPI communication has little effect on the total runtime for this problem size.
+
+$$
+\boxed{
+\text{on one GENOA node, the solver remains compute-dominated and the three hybrid mappings perform similarly}
+}
+$$
+
+The $2\times32$, $8\times8$, and $64\times1$ configurations are therefore all viable on this node. The results show that topology alone is not sufficient to select the best mapping: the actual kernel and problem size must also be considered.
+
+
+### 7.2 Communication-Computation Overlap
+
+In the blocking ring implementation, each rank performs two separate phases:
+
+```text
+force computation
+→ communication
+```
+
+The non-blocking version attempts to overlap them:
+```text
+MPI_Irecv / MPI_Isend
+        ↓
+force computation
+        ↓
+MPI_Waitall
+```
+
+The idea is to start the transfer of the next source block while the current block is still being processed.
+
+The amount of communication hidden by computation is defined as
+$$
+T_{\mathrm{hidden}}
+=
+T_{\mathrm{comm,blocking}}
+-
+T_{\mathrm{comm,overlap}},
+$$and the achieved overlap fraction as
+$$
+f_{\mathrm{overlap}}
+=
+\frac{T_{\mathrm{hidden}}}
+{T_{\mathrm{comm,blocking}}}.
+$$
+
+The experiment uses $N=32768$, 20 integration steps, one OpenMP thread per MPI rank, and five repetitions.
+
+| Ranks | Blocking total (s) | Overlap total (s) | Blocking comm. (s) | Hidden comm. (s) | Achieved overlap |
+|---:|---:|---:|---:|---:|---:|
+| 4 | $20.987808 \pm 0.078594$ | $20.868140 \pm 0.007770$ | 1.036399 | 0.169679 | 16.4% |
+| 8 | $10.513724 \pm 0.083738$ | $10.510297 \pm 0.007663$ | 0.678918 | 0.020134 | 3.0% |
+| 16 | $5.358677 \pm 0.006079$ | $5.361461 \pm 0.001656$ | 0.478483 | 0.000000 | 0.0% |
+| 32 | $2.729329 \pm 0.083506$ | $2.716461 \pm 0.002813$ | 0.226680 | 0.014705 | 6.5% |
+
+![MPI ring communication overlap](report/figures/ring_overlap.svg)
+
+#### Main observations
+
+- **Only a small fraction of communication is actually hidden.**  
+  The measured overlap ranges from $0\%$ to $16.4\%$.
+- **The highest overlap occurs at 4 ranks.**  
+  About $0.170$ s of the $1.036$ s blocking communication time is hidden.
+- **At 8 and 32 ranks, the hidden fraction is small, only $3.0\%$ and $6.5\%$, respectively.**  
+- **At 16 ranks, no measurable communication is hidden.**
+- **The effect on total runtime is negligible.**
+  The total-runtime speedup,
+  $$
+  S=
+  \frac{T_{\mathrm{blocking}}}
+  {T_{\mathrm{overlap}}},
+  $$remains very close to 1:
+  $$
+  1.006,\quad
+  1.000,\quad
+  0.999,\quad
+  1.005
+  $$
+  for 4, 8, 16, and 32 ranks.
+
+Therefore, the non-blocking version does not provide a significant application-level speedup in this experiment.
+
+#### Interpretation
+
+Non-blocking MPI calls allow communication and computation to be issued concurrently, but they do not guarantee that communication progresses completely in the background.
+
+In the measured implementation, only a small part of the communication is hidden. Possible exposed costs include:
+- MPI progress and message handling;
+- synchronization at `MPI_Waitall`;
+- communication startup overhead;
+- small imbalance between ranks.
+
+More importantly, communication is already a small fraction of the total runtime compared with the $O(N^2)$ force calculation. Therefore, even perfect overlap could only reduce a limited portion of the total execution time.
+
+$$
+\boxed{
+\text{non-blocking MPI exposes overlap opportunities, but communication is too small to produce a meaningful total-runtime gain}
+}
+$$
+
+For this one-node workload, blocking and non-blocking ring communication therefore perform almost equivalently at the application level.
+
+
+### 7.3 Strong Scaling
+
+Strong scaling evaluates how the execution time decreases when more parallel resources are used for a **fixed global problem size**.
+
+The experiment keeps
+
+$$
+N=32768
+$$
+
+fixed and varies the number of MPI ranks as
+
+$$
+P\in\{1,2,4,8,16,32\}.
+$$
+
+Each rank uses one OpenMP thread, and every configuration performs 100 KDK integration steps.
+
+The speedup is
+$$
+S(P)=\frac{T(1)}{T(P)},
+$$
+
+where $T(P)$ is the total runtime using $P$ MPI ranks.
+Parallel efficiency is
+
+$$
+E(P)=\frac{S(P)}{P},
+$$
+
+which measures how close the observed speedup is to the ideal linear case.
+
+Ideally,
+
+$$
+S(P)=P,
+\qquad
+E(P)=1.
+$$
+
+![Native strong scaling](report/figures/strong_scaling_native_final.svg)
+
+| MPI ranks | Total time (s) | Speedup | Efficiency |
+|---:|---:|---:|---:|
+| 1 | $374.387700 \pm 0.490059$ | 1.000 | 1.000 |
+| 2 | $187.821448 \pm 0.065840$ | 1.993 | 0.997 |
+| 4 | $94.101276 \pm 0.017829$ | 3.979 | 0.995 |
+| 8 | $47.148061 \pm 0.005166$ | 7.941 | 0.993 |
+| 16 | $23.620087 \pm 0.005129$ | 15.850 | 0.991 |
+| 32 | $11.870895 \pm 0.015770$ | 31.538 | 0.986 |
+
+
+Main observations
+- **Runtime almost halves whenever the number of ranks doubles.**  
+  $$
+  374.4
+  \rightarrow
+  187.8
+  \rightarrow
+  94.1
+  \rightarrow
+  47.1
+  \rightarrow
+  23.6
+  \rightarrow
+  11.9\ \mathrm{s}.
+  $$
+
+- **Speedup remains very close to ideal.**  
+  At 32 ranks,
+
+  $$
+  S(32)=31.538,
+  $$
+  
+  compared with the ideal value of $32$.
+- **Parallel efficiency remains very high.**  
+  Even at 32 ranks,
+
+  $$
+  E(32)=0.986,
+  $$
+
+  corresponding to $98.6\%$ efficiency.
+- **The scaling trend is stable across repetitions.**
+  The standard deviations are small compared with the median runtimes, indicating low run-to-run variability.
+- **No clear scaling saturation is observed.**  
+  Up to 32 ranks, adding more MPI processes still provides almost proportional performance gains.
+
+#### Factors Supporting Near-Ideal Scaling
+
+The dominant cost is still the direct force calculation.
+At 32 ranks, each rank owns
+
+$$
+N_{\mathrm{local}}
+=
+\frac{32768}{32}
+=
+1024
+$$
+
+target particles.
+
+Each of these targets still interacts with all $32768$ source particles, so one rank performs approximately
+
+$$
+1024\times32768
+\approx
+3.36\times10^7
+$$
+
+particle interactions per force evaluation.
+
+This means that even at the largest tested process count, each rank still has a large amount of useful computation.
+
+The timing data confirm this: the force kernel still accounts for
+$$
+97.59\%
+$$
+
+of the total runtime at 32 ranks.
+
+Therefore, communication, synchronization, and the remaining integration overheads are still too small to limit scaling significantly.
+
+
+#### Force-kernel throughput
+
+The throughput measurement confirms the same behaviour from the point of view of the force kernel.
+
+With 100 KDK steps, the solver performs 101 force evaluations: one initial evaluation and one after each step.
+
+The interaction rate is
+$$
+R_{\mathrm{int}}
+=
+\frac{N(N-1)\times101}{T_{\mathrm{force}}},
+$$
+
+where $T_{\mathrm{force}}$ is the total time spent evaluating forces.
+
+`Ginteraction/s` expresses this rate in billions of ordered particle interactions per second.
+
+| MPI ranks | Force time (s) | Force / total | Ginteraction/s |
+|---:|---:|---:|---:|
+| 1 | $370.531173 \pm 0.489564$ | 98.97% | 0.293 |
+| 2 | $185.020960 \pm 0.084704$ | 98.51% | 0.586 |
+| 4 | $92.475055 \pm 0.019084$ | 98.27% | 1.173 |
+| 8 | $46.242101 \pm 0.003023$ | 98.08% | 2.345 |
+| 16 | $23.142003 \pm 0.001770$ | 97.98% | 4.686 |
+| 32 | $11.584479 \pm 0.006580$ | 97.59% | 9.361 |
+
+The interaction throughput increases from
+
+$$
+0.293
+$$
+
+to
+
+$$
+9.361\ \mathrm{Ginteraction/s},
+$$
+
+which is almost exactly a $32\times$ increase.
+
+This confirms that *the force kernel itself scales almost linearly with the number of MPI ranks*.
+
+#### Interpretation
+
+The strong-scaling results can therefore be summarized as:
+
+```text
+fixed N
+→ more MPI ranks
+→ less force work per rank
+→ runtime decreases almost proportionally
+
+but
+
+force work is still dominant
+→ communication/overhead remain small
+→ efficiency stays close to 100%
+```
+
+$$
+\boxed{
+\text{the solver shows near-ideal strong scaling up to 32 MPI ranks because the force kernel remains dominant and scales almost linearly}
+}
+$$
+
+A clear scaling limit is not reached in the tested range. Such a limit would become visible only when the local computation per rank becomes small enough for communication and synchronization overheads to represent a significant fraction of the total runtime.
+
+
+### 7.4 Weak Scaling
+
+Weak scaling evaluates how performance changes when the problem size grows together with the number of parallel resources.
+
+In this experiment, each MPI rank always owns
+
+$$
+N_{\mathrm{local}}=8192
+$$
+
+target particles, while the global problem size grows as
+
+$$
+N=P\,N_{\mathrm{local}},
+$$
+
+where $P$ is the number of MPI ranks.
+
+For a direct all-pairs N-body algorithm, keeping $N_{\mathrm{local}}$ fixed does not imply constant work per rank. Each local target still interacts with all global source particles.
+
+Therefore,
+
+$$
+W_{\mathrm{rank}}
+\propto
+N_{\mathrm{local}}N
+=
+P\,N_{\mathrm{local}}^2.
+$$
+
+The work per rank grows linearly with $P$, so the algorithm-aware ideal runtime is
+
+$$
+T_{\mathrm{ideal}}(P)=P\,T(1).
+$$
+
+Weak-scaling efficiency is therefore defined as
+
+$$
+E_{\mathrm{weak}}(P)
+=
+\frac{P\,T(1)}{T(P)},
+$$
+
+where $T(P)$ is the measured runtime. A value close to 1 means that the application follows the expected direct-N-body scaling.
+
+The scaled speedup shown in the figure is
+
+$$
+S_{\mathrm{scaled}}(P)
+=
+P\,E_{\mathrm{weak}}(P),
+$$
+
+with ideal value $P$.
+
+![Native weak scaling](report/figures/weak_scaling_native_final.svg)
+
+| MPI ranks | Global $N$ | Total time (s) | Scaled speedup | Efficiency |
+|---:|---:|---:|---:|---:|
+| 1 | 8,192 | $24.032469 \pm 0.022871$ | 1.000 | 1.000 |
+| 2 | 16,384 | $48.688509 \pm 0.049339$ | 1.974 | 0.987 |
+| 4 | 32,768 | $97.615508 \pm 0.098695$ | 3.939 | 0.985 |
+| 8 | 65,536 | $195.622070 \pm 0.250037$ | 7.862 | 0.983 |
+| 16 | 131,072 | $391.787201 \pm 1.201007$ | 15.703 | 0.981 |
+
+#### Main observations
+- **Runtime follows the expected linear growth very closely.**  
+  $$
+  24.0
+  \rightarrow
+  48.7
+  \rightarrow
+  97.6
+  \rightarrow
+  195.6
+  \rightarrow
+  391.8\ \mathrm{s}.
+  $$
+  Doubling the number of ranks also doubles the global problem size and approximately doubles the work performed by each rank.
+- **Scaled speedup remains close to ideal.**  
+  At 16 ranks,
+  $$
+  S_{\mathrm{scaled}}(16)=15.703
+  $$
+  compared with the ideal value of $16$.
+- **Weak-scaling efficiency remains above $98\%$.**  
+  $$
+  E_{\mathrm{weak}}(16)=0.981.
+  $$
+- **The measurements are stable.**  
+  The standard deviations remain small compared with the median runtimes.
+- **Communication remains a secondary cost.**  
+  Its fraction stays at only a few percent, reaching approximately $3.1\%$ at 8 ranks and $2.6\%$ at 16 ranks. The small non-monotonic variation does not affect the overall scaling trend.
+- **Numerical correctness is preserved.**  
+  The largest measured energy drift is
+  $$
+  3.58\times10^{-6},
+  $$
+  well below the validation threshold of $10^{-4}$.
+
+#### Interpretation
+
+The weak-scaling behaviour can be summarized as:
+
+```text
+fixed number of targets per rank
+        ↓
+more MPI ranks
+        ↓
+larger global N
+        ↓
+more source particles for every target
+        ↓
+work per rank grows as P
+        ↓
+ideal runtime also grows as P
+```
+
+The measured runtime follows this expected behaviour very closely. The small decrease in efficiency from $1.000$ to $0.981$ shows that communication and synchronization introduce only limited additional overhead.
+
+$$
+\boxed{
+\text{the measured weak scaling closely follows the direct-N-body ideal, with efficiency remaining above }98\%
+}
+$$
+
+The key point is therefore that constant runtime is not the correct weak-scaling expectation for a direct $O(N^2)$ solver. With $N_{\mathrm{local}}$ fixed, the amount of work per rank still increases linearly with the number of MPI ranks.
+
+
+### 7.5 Scalability and Bottleneck Evolution
+
+The scaling results can be interpreted through Amdahl's and Gustafson's perspectives.
+
+#### Amdahl: fixed global problem
+Amdahl's law is relevant to strong scaling, where $N$ is fixed.
+
+$$
+S_{\mathrm{Amdahl}}(P)
+=
+\frac{1}{f+(1-f)/P},
+$$
+
+where $f$ represents serial and non-scalable work.
+In the measured results:
+- ideal speedup at 32 ranks: $32$;
+- measured speedup: $31.538$;
+- efficiency: $0.986$;
+- force fraction decreases only from $98.97\%$ to $97.59\%$.
+
+The small loss of efficiency shows that communication, synchronization, and other overheads are becoming more visible as the work per rank decreases.
+
+However, the force kernel still dominates, so **Amdahl saturation is not yet reached.**
+
+$$
+\boxed{
+\text{Amdahl appears as the small efficiency loss at high rank counts}
+}
+$$
+
+#### Gustafson: growing problem size
+Gustafson's perspective is relevant to weak scaling, where the problem size increases with the number of ranks:
+
+$$
+N=P\,N_{\mathrm{local}}.
+$$
+
+For direct N-body, the work per rank is not constant:
+
+$$
+W_{\mathrm{rank}}
+\propto
+P\,N_{\mathrm{local}}^2.
+$$
+
+Therefore, the appropriate ideal reference is
+$$
+T_{\mathrm{ideal}}(P)=P\,T(1).
+$$
+
+At 16 ranks:
+- ideal scaled speedup: $16$;
+- measured scaled speedup: $15.703$;
+- weak efficiency: $0.981$.
+
+The additional computational work therefore keeps the extra MPI ranks effectively utilized.
+
+$$
+\boxed{
+\text{Gustafson appears in the ability to scale the problem while keeping efficiency above }98\%
+}
+$$
+
+#### Bottleneck evolution
+The overall trend is:
+
+```text
+fixed N + more ranks
+→ less computation per rank
+→ overhead becomes relatively more important
+→ Amdahl effects increase
+
+growing N + more ranks
+→ more useful computation
+→ resources remain well utilized
+→ Gustafson behaviour
+```
+
+Within the tested range, the application remains compute-bound: MPI communication becomes more visible with increasing $P$, but the direct force kernel is still the dominant cost.
+
+## 8. Containerization and Portability
+
+This section evaluates whether the N-body solver can run inside a **Singularity container** with negligible performance overhead while preserving MPI compatibility.
+
+For an MPI application, container portability depends not only on packaging the executable and its dependencies, but also on correct interaction with the **host communication stack**. Container overhead may therefore come from several sources:
+- application execution;
+- MPI library and transport configuration;
+- container startup;
+- communication latency and bandwidth.
+
+The analysis follows a top-down approach:
+
+```text
+Native vs container application performance
+                ↓
+Container startup overhead
+                ↓
+MPI latency and bandwidth
+```
+
+The goal is to determine whether any difference observed at application level is caused by the container runtime itself or by the underlying MPI and communication environment.
+
+
+### 8.1 Container Design, Host MPI Binding and Transport Configuration
+
+The container provides a reproducible userspace while reusing the MPI stack installed on the HPC system at runtime.
+
+#### Container design
+The image is based on `Ubuntu 24.04`. Ubuntu 22.04 was initially considered, but it was not compatible with the OpenMPI installation available on Orfeo because the host MPI stack required a newer `glibc`.
+
+A general-purpose Ubuntu image was preferred to a vendor HPC image because the application is CPU-only and does not require GPU libraries, vendor math libraries, or a pre-packaged HPC software stack.
+Two versioned recipes are provided:
+
+```text
+container/Dockerfile
+container/nbody.def
+```
+
+The final Singularity image used on Orfeo is
+
+```text
+container/nbody_latest.sif
+```
+
+and is generated from the definition file with
+
+```text
+singularity build container/nbody_latest.sif container/nbody.def
+```
+
+The `.sif` file is not committed because it is a generated binary artifact; the reproducible source is the definition file.
+All experiments used **SingularityCE 4.3.1**, which was the container runtime available on Orfeo.
+
+
+#### Host MPI binding
+
+OpenMPI is installed inside the image because `mpicc` is required during the build stage.
+
+However, the production MPI runs deliberately use the OpenMPI installation provided by Orfeo:
+
+```text
+build time   → container MPI
+runtime      → host MPI
+```
+
+This distinction is important because the MPI implementation inside a container may not match the launcher, transport components, or communication stack of the HPC system.
+
+The runtime binding was verified with `ldd` in three environments:
+
+```text
+native executable
+        ↓
+Orfeo MPI libraries
+
+container without host binding
+        ↓
+container MPI libraries
+
+container with host MPI binding
+        ↓
+Orfeo MPI libraries
+```
+
+In the final configuration,
+
+```text
+libmpi
+libopen-rte
+libopen-pal
+```
+
+are resolved from
+```text
+/opt/programs/openMPI/4.1.6/lib
+```
+
+matching the native executable.
+
+Therefore, the final container experiments use the **same cluster MPI implementation as the native runs**, rather than silently falling back to the MPI packaged inside the image.
+
+
+#### Controlled MPI transport
+
+Initial Singularity tests using the default OpenMPI transport selection produced container-specific warnings.
+
+Two relevant cases were observed:
+```text
+UCX
+→ library version mismatch warning
+
+vader shared memory
+→ /dev/shm segment warning
+```
+
+Although the application still completed correctly, these effects would make a native-versus-container comparison ambiguous: a performance difference could come from the MPI transport configuration rather than from Singularity itself.
+
+For the final controlled comparison, both native and container runs therefore use
+
+```text
+OMPI_MCA_pml=^ucx
+OMPI_MCA_btl=self,tcp
+OMPI_MCA_osc=^ucx
+OMPI_MCA_btl_vader_single_copy_mechanism=none
+```
+
+which forces the same clean transport path:
+```text
+native ─────┐
+            ├── self + TCP
+container ──┘
+```
+
+The efficient `vader` shared-memory transport is therefore disabled for this specific comparison.
+
+This makes absolute intra-node MPI performance more conservative, but *improves the validity* of the comparison because both executions use the same communication path.
+
+After making the MPI binding and transport policy explicit, the final smoke tests and native-versus-container runs completed correctly without the previous UCX or `vader` warnings.
+
+$$
+\boxed{
+\text{Container overhead can be isolated only after controlling MPI binding and transport}
+}
+$$
+
+
+### 8.2 Native vs Container Application Performance
+
+The application-level container cost is evaluated by comparing the complete N-body solver in **native** and **Singularity** execution.
+
+For each configuration, both deployments use the same:
+- physical problem and integration parameters;
+- number of MPI ranks;
+- repetition count;
+- host OpenMPI runtime and transport policy defined in Section 8.1.
+
+The measured container overhead is defined as
+
+$$
+O_{\mathrm{container}}
+=
+100
+\left(
+\frac{T_{\mathrm{container}}}
+     {T_{\mathrm{native}}}
+-1
+\right).
+$$
+
+Therefore:
+
+$$
+O_{\mathrm{container}}>0
+\Rightarrow
+\text{container slower},
+$$
+
+$$
+O_{\mathrm{container}}<0
+\Rightarrow
+\text{container faster in the measured run}.
+$$
+
+However, the two binaries use different compiler targets:
+```text
+native:     -march=native
+container:  -march=x86-64-v3
+```
+
+The measured percentage must therefore be interpreted as a **deployment-level difference**, not as the isolated cost of Singularity alone.
+
+
+#### Strong-scaling comparison
+
+![Strong scaling native vs container](report/figures/strong_scaling_native_container_final.svg)
+
+
+| MPI ranks | Native time (s) | Container time (s) | Overhead |
+|---:|---:|---:|---:|
+| 1 | $377.476774 \pm 1.575675$ | $373.803578 \pm 0.225742$ | $-0.97\%$ |
+| 2 | $192.136294 \pm 0.051788$ | $187.832592 \pm 0.087729$ | $-2.24\%$ |
+| 4 | $96.453229 \pm 0.070562$ | $94.165248 \pm 0.044843$ | $-2.37\%$ |
+| 8 | $48.498850 \pm 0.009672$ | $47.260008 \pm 0.013726$ | $-2.55\%$ |
+| 16 | $24.492627 \pm 0.008468$ | $23.766715 \pm 0.018591$ | $-2.96\%$ |
+| 32 | $12.529375 \pm 0.044831$ | $12.164797 \pm 0.007646$ | $-2.91\%$ |
+
+Main observations
+- Native and container curves follow almost the same strong-scaling trend.
+- The measured difference remains small across all configurations:
+$$
+-3.0\% \lesssim O_{\mathrm{container}} \lesssim -1.0\%.
+$$
+- No positive container penalty is observed up to 32 MPI ranks.
+- The scaling behaviour itself is preserved: container execution does not introduce an increasing loss of efficiency as the number of ranks grows.
+The negative values must not be interpreted as a Singularity speedup. They only indicate that, in these measurements, the complete container deployment produced slightly lower runtimes.
+
+
+#### Weak-scaling comparison
+
+![Weak scaling native vs container](report/figures/weak_scaling_native_container_final.svg)
+
+| MPI ranks | Native time (s) | Container time (s) | Overhead |
+|---:|---:|---:|---:|
+| 1 | $23.332344 \pm 0.036565$ | $23.350336 \pm 0.001905$ | $+0.08\%$ |
+| 2 | $46.981598 \pm 0.055411$ | $46.961641 \pm 0.002709$ | $-0.04\%$ |
+| 4 | $94.373261 \pm 0.032592$ | $94.132828 \pm 0.026092$ | $-0.25\%$ |
+| 8 | $190.051070 \pm 0.027471$ | $188.543249 \pm 0.047304$ | $-0.79\%$ |
+| 16 | $386.723009 \pm 1.094676$ | $377.915699 \pm 0.162304$ | $-2.28\%$ |
+
+Main observations
+- Native and container weak-scaling curves remain closely aligned.
+- The measured overhead ranges from approximately
+$$
++0.1\% \text{ to } -2.3\%.
+$$
+- At low and intermediate rank counts, the difference is very close to zero.
+- Even as both the number of ranks and the global problem size increase, no growing positive container penalty appears.
+
+#### Interpretation
+
+The two experiments give the same overall picture:
+
+```text
+same MPI runtime and transport
+            ↓
+native and container
+follow almost identical scaling trends
+            ↓
+runtime differences remain within a few percent
+            ↓
+no systematic container penalty is observed
+```
+
+he small native-versus-container differences should be interpreted carefully:
+- they reflect the **complete deployment configuration**, not Singularity alone;
+- native and container binaries use different compiler targets;
+- normal run-to-run and job-to-job variability may also contribute;
+- the reported standard deviation measures only repeatability within the same configuration.
+Therefore, negative overhead values do not demonstrate that the container is faster.
+
+The supported conclusion is:
+$$
+\boxed{
+\text{containerization preserves the scaling behaviour and introduces no systematic performance penalty in the tested range}
+}
+$$
+
+### 8.3 Container Launch Overhead
+
+Container startup cost was measured separately from application execution using a trivial command:
+
+```text
+singularity exec <image> true
+```
+
+The same experiment was repeated with native execution of `true`. Each configuration was executed ten times.
+
+| Mode | Repeats | Median (s) | Stdev (s) | Min (s) | Max (s) |
+|---|---:|---:|---:|---:|---:|
+| Container | 10 | 0.102052 | 0.196828 | 0.100407 | 0.724725 |
+| Native | 10 | 0.000444 | 0.000120 | 0.000432 | 0.000823 |
+
+The typical Singularity launch cost is therefore approximately
+
+$$
+T_{\mathrm{launch}}\approx0.102\ \mathrm{s},
+$$
+
+corresponding to a fixed overhead relative to native execution of
+
+$$
+0.102052-0.000444
+\approx
+0.1016\ \mathrm{s}.
+$$
+
+#### Main observations
+- **Container startup introduces a fixed cost of about $0.1$ s.**
+- Native execution of the trivial command is essentially instantaneous in comparison.
+- One container launch reached approximately
+  $$
+  0.725\ \mathrm{s},
+  $$ 
+  which explains the relatively *large sample standard deviation*.
+- No measurement was removed. Because the distribution contains this unusually slow launch, the **median** is more representative of the typical startup cost than the mean would be.
+
+
+#### Interpretation
+
+The launch overhead is primarily a **fixed cost**:
+
+```text
+start container
+      ↓
+≈ 0.1 s startup cost
+      ↓
+run application
+```
+
+Its importance therefore depends on application runtime.
+
+For very short commands, $0.1$ s can be significant. For the N-body experiments, however, execution times range from several seconds to several minutes, so the same fixed cost is strongly amortized.
+
+Even compared with the shortest application runs of approximately $12$ s, a $0.1$ s launch cost represents less than $1\%$ of the total runtime.
+
+Therefore, container startup cannot explain a large performance difference in the application-level scaling experiments.
+
+$$
+\boxed{
+\text{Singularity startup costs about }0.1\text{ s, but this fixed overhead becomes negligible for long HPC runs}
+}
+$$
+
+
+### 8.4 MPI Communication Microbenchmark
+
+Possible MPI-specific container overhead was isolated using the OSU Micro-Benchmarks, measuring point-to-point latency and bandwidth.
+
+OSU was built in user space with the same OpenMPI environment used by the application. Both native and container tests used:
+- 2 MPI ranks;
+- host MPI binding;
+- the same controlled `self,tcp` transport defined in Section 8.1;
+- five repetitions per configuration.
+
+Because `self,tcp` is deliberately used instead of the native shared-memory `vader` path, these measurements are **not intended to represent the maximum intra-node performance of Orfeo**. Their purpose is to compare native and container MPI communication under identical conditions.
+
+![OSU MPI microbenchmark: native vs container](report/figures/mpi_microbenchmark_curve.svg)
+
+Representative results are:
+
+| Metric | Message size | Native | Container | Difference |
+|:---|---:|---:|---:|---:|
+| Latency | 1 B | $9.940 \pm 0.161\ \mu s$ | $10.000 \pm 0.088\ \mu s$ | $+0.60\%$ |
+| Bandwidth | 4 MiB | $1673.450 \pm 245.560$ MB/s | $1668.570 \pm 244.222$ MB/s | $-0.29\%$ |
+
+
+#### Main observations
+- **The native and container curves are almost superimposed** over the tested message sizes.
+- For a 1-byte message, container latency increases by only
+  $$
+  10.000-9.940=0.060\ \mu s,
+  $$
+  corresponding to
+  $$
+  +0.60\%.
+  $$
+- For a 4 MiB message, bandwidth changes by only
+  $$
+  -0.29\%.
+  $$
+- The bandwidth difference is much smaller than the observed run-to-run variability, so it does not indicate a meaningful communication penalty.
+
+#### Interpretation
+
+The controlled experiment shows:
+
+```text
+same host MPI
++ same transport
+        ↓
+native and container
+show nearly identical
+latency and bandwidth
+        ↓
+no systematic MPI penalty
+from containerization
+```
+
+The result does **not** show that `self,tcp` is the optimal transport for Orfeo. It shows that, once MPI binding and transport are controlled, Singularity does not introduce a measurable systematic degradation in MPI communication.
+
+This is consistent with the application-level results: communication remains a secondary cost compared with the direct force computation.
+
+$$
+\boxed{
+\text{With identical MPI binding and transport, native and container communication performance is essentially unchanged}
+}
+$$
+
+### 8.5 Portability Considerations
+The container experiments show that *application portability can be achieved without materially changing performance*, provided that the **MPI runtime is integrated explicitly**.
+
+The final setup relies on three principles:
+- **portable userspace**: the container provides a reproducible software environment without assuming the exact host architecture;
+- **host MPI binding**: the cluster OpenMPI installation is injected at runtime and verified with `ldd`;
+- **controlled transport**: native and container comparisons use the same MPI transport policy.
+
+This separates the portable part of the application from the cluster-specific communication layer:
+
+```text
+portable
+source code + container userspace + MPI algorithm
+                    ↓
+cluster-dependent
+MPI libraries + transport + interconnect configuration
+```
+
+The MPI ring algorithm itself uses standard point-to-point operations and therefore does not depend directly on vendor-specific APIs. However, the MPI implementation may internally rely on shared-memory mechanisms or network-specific components that must remain available inside the container.
+
+For this reason, deployment on another HPC system requires revalidating:
+- the host MPI implementation and library binding;
+- the available transport components;
+- the target interconnect;
+- basic MPI correctness and communication performance.
+
+For example, a multi-node InfiniBand system would keep the same application code and ring decomposition, but would require an MPI transport configuration appropriate for that fabric. The controlled `self,tcp` policy used here for native-versus-container comparison should therefore not be interpreted as a production configuration for a different cluster.
+
+$$
+\boxed{
+\text{The application is portable, while MPI integration remains cluster-dependent}
+}
+$$
+
+
+## 9. Limitations and Reproducibility
+
+The benchmark campaign follows the objectives of the assignment while adapting them to the resources available on Orfeo.
+
+The main limitations are:
+- **Platform**: experiments were performed on the Orfeo GENOA system rather than LEONARDO.
+- **Single-node execution**: all final MPI scaling and container comparisons were limited to one compute node.
+- **Problem size**: strong- and weak-scaling sizes were reduced relative to the assignment reference values because of the two-hour wall-time limit.
+- **Hardware counters**: perf, PAPI, and LIKWID counters were not available. Vectorization and kernel behaviour were therefore evaluated through GCC optimization reports, timing, and derived throughput.
+- **Container comparison**: native and container binaries use different compilation targets: native: `-march=native` and container: `-march=x86-64-v3`
+
+Therefore, measured native-versus-container differences represent the complete deployment configurations rather than the isolated cost of Singularity.
+
+- **MPI transport**: native-only performance experiments use the host default MPI transport, whereas native-versus-container experiments use the controlled transport defined in Section 8.1. This difference is intentional because the two experiments answer different questions.
+
+These limitations restrict how far the results can be generalized, but do not affect the internal comparison of configurations performed under the same experimental conditions.
+
+
+## 10. Conclusions
+
+This project evaluated a direct N-body solver from four complementary perspectives: **numerical correctness, kernel optimization, parallel scalability, and containerized execution**.
+
+#### Main findings
+- **Numerical correctness**  
+  The KDK integration with softened gravity remained within the selected energy-drift tolerance in all final validation experiments.
+- **Kernel optimization**  
+  Reducing the theoretical operation count does not automatically improve performance. Newton's third law introduces update dependencies, while reciprocal-square-root approximations provide high isolated throughput but no solver-level benefit without effective vectorization.
+  The most useful low-level optimization was accumulator splitting, reaching up to
+  $$
+  1.151\times
+  $$
+  speedup by increasing instruction-level parallelism.
+- **Parallel scalability**
+  The direct force kernel remains the dominant cost throughout the tested range.
+  Strong scaling reaches
+  $$
+  E(32)=0.986,
+  $$
+  while algorithm-aware weak scaling reaches
+  $$
+  E_{\mathrm{weak}}(16)=0.981.
+  $$
+  Communication and synchronization become progressively more visible, but no clear scaling saturation is reached.
+- **Communication overlap**
+  Non-blocking MPI exposes the possibility of overlapping communication and computation, but provides little total-runtime improvement because communication is still a small fraction of execution time.
+- **Hybrid MPI/OpenMP mapping**
+  The tested mappings perform similarly on one GENOA node. Hardware topology provides useful guidance, but the best decomposition must ultimately be determined experimentally.
+- **Containerization**
+  Singularity preserves the application's scaling behaviour when host MPI binding and transport are controlled explicitly. Application-level differences remain within a few percent, and the OSU microbenchmarks show no systematic MPI communication penalty.
+
+#### Overall interpretation
+The experiments show a consistent performance picture:
+
+ ```text
+direct O(N²) force kernel
+        ↓
+dominant computational cost
+        ↓
+good parallel scalability
+        ↓
+MPI overhead remains secondary
+        ↓
+container overhead is strongly amortized
+```
+
+The main current limitation is therefore not MPI or containerization, but the lack of effective vectorization in the dominant interaction loop.
+
+#### Future work
+A natural next step is to combine:
+
+```text
+SoA layout
+    +
+explicit SIMD
+    +
+rsqrt refinement
+    +
+multiple accumulators
+```
+
+into a single vectorized force kernel.
+This would directly target the dominant computational bottleneck and could allow the operation-level advantages observed in the microbenchmarks to translate into solver-level speedup.
+$$
+\boxed{
+\text{Performance is ultimately determined by how well optimizations match the structure of the dominant force kernel}
+}
+$$
+
+## Appendix A
+
+### A.1 Repository Structure and Reproducibility
+
+The project repository is organized so that the numerical implementation, benchmark execution, post-processing, container recipe, and report artifacts remain separated. The main files used for the final results are:
 
 ```text
 Nbody_serial/
@@ -758,1194 +2445,16 @@ Nbody_serial/
 │   └── figures/
 │       └── final SVG plots used in the report
 │
-└── REPORT.md
+└── FINAL_REPORT.md
     └── final project report
 ```
 
-This layout mirrors the experimental structure of the project: source files
-implement the solver, `scripts/benchmark` and `scripts/slurm` produce the raw
-measurements, `scripts/analyze` converts them into report-ready artifacts, and
-`report/` stores only the final tables, figures, and setup information used in
-the discussion.
+This layout mirrors the experimental structure of the project: source files implement the solver, `scripts/benchmark` and `scripts/slurm` produce the raw measurements, `scripts/analyze` converts them into report-ready artifacts, and `report/` stores only the final tables, figures, and setup information used in the discussion.
 
 
-## 5. Baseline Validation and Bottleneck Characterization
+### A.2 Benchmark Traceability
 
-Before evaluating parallel scalability and kernel-level optimizations, the
-baseline implementation was first checked for numerical correctness and for the
-expected computational behaviour of the direct all-pairs algorithm.
-
-The purpose of this section is therefore twofold: to verify that the solver
-preserves the physical invariants with sufficient accuracy, and to identify
-which part of the execution dominates the runtime before optimization.
-
-
-### 5.1 Numerical Validation
-
-The correctness criterion introduced in Section 2.4 was evaluated using a
-Plummer sphere with
-
-$$
-N = 10\,000,
-\qquad
-\Delta t = 10^{-4},
-\qquad
-\epsilon = 0.05,
-$$
-
-integrated for 100 Kick-Drift-Kick steps using 8 OpenMP threads. Total energy
-was evaluated every 10 integration steps.
-
-The measured maximum relative energy drift was
-
-$$
-\delta_E^{\max} = 2.67 \times 10^{-7}.
-$$
-
-| $N$ | Steps | $\Delta t$ | $\epsilon$ | Threads | Max relative energy drift | Status |
-|---:|---:|---:|---:|---:|---:|:---|
-| $10\,000$ | $100$ | $10^{-4}$ | $0.05$ | 8 | $2.67\times10^{-7}$ | PASS |
-
-This value is well below the adopted acceptance threshold of $10^{-4}$, 
-showing that the selected combination of time step, gravitational softening,
-and KDK integration provides stable numerical evolution for the reference
-problem.
-
-The energy result is used throughout the remaining experiments as an
-independent correctness check. Performance improvements are therefore
-considered valid only when the corresponding energy drift remains within the
-same acceptance criterion.
-
-
-### 5.2 Verification of $O(N^2)$ Computational Growth
-
-The direct force kernel evaluates all ordered particle pairs except self-interactions. The number of pair evaluations is therefore
-
-$$
-N(N-1).
-$$
-
-Increasing the particle count from $N=1000$ to $N=10000$ gives the
-theoretical interaction-count ratio
-
-$$
-\frac{10000(10000-1)}
-     {1000(1000-1)}
-=
-100.090.
-$$
-
-To verify that the implementation follows this expected behaviour, the two problem sizes were executed using the same numerical parameters, 50 integration
-steps, and a single OpenMP thread. A single thread was intentionally used to
-avoid contaminating the comparison with OpenMP scheduling overhead for the
-smaller problem.
-
-The measured force timings are:
-
-| $N$ | Steps | Force time (s) | Force time / step (s) |
-|---:|---:|---:|---:|
-| $1\,000$ | 50 | 0.180952 | 0.003619 |
-| $10\,000$ | 50 | 18.124287 | 0.362486 |
-
-The resulting measured ratio is
-
-$$
-\frac{0.362486}{0.003619}
-\approx
-100.161.
-$$
-
-Thus,
-
-$$
-\text{expected ratio}=100.090,
-\qquad
-\text{measured ratio}=100.161.
-$$
-
-The agreement is extremely close and provides direct experimental evidence
-that the dominant force computation exhibits the expected quadratic growth
-with $N$.
-
-
-### 5.3 Runtime Breakdown and Bottleneck Identification
-
-The baseline validation run was also used to decompose the execution time into
-its main phases.
-
-For the $N=10\,000$, $100$-step validation case, the measured timings were
-
-| Component | Time (s) | Approx. fraction of total |
-|:---|---:|---:|
-| Force evaluation | $4.431348$ | $90.2\%$ |
-| Energy diagnostics | $0.447601$ | $9.1\%$ |
-| Other operations | $\approx 0.032$ | $<1\%$ |
-| Total | $4.910674$ | $100\%$ |
-
-Approximately $90\%$ of the measured runtime is therefore spent in the direct
-force evaluation.
-
-This dominance is consistent with the computational complexity of the solver.
-Drift and kick updates operate once on each particle and are $O(N)$, whereas
-the force evaluation performs $N(N-1)$ pair interactions and is $O(N^2)$.
-The energy diagnostic is also based on pairwise interactions, but it is evaluated only periodically rather than at every force calculation.
-
-The baseline application can therefore be characterized as being primarily
-limited by the direct interaction kernel for the tested problem sizes.
-
-On a single socket, the peak FLOP/s achievable by this kernel is determined by the number of active physical cores, the floating-point execution units available per core, the SIMD width actually reached by the compiled loop, and the ability of the instruction scheduler to keep independent multiply/add/FMA operations in flight. In this implementation the practical peak is lower than the architectural peak because the runtime-dominant interaction loop is scalar rather than fully vectorized, repeatedly evaluates an inverse distance, and carries reductions through the force accumulators. This is why the report uses measured Ginteraction/s as the main kernel-throughput indicator rather than claiming a hardware peak FLOP/s value.
-
-To make the bottleneck claim quantitative, the performance analysis uses the
-ordered particle-interaction throughput rather than raw GFLOP/s. This is a
-cleaner metric for this code because the exact floating-point operation count
-depends on how the square root, inverse distance, division, and fused
-multiply-add instructions are counted. For the direct non-Newton formulation,
-each force evaluation visits
-
-$$
-N(N-1)
-$$
-
-ordered source-target interactions. Since the KDK implementation computes the initial acceleration and then one new acceleration per integration step, the number of force evaluations is
-
-$$
-N_{\mathrm{force}} = N_{\mathrm{steps}} + 1.
-$$
-
-The reported interaction throughput is therefore
-
-$$
-R_{\mathrm{int}} =
-\frac{N(N-1)N_{\mathrm{force}}}{t_{\mathrm{force}}}.
-$$
-
-For MPI runs, $t_{\mathrm{force}}$ is the maximum force time across ranks,
-matching the timing reduction used by the solver. Ginteraction/s is the primary
-kernel-throughput metric because it directly measures the rate at which the
-algorithm processes its fundamental unit of work.
-
-The detailed force-throughput table is presented after the native
-strong-scaling results in Section 7.3, where the process counts and timing data
-are introduced.
-
-This observation determines the optimization strategy used in the following section. Rather than optimizing auxiliary $O(N)$ operations, the performance study focuses on the force kernel itself, investigating
-
-- reduction of the number of pair evaluations through Newton's third law;
-- data organization through AoS and SoA layouts;
-- the cost of the inverse-square-root operation;
-- floating-point dependency chains through multiple accumulators.
-
-Communication-related optimizations are treated separately in the parallel performance section, where the importance of MPI communication can be evaluated as the number of processes increases.
-
-## 6. Kernel-Level Optimization Study
-
-After identifying the direct force evaluation as the dominant computational cost, several kernel-level optimizations were investigated. The goal was not only to reduce execution time, but also to understand which architectural effects limit the performance of the all-pairs interaction loop.
-
-The experiments consider four complementary aspects of the force kernel: Newton's third-law reuse, particle data layout, reciprocal-square-root evaluation, and the dependency chain created by force accumulation.
-
-Unless stated otherwise, optimization timings are reported as median $\pm$ sample standard deviation over five repetitions, and numerical correctness is checked through the same energy-drift criterion used for the baseline implementation.
-
-### 6.1 Newton's Third Law
-
-The baseline force kernel evaluates ordered particle pairs independently.
-Therefore, both interactions $(i,j)$ and $(j,i)$ are computed.
-
-Newton's third law makes it possible to evaluate only
-
-$$
-i < j
-$$
-
-and apply the equal and opposite contributions to both particles. In
-principle, this reduces the number of pair evaluations by approximately a factor of two.
-
-However, the optimization changes the parallel write pattern.
-
-In the baseline direct kernel, a thread processing target particle $i$
-updates only
-
-$$
-\mathbf{a}_i,
-$$
-
-so different OpenMP iterations are independent. In a Newton-reuse kernel, each
-pair $(i,j)$ updates both
-
-$$
-\mathbf{a}_i
-\qquad\text{and}\qquad
-\mathbf{a}_j.
-$$
-
-Consequently, different threads may attempt to update the same acceleration array concurrently, introducing data races unless synchronization or privatization is used.
-
-Three implementations were therefore compared. The `newton-atomic` variant is
-included only as an additional diagnostic experiment: it is not intended as a
-production optimization, but as a way to make the synchronization penalty of a
-naive parallel Newton implementation explicit.
-
-| Kernel | Pair traversal | Parallel update strategy |
-|:---|:---|:---|
-| `direct` | ordered pairs | OpenMP over independent target particles |
-| `newton` | $i<j$ | serial, conflict-free reference |
-| `newton-atomic` | $i<j$ | diagnostic OpenMP variant with atomic acceleration updates |
-
-The measured force times are reported as median $\pm\sigma$ over five repetitions:
-
-| Threads | `direct` (s) | `newton` (s) | `newton-atomic` (s) |
-|---:|---:|---:|---:|
-| 1 | $5.865157 \pm 0.008173$ | $3.510821 \pm 0.003258$ | $8.407843 \pm 0.011617$ |
-| 2 | $3.119743 \pm 0.159910$ | $3.553018 \pm 0.022864$ | $8.587850 \pm 0.074676$ |
-| 4 | $1.734899 \pm 0.036081$ | $3.510410 \pm 0.000948$ | $7.214137 \pm 0.037040$ |
-| 8 | $0.893647 \pm 0.002144$ | $3.520837 \pm 0.025837$ | $6.265592 \pm 0.018730$ |
-
-With one thread, Newton reuse reduces the force time from $5.87$ s to $3.51$ s, corresponding to a speedup of
-
-$$
-\frac{5.865157}{3.510821} \approx 1.67.
-$$
-
-The improvement is substantial, although smaller than the ideal factor of two, because halving the pair count does not eliminate loop overhead, memory accesses, or the remaining interaction arithmetic.
-
-The plain `newton` implementation is intentionally serial. Its execution time therefore remains approximately constant as the requested OpenMP thread count increases. In contrast, the `direct` kernel scales efficiently because each thread owns its target-particle accumulators.
-
-The `newton-atomic` implementation is therefore used as a negative control. It
-demonstrates the cost of resolving the shared-write conflicts with fine-grained
-synchronization. Although the number of evaluated pairs is reduced, multiple
-atomic updates are required for each interaction. The resulting synchronization
-and cache-coherence cost dominates the saved arithmetic.
-
-For the production OpenMP/MPI implementation, the direct ownership model is therefore retained. Newton's third law is advantageous only when its arithmetic saving can be combined with a more efficient conflict-resolution strategy, such as privatized force buffers or block-wise reductions.
-
-![Newton third-law trade-off](report/figures/newton_tradeoff.svg)
-
-
-### 6.2 AoS versus SoA
-
-Particle data organization can strongly affect memory access patterns and SIMD vectorization. Two layouts were therefore compared.
-
-In an Array-of-Structures (AoS) representation, all fields associated with a particle are stored together:
-
-```text
-particle[i] = {x, y, z, vx, vy, vz, ax, ay, az}
-```
-
-In a Structure-of-Arrays (SoA) representation, each quantity is stored in an independent contiguous array:
-
-x[], y[], z[], vx[], vy[], vz[], ax[], ay[], az[]
-
-SoA is generally attractive for numerical kernels because consecutive SIMD lanes can load the same physical quantity from consecutive memory locations.
-The production solver therefore uses SoA.
-
-However, the layout benchmark shows that SoA alone does not improve the performance of the current force kernel:
-
-| Threads | AoS force time (s) | SoA force time (s) | SoA speedup |
-| ------: | -----------------: | -----------------: | ----------: |
-|       1 | $0.903034 \pm 0.000151$ | $0.910895 \pm 0.000439$ |       0.991 |
-|       2 | $0.451970 \pm 0.000151$ | $0.455871 \pm 0.001764$ |       0.991 |
-|       4 | $0.226311 \pm 0.000205$ | $0.227897 \pm 0.001877$ |       0.993 |
-|       8 | $0.115289 \pm 0.001032$ | $0.115800 \pm 0.025404$ |       0.996 |
-
-The two layouts are effectively equivalent in median execution time, with
-differences below approximately one percent. The eight-thread SoA measurement
-shows higher run-to-run variability than the corresponding AoS case, but its
-median remains within one percent of the AoS median. The computed
-accelerations also agree within the reported numerical tolerance.
-
-To check whether the layout change actually enabled SIMD execution of the
-dominant loop, the benchmark was recompiled with GCC vectorization reporting
-enabled:
-
-```text
--fopt-info-vec-all=<vectorization-report>
-```
-
-The relevant loops are the inner all-pairs loops of the SoA and AoS force
-kernels:
-
-```text
-benchmark_layout.c:116  inner j-loop of compute_accelerations_soa
-benchmark_layout.c:159  inner j-loop of compute_accelerations_aos
-```
-
-For both loops, GCC reports missed vectorization:
-
-```text
-benchmark_layout.c:116:29: missed: couldn't vectorize loop
-benchmark_layout.c:116:29: missed: not vectorized: unsupported control flow in loop.
-nbody_common.h:81:10: missed: statement clobbers memory: _86 = sqrt (r2_66);
-
-benchmark_layout.c:159:29: missed: couldn't vectorize loop
-benchmark_layout.c:159:29: missed: not vectorized: unsupported control flow in loop.
-nbody_common.h:81:10: missed: statement clobbers memory: _74 = sqrt (r2_54);
-```
-
-The significant point is therefore not whether GCC can vectorize some minor
-auxiliary code, but that the runtime-dominant all-pairs force loop is not
-effectively vectorized. The relevant obstacles are the conditional
-self-interaction check `if (j != i)`, the scalar inverse-distance calculation
-through `dtype_sqrt`, and the scalar accumulation into the three force
-components.
-
-Therefore, this experiment should not be interpreted as evidence that AoS and SoA are generally equivalent. Rather, it shows that improving the memory layout alone is insufficient when the dominant interaction loop remains scalar.
-
-SoA is nevertheless retained in the production code because it provides a cleaner representation for MPI block transfers and exposes the data streams required by future SIMD-oriented implementations.
-
-![AoS versus SoA layout trade-off](report/figures/layout_tradeoff.svg)
-
-Hardware-counter tools such as `perf`, `PAPI`, and `LIKWID` were not available in the Orfeo environment used for the measurements. The layout analysis therefore follows the optional compiler-report part of the vectorization study, but cannot confirm the result with counters such as packed floating-point instruction events. The evidence used here is consequently the combination of instrumented timings, numerical agreement, derived throughput, and GCC vectorization diagnostics rather than hardware performance counters.
-
-
-### 6.3 Reciprocal Square Root
-
-The gravitational interaction repeatedly evaluates
-
-$$
-\frac{1}{\sqrt{r^2+\epsilon^2}},
-$$
-
-making the inverse-square-root operation a natural optimization target.
-
-The reference implementation uses the standard library square-root path.
-Approximate reciprocal-square-root instructions provide a faster initial estimate, which can be improved through Newton-Raphson refinement.
-
-The optimization was evaluated at two different levels: an isolated SIMD microbenchmark and the complete force solver.
-
-#### Isolated reciprocal-square-root kernel
-
-The SIMD microbenchmark compares a scalar `sqrtf` reference with an AVX reciprocal-square-root estimate and zero, one, or two Newton refinements.
-
-| Method | Time (s) | Gvalues/s | Speedup | Max relative error |
-|:---|---:|---:|---:|---:|
-| `sqrtf` | $0.032575 \pm 0.000021$ | 0.515 | 1.000 | $8.94\times10^{-8}$ |
-| `rsqrt0` | $0.001599 \pm 0.000011$ | 10.494 | 20.376 | $2.58\times10^{-4}$ |
-| `rsqrt1` | $0.001633 \pm 0.000006$ | 10.277 | 19.953 | $1.72\times10^{-7}$ |
-| `rsqrt2` | $0.002469 \pm 0.000004$ | 6.796 | 13.195 | $1.17\times10^{-7}$ |
-
-![SIMD reciprocal-square-root microbenchmark](report/figures/rsqrt_kernel.svg)
-
-The raw hardware estimate is extremely fast but introduces a relative error of approximately $2.6\times10^{-4}$. A single Newton refinement reduces this error by roughly three orders of magnitude while retaining most of the operation-level throughput.
-
-This demonstrates the potential benefit of reciprocal-square-root
-approximations when the operation can be evaluated efficiently using SIMD.
-
-The complete solver shows a different result.
-
-At eight OpenMP threads:
-
-| Method | Force time (s) | Speedup vs `libm` | Max energy drift |
-|:---|---:|---:|---:|
-| `libm` | $0.894669 \pm 0.055731$ | 1.000 | $4.083561\times10^{-8}$ |
-| `rsqrt1` | $1.028367 \pm 0.045048$ | 0.870 | $4.085352\times10^{-8}$ |
-| `rsqrt2` | $1.290443 \pm 0.104594$ | 0.693 | $4.083561\times10^{-8}$ |
-| `rsqrt3` | $1.476621 \pm 0.010179$ | 0.606 | $4.083561\times10^{-8}$ |
-
-In the current full solver, the median runtime of all reciprocal-square-root
-variants is higher than the `libm` baseline, with the degradation becoming
-particularly clear as additional refinement steps are introduced.
-
-The reason is that the two experiments expose different levels of the implementation. The isolated benchmark directly exploits SIMD reciprocal square root instructions. The complete force loop, however, is not vectorized, and its scalar approximation path includes conversion through a single-precision estimate followed by Newton refinement in double precision.
-The operation-level SIMD advantage therefore does not translate directly into a solver-level speedup.
-
-The full-solver experiment is nevertheless important from the numerical point of view. After sufficient Newton refinement, the measured energy drift converges to the `libm` reference value. In particular, `rsqrt2` already reproduces the baseline drift within the resolution of this experiment. This is the check that the energy-conservation diagnostic is still testing the time integrator rather than being dominated by reciprocal-square-root approximation error: if the approximation error were saturating the diagnostic, the refined `rsqrt` variants would show a persistent drift offset relative to the `libm` baseline. Instead, the refined variants converge back to the same measured drift level.
-
-The production solver therefore retains the conservative `libm` path, while the reciprocal-square-root experiments demonstrate both the potential SIMD performance advantage and the accuracy requirements that would need to be satisfied by a future vectorized implementation.
-
-
-### 6.4 Accumulator Splitting and Critical Path
-
-The direct force loop repeatedly accumulates contributions into the same three acceleration components:
-
-$$
-a_x \mathrel{+}= \Delta x\,s,
-\qquad
-a_y \mathrel{+}= \Delta y\,s,
-\qquad
-a_z \mathrel{+}= \Delta z\,s.
-$$
-
-For a fixed target particle, every iteration of the inner loop depends on the result produced by the previous iteration. This creates a loop-carried dependency chain through the force accumulators and can limit instruction-level parallelism even when several floating-point execution units are available.
-
-To reduce this dependency, the force kernel was implemented with multiple independent partial accumulators. Instead of updating a single $(a_x,a_y,a_z)$ triple, successive interactions are distributed over 2, 4, or 8 independent accumulator sets and combined only after the inner loop:
-
-```text
-ax0 += contribution_j
-ax1 += contribution_j+1
-...
-ax = ax0 + ax1 + ...
-```
-
-The optimization does not change the number of particle interactions or the physical model. It only increases the amount of independent arithmetic available to the processor.
-
-The full benchmark tested 1, 2, 4, and 8 partial accumulators for each OpenMP thread count. The table below reports the best variant at each thread count, while the plot shows the full saturation trend.
-
-| Threads | Best variant | Best force time (s) | Best speedup |
-|---:|:---|---:|---:|
-| 1 | `direct-split8` | $5.656612 \pm 0.008691$ | 1.029 |
-| 2 | `direct-split4` | $2.857590 \pm 0.001465$ | 1.083 |
-| 4 | `direct-split8` | $1.592580 \pm 0.002604$ | 1.094 |
-| 8 | `direct-split8` | $0.780765 \pm 0.022961$ | 1.151 |
-
-The largest improvement is observed with eight OpenMP threads, where
-`direct-split8` reduces the force time from
-
-$$
-0.898525\ \mathrm{s}
-$$
-
-to
-
-$$
-0.780765\ \mathrm{s},
-$$
-
-corresponding to a speedup of approximately
-
-$$
-1.15\times.
-$$
-
-![Accumulator splitting critical-path trade-off](report/figures/accumulator_tradeoff.svg)
-
-The results also show that the benefit saturates. Moving from one accumulator to a small number of independent partial sums removes much of the original dependency bottleneck, while further increasing the number of accumulators provides only modest additional improvement.
-
-This behaviour is expected because accumulator splitting introduces its own costs: additional live registers, a final reduction of the partial sums, and greater register pressure. Once enough independent arithmetic streams are available, other components of the force kernel become limiting, including the inverse-distance calculation, loop control, memory accesses, and OpenMP overhead.
-
-All accumulator variants reproduce the same energy drift as the reference kernel in the corresponding benchmark. Accumulator splitting therefore provides a moderate performance improvement without changing the numerical result.
-
----
-
-Overall, the optimization study shows that reducing arithmetic work does not
-automatically produce the best parallel implementation. Newton's third law reduces the pair count but complicates force ownership; SoA provides a SIMD-friendly representation but gives little benefit while the force loop remains scalar; reciprocal square root is extremely effective in isolation but
-does not accelerate the current non-vectorized solver; and accumulator
-splitting provides the most direct improvement to the existing production
-kernel by reducing its dependency chain.
-
-These results motivate the next level of analysis: determining how the
-optimized computational kernel interacts with MPI communication and how the application scales as additional processes are introduced.
-
-
-## 7. Parallel Performance Analysis
-
-After characterizing the computational kernel, the analysis is extended to the parallel behaviour of the complete application. The experiments investigate three complementary aspects: the balance between MPI ranks and OpenMP threads,
-the possibility of overlapping ring communication with computation, and the strong- and weak-scaling behaviour of the distributed solver.
-
-The objective is not only to measure speedup, but also to determine whether the dominant bottleneck identified in Section 5 remains computational as the number
-of processes increases, or whether communication and synchronization begin to limit scalability.
-
-
-### 7.1 Hybrid MPI/OpenMP Mapping
-
-The GENOA node provides 64 physical cores distributed across two sockets and eight NUMA domains. This allows several MPI/OpenMP decompositions to use the same total amount of computational resources.
-
-Three representative configurations were compared:
-
-$$
-2\times32,\qquad
-8\times8,\qquad
-64\times1,
-$$
-
-where $P\times T$ denotes $P$ MPI ranks and $T$ OpenMP threads per rank.
-All three configurations therefore use 64 workers in total.
-
-The verified affinity masks correspond to the following decomposition
-strategies:
-
-| Configuration | Interpretation |
-|:---|:---|
-| $2\times32$ | one MPI rank per socket |
-| $8\times8$ | one MPI rank per NUMA domain |
-| $64\times1$ | one MPI rank per physical core |
-
-The experiment uses $N=32768$, 20 integration steps, and five repetitions per configuration.
-
-Total times are reported as median $\pm$ sample standard deviation over five
-repetitions; force and communication columns report the corresponding median
-values. Since all configurations use the same global problem size and the same
-number of force evaluations, the force-kernel interaction throughput can also
-be compared directly:
-
-| Ranks | Threads | Total time (s) | Force time (s) | Force / total | Ginteraction/s | Communication time (s) |
-|---:|---:|---:|---:|---:|---:|---:|
-| 2 | 32 | $1.357946 \pm 0.002116$ | 1.208748 | 89.01% | 18.654 | 0.015178 |
-| 8 | 8 | $1.356582 \pm 0.009521$ | 1.205893 | 88.89% | 18.698 | 0.094987 |
-| 64 | 1 | $1.362196 \pm 0.006402$ | 1.215686 | 89.24% | 18.547 | 0.143501 |
-
-The three mappings are essentially equivalent in total runtime. The lowest
-median is obtained by the $8\times8$ configuration, but the full spread between
-the fastest and slowest median runtimes is only about $0.4\%$, which is smaller
-than the run-to-run variability of the $8\times8$ case. Therefore, this result
-should not be interpreted as a decisive win for any single mapping.
-
-The force-kernel throughput confirms the same conclusion. All configurations
-sustain approximately $18.5$--$18.7$ Ginteraction/s, and the force kernel
-accounts for about $89\%$ of the total runtime in every case. Thus, changing
-the MPI/OpenMP decomposition affects the communication pattern more strongly
-than it affects the dominant arithmetic kernel.
-
-The result illustrates the trade-off inherent in hybrid programming. Using
-fewer MPI ranks reduces the number of participants in the ring communication
-and leaves more parallel work to OpenMP. Using one rank per core eliminates OpenMP scheduling within each rank but introduces many more MPI ring phases.
-This trend is visible in the communication timer: the median communication time
-increases from $0.015$ s for $2\times32$ to $0.095$ s for $8\times8$ and
-$0.144$ s for $64\times1$.
-
-For this problem size on a single GENOA node, however, this increase in MPI
-communication is too small to change the total runtime substantially, because
-the direct force calculation still dominates. The main conclusion is therefore
-that topology suggests useful candidate mappings, but the optimal mapping
-cannot be inferred from topology alone; it must be measured for the actual
-kernel and problem size.
-
-
-
-### 7.2 Communication-Computation Overlap
-
-The ring decomposition exposes a natural opportunity for
-communication-computation overlap. In the blocking implementation, each rank
-first evaluates the current source block and then exchanges it with the
-neighbouring ranks.
-
-The non-blocking implementation instead posts the communication for the next
-ring phase before computing the current block:
-
-```text
-MPI_Irecv / MPI_Isend
-        ↓
-force computation
-        ↓
-MPI_Waitall
-```
-
-If communication progressed completely in the background, most or all of the ring-exchange time could theoretically be hidden by the much larger force calculation.
-
-To quantify the actual effect, the hidden communication time is defined as
-
-$$
-T_{\mathrm{hidden}} = T_{\mathrm{comm,blocking}} - T_{\mathrm{comm,overlap}},
-$$
-
-and the achieved overlap fraction as
-
-$$
-f_{\mathrm{overlap}} = \frac{T_{\mathrm{hidden}}} {T_{\mathrm{comm,blocking}}}.
-$$
-
-The experiment uses $N=32768$, 20 integration steps, one thread per MPI
-rank, and five repetitions. Total times are reported as median $\pm\sigma$;
-communication columns report the corresponding median exposed communication
-times used to compute the overlap fraction.
-
-| Ranks | Blocking total (s) | Overlap total (s) | Blocking comm. (s) | Hidden comm. (s) | Achieved overlap |
-| ----: | -----------------: | ----------------: | -----------------: | ---------------: | ---------------: |
-|     4 | $20.987808 \pm 0.078594$ | $20.868140 \pm 0.007770$ |           1.036399 |         0.169679 |            16.4% |
-|     8 | $10.513724 \pm 0.083738$ | $10.510297 \pm 0.007663$ |           0.678918 |         0.020134 |             3.0% |
-|    16 | $5.358677 \pm 0.006079$ | $5.361461 \pm 0.001656$ |           0.478483 |         0.000000 |             0.0% |
-|    32 | $2.729329 \pm 0.083506$ | $2.716461 \pm 0.002813$ |           0.226680 |         0.014705 |             6.5% |
-
-![MPI ring communication overlap](report/figures/ring_overlap.svg)
-
-Despite the large amount of computation available between the non-blocking MPI
-calls, the measured overlap ranges only from $0\%$ to $16.4\%$.
-
-More importantly, the effect on total runtime is very small. The corresponding runtime ratios remain approximately between
-
-$$ 
-0.999\times 
-\quad
-\text{and}\quad 1.006\times. 
-$$
-
-Thus, replacing blocking communication with `MPI_Isend` and `MPI_Irecv` does not produce a significant application-level speedup for this experiment.
-
-The result shows that non-blocking MPI calls alone do not guarantee effective asynchronous progress. Communication may still require execution inside the MPI library, while message startup, synchronization at the end of each phase, rank imbalance, and the overhead of managing the non-blocking operations can remain exposed.
-
-For the tested one-node configuration, communication is already small compared with the direct force calculation. Consequently, even perfect overlap would have only a limited effect on total execution time.
-
-
-### 7.3 Strong Scaling
-
-Strong scaling measures how execution time decreases when additional parallel resources are applied to a fixed global problem.
-
-For the strong-scaling experiment, the particle count is fixed at
-
-$$
-N=32768,
-$$
-
-and the number of MPI ranks is varied over
-
-$$
-P\in\{1,2,4,8,16,32\}.
-$$
-
-Each rank uses one OpenMP thread and every configuration performs 100
-integration steps.
-
-Speedup is defined relative to the one-rank execution:
-
-$$
-S(P)=\frac{T(1)}{T(P)},
-$$
-
-while parallel efficiency is
-
-$$
-E(P)=\frac{S(P)}{P}.
-$$
-
-Ideal strong scaling therefore corresponds to
-
-$$
-S(P)=P,
-\qquad
-E(P)=1.
-$$
-
-![Native strong scaling](report/figures/strong_scaling_native_final.svg)
-
-The measured native results are reported as median $\pm$ sample standard deviation over five repetitions:
-
-| MPI ranks | Total time (s) | Speedup | Efficiency |
-|---:|---:|---:|---:|
-| 1 | $374.387700 \pm 0.490059$ | 1.000 | 1.000 |
-| 2 | $187.821448 \pm 0.065840$ | 1.993 | 0.997 |
-| 4 | $94.101276 \pm 0.017829$ | 3.979 | 0.995 |
-| 8 | $47.148061 \pm 0.005166$ | 7.941 | 0.993 |
-| 16 | $23.620087 \pm 0.005129$ | 15.850 | 0.991 |
-| 32 | $11.870895 \pm 0.015770$ | 31.538 | 0.986 |
-
-At 32 MPI ranks, the native execution achieves
-
-$$
-S(32)=31.54
-$$
-
-and
-
-$$
-E(32)=0.986.
-$$
-
-The scaling is therefore very close to ideal throughout the measured range. The reported standard deviations are small compared with the median runtimes, so the trend is stable across the five repetitions.
-
-At larger process counts the efficiency decreases only mildly, remaining
-$98.6\%$ at 32 ranks. The measured communication contribution grows with the
-number of MPI ranks, but remains small: the communication fraction increases
-from zero at one rank to only about $2.5\%$ at 32 ranks.
-
-Therefore, no strong communication or serial bottleneck is reached within the tested process range. The $O(N^2)$ force kernel remains sufficiently
-expensive to amortize ring communication and other fixed parallel overheads.
-At the largest measured configuration, each rank still owns
-$N_{\mathrm{local}}=1024$ particles, which is enough work per rank for the
-direct all-pairs kernel to dominate the runtime. The expected Amdahl floor is
-therefore not yet visible in this dataset. Reaching it would require either
-increasing the process count further at fixed $N$ or decreasing $N$ until the
-local force work becomes too small to hide communication startup, diagnostics,
-and synchronization.
-
-#### Force-kernel interaction throughput
-
-The strong-scaling timings can also be read as a throughput measurement of the
-dominant force kernel. For this experiment, $N=32768$ and the KDK integrator
-performs 101 force evaluations: one initial acceleration evaluation and one new
-force evaluation after each drift step. The measured throughput is therefore
-
-$$
-R_{\mathrm{int}} =
-\frac{32768\cdot32767\cdot101}{t_{\mathrm{force}}}.
-$$
-
-The throughput efficiency is defined as
-
-$$
-E_{\mathrm{throughput}}(P)
-=
-\frac{R_{\mathrm{int}}(P)}
-{P\,R_{\mathrm{int}}(1)}.
-$$
-
-A value close to one indicates that the interaction throughput grows
-proportionally to the number of MPI ranks. Values slightly above unity are
-within measurement variability and should not be interpreted as super-linear
-algorithmic scaling.
-
-| MPI ranks | Force time (s) | Force / total | Ginteraction/s | Ideal Ginteraction/s | Throughput efficiency |
-|---:|---:|---:|---:|---:|---:|
-| 1 | $370.531173 \pm 0.489564$ | 98.97% | 0.293 | 0.293 | 1.000 |
-| 2 | $185.020960 \pm 0.084704$ | 98.51% | 0.586 | 0.585 | 1.001 |
-| 4 | $92.475055 \pm 0.019084$ | 98.27% | 1.173 | 1.171 | 1.002 |
-| 8 | $46.242101 \pm 0.003023$ | 98.08% | 2.345 | 2.341 | 1.002 |
-| 16 | $23.142003 \pm 0.001770$ | 97.98% | 4.686 | 4.683 | 1.001 |
-| 32 | $11.584479 \pm 0.006580$ | 97.59% | 9.361 | 9.366 | 1.000 |
-
-The interaction rate increases from approximately $0.293$ Ginteraction/s on
-one MPI rank to $9.361$ Ginteraction/s on 32 MPI ranks. This is almost exactly
-a $32\times$ increase, matching the strong-scaling result from the wall-clock
-timings. At the same time, the force kernel accounts for $97.6$--$99.0\%$ of
-the total runtime, confirming that the measured speedup is driven primarily by
-parallelizing the direct all-pairs computation rather than by changes in the
-auxiliary integration or diagnostic phases.
-
-### 7.4 Weak Scaling
-
-In the weak-scaling experiment, the number of target particles owned by each MPI rank is kept fixed at
-
-$$
-N_{\mathrm{local}}=8192,
-$$
-
-while the global particle count grows as
-
-$$
-N=P\,N_{\mathrm{local}}.
-$$
-
-For many local-domain algorithms, ideal weak scaling would imply a constant runtime because each process performs a constant amount of work. A direct all-pairs N-body algorithm behaves differently.
-
-Each rank owns $N_{\mathrm{local}}$ target particles, but every target must interact with all
-
-$$
-N=P\,N_{\mathrm{local}}
-$$
-
-source particles. The work per rank is therefore
-
-$$
-W_{\mathrm{rank}}
-\propto
-N_{\mathrm{local}}N
-=
-P\,N_{\mathrm{local}}^2.
-$$
-
-Thus, even under ideal parallel scaling, runtime is expected to grow linearly with the number of ranks:
-
-$$
-T_{\mathrm{ideal}}(P)=P\,T(1).
-$$
-
-For this reason, weak-scaling efficiency is defined relative to this
-algorithm-aware ideal:
-
-$$
-E_{\mathrm{weak}}(P)
-=
-\frac{P\,T(1)}{T(P)}.
-$$
-
-A value close to one indicates that the measured runtime follows the expected growth of the direct all-pairs computation.
-
-![Native weak scaling](report/figures/weak_scaling_native_final.svg)
-
-The native weak-scaling measurements are reported as median $\pm$ sample standard deviation over five repetitions:
-
-| MPI ranks | Global $N$ | Total time (s) | Scaled speedup | Efficiency |
-|---:|---:|---:|---:|---:|
-| 1 | 8,192 | $24.032469 \pm 0.022871$ | 1.000 | 1.000 |
-| 2 | 16,384 | $48.688509 \pm 0.049339$ | 1.974 | 0.987 |
-| 4 | 32,768 | $97.615508 \pm 0.098695$ | 3.939 | 0.985 |
-| 8 | 65,536 | $195.622070 \pm 0.250037$ | 7.862 | 0.983 |
-| 16 | 131,072 | $391.787201 \pm 1.201007$ | 15.703 | 0.981 |
-
-The measured runtime follows the expected $P\,T(1)$ trend very closely. The reported standard deviations remain small relative to the total times, indicating that the weak-scaling trend is not driven by outlier runs.
-
-At 16 ranks,
-
-$$
-E_{\mathrm{weak}}(16)=0.981,
-$$
-
-showing that the additional communication and parallel overhead introduce only a small deviation from the ideal direct-N-body scaling model.
-
-The communication fraction increases from zero at one rank to a few percent
-for the larger configurations. It reaches approximately $3.1\%$ at 8 ranks
-and remains about $2.6\%$ at 16 ranks. This confirms that MPI communication
-becomes more visible as the ring contains more ranks, but the force
-calculation remains the dominant component of the execution.
-
-Numerical correctness is also preserved as the global problem size grows. The largest energy drift measured in the final weak-scaling experiment is
-
-$$
-3.58\times10^{-6},
-$$
-
-which remains well below the $10^{-4}$ validation threshold.
-
-
-### 7.5 Scalability and Bottleneck Evolution
-
-The scaling experiments can be interpreted in the context of Amdahl's and Gustafson's laws.
-
-For strong scaling, Amdahl's law highlights the fact that serial work and parallel overhead eventually limit the speedup obtainable at fixed problem size. In the present measurements, however, this saturation regime is not yet
-dominant: the native implementation retains an efficiency of $0.986$ at
-32 MPI ranks.
-
-A small amount of serial and non-scalable work is present in the application, including diagnostics, MPI synchronization, communication startup, and runtime overheads, but the direct force kernel remains sufficiently expensive for
-these components to be strongly amortized.
-
-A numerical fit of an Amdahl serial fraction is not particularly meaningful for the current dataset because the measured deviations from ideal strong scaling are still very small over the tested range and comparable to ordinary node-level variability. Amdahl's law is therefore used here as an interpretive model rather than as a fitted performance law.
-
-Gustafson's perspective is more relevant when the problem size grows with the available parallel resources. The weak-scaling experiment follows this idea,
-but direct N-body introduces an important distinction: fixing
-$N_{\mathrm{local}}$ does not keep the work per process constant because the global source set grows with $P$.
-
-The appropriate reference is therefore the algorithm-aware scaling law
-
-$$
-T(P)\propto P,
-$$
-
-rather than constant weak-scaling time. The measured native efficiency of
-$0.981$ at 16 ranks shows that the implementation follows this expected
-growth closely.
-
-Taken together, the results also show how the bottleneck evolves with parallelism. The baseline application is dominated by the $O(N^2)$ force kernel, and within the measured process range this remains true even after introducing MPI. Communication becomes progressively more visible as $P$ increases, but it does not yet dominate the runtime.
-
-This explains both the near-ideal strong scaling and the limited benefit of communication-computation overlap: the application remains primarily compute-bound in the tested regime.
-
-
-## 8. Containerization and Portability
-
-The final part of the project evaluates whether the N-body application can be executed inside a Singularity container without introducing a significant performance penalty.
-
-For an HPC application, container portability depends on more than packaging the executable and its dependencies. MPI applications must also interact correctly with the communication stack provided by the target cluster.
-Therefore, the container study considers both application-level performance and the mechanisms that may contribute to container overhead: MPI library
-binding, MPI transport selection, container startup, and communication latency and bandwidth.
-
-The analysis follows a top-down approach. First, the complete N-body
-application is compared in native and containerized execution. Container
-startup and MPI microbenchmarks are then used to explain the observed
-application-level behaviour.
-
-### 8.1 Container Design, Host MPI Binding and Transport Configuration
-
-The container provides a reproducible userspace and build environment while reusing the MPI implementation installed on the HPC system at runtime.
-
-The image is based on `Ubuntu 24.04`. Ubuntu 22.04, initially considered as the reference base image, was not compatible with the OpenMPI installation available on Orfeo because the host MPI stack required a newer glibc version.
-Ubuntu 24.04 was therefore selected as a general-purpose CPU-oriented base image compatible with the cluster runtime.
-
-A general-purpose Ubuntu image was used instead of a vendor HPC image because the project does not depend on GPU libraries, vendor math libraries, or a pre-packaged HPC software stack. The goal is to keep the build environment small, transparent, and reproducible, while deliberately injecting the cluster MPI implementation at runtime. A vendor image would add components that are not used by this CPU-only direct N-body code and could obscure which MPI stack is active during execution.
-
-The container setup is described by two versioned recipes. `container/Dockerfile` defines the Docker build environment required by the assignment, including the compiler toolchain, OpenMPI headers and runtime tools needed at build time. The Singularity image used on Orfeo is described by `container/nbody.def`, which mirrors the same build dependencies in a Singularity definition file.
-
-The final experiments used the generated image
-
-```text
-container/nbody_latest.sif
-```
-
-as the container artifact. This `.sif` file is not committed to the repository because it is a generated binary artifact; the reproducible source for it is the definition file. On Orfeo, the available container runtime was SingularityCE 4.3.1, while `apptainer` was not available in the measured software stack. Therefore all container runs were executed with Singularity.
-
-The image corresponds to the assignment's definition-file workflow:
-
-```text
-singularity build container/nbody_latest.sif container/nbody.def
-```
-
-This choice keeps the container recipe versioned with the source code and makes the installed build-time dependencies explicit.
-
-OpenMPI is installed inside the container because `mpicc` is required during the build stage. However, the container MPI installation is not used as the runtime communication stack for the production MPI experiments. At execution time, the OpenMPI libraries provided by Orfeo are bound into the container and used together with the host MPI launcher.
-
-This distinction is important on HPC systems: an MPI library built inside a container may not match the launcher, transport components, or interconnect configuration provided by the cluster.
-
-#### Verification of Host MPI Binding
-
-MPI library resolution was explicitly verified with `ldd` in three execution environments:
-
-```text
-native executable
-container build environment
-host-MPI-bound container runtime
-```
-
-The three checks have different purposes.
-
-For the native executable, MPI libraries are resolved from the Orfeo OpenMPI installation.
-
-Inside the unmodified container build environment, the executable resolves the MPI libraries installed in the container itself, for example under `/lib/x86_64-linux-gnu`
-After binding the host MPI stack at runtime, the executable inside Singularity instead resolves
-```text
-libmpi
-libopen-rte
-libopen-pal
-```
-from the Orfeo OpenMPI installation under
-`/opt/programs/openMPI/4.1.6/lib`
-matching the native executable.
-
-This ldd verification confirms that the final container runs use the cluster MPI stack rather than silently falling back to the MPI implementation shipped inside the image.
-
-If the MPI implementation inside the container and the host MPI runtime are incompatible, the failure mode can range from explicit loader/runtime errors to more subtle hangs or degraded communication performance. Without inspecting the source code, the mismatch can be detected by comparing `ldd` output for the executable in the native environment, inside the container build environment, and inside the host-MPI-bound container run. Runtime smoke tests and simple MPI microbenchmarks then check that the selected libraries also behave correctly at execution time.
-
-#### MPI Transport Choice for Native-versus-Container Runs
-
-Initial container diagnostics showed that using the default OpenMPI transport
-selection could introduce container-specific behaviour. In particular, the
-goal of the container experiments is not only to run the application inside
-Singularity, but also to avoid mistaking MPI transport issues for
-application-level container overhead.
-
-On a single node, the relevant OpenMPI Byte Transfer Layer components are
-
-```text
-self   communication of a rank with itself
-vader  shared-memory communication between ranks on the same node
-tcp    TCP communication
-```
-
-Under normal native execution, `vader` is expected to provide the efficient
-shared-memory path for ranks located on the same node. During the initial
-Singularity tests, however, the default configuration produced warnings from
-MPI components that were not part of the comparison being tested.
-
-The UCX path produced version warnings when libraries from the container
-environment were visible:
-
-```text
-UCX WARN  UCP API version is incompatible:
-required >= 1.17, actual 1.16.0
-```
-
-The intra-node shared-memory path could also produce warnings associated with
-`vader` segments under `/dev/shm`, for example:
-
-```text
-System call: unlink(2) /dev/shm/vader_segment...
-Error: No such file or directory (errno 2)
-```
-
-Although the application still completed correctly, retaining this
-configuration would have made the native-versus-container comparison
-ambiguous: a measured performance difference could have originated from the container/shared-memory interaction rather than from Singularity itself.
-
-An intermediate policy excluding UCX and fabric-oriented BTLs,
-
-```text
-OMPI_MCA_pml=^ucx
-OMPI_MCA_btl=^ofi,usnic,openib
-OMPI_MCA_osc=^ucx
-OMPI_MCA_btl_vader_single_copy_mechanism=none
-```
-
-removed the UCX warnings but still allowed OpenMPI to select `vader` for
-same-node ranks. Since the final comparison is intended to isolate
-native-versus-container overhead rather than benchmark Orfeo's fastest
-shared-memory transport, the final controlled application runs use the more
-conservative and fully reproducible policy
-
-```text
-OMPI_MCA_pml=^ucx
-OMPI_MCA_btl=self,tcp
-OMPI_MCA_osc=^ucx
-OMPI_MCA_btl_vader_single_copy_mechanism=none
-```
-
-for both native and container executions. This disables the `vader`
-shared-memory path and avoids the `/dev/shm` warnings. The cost is that
-absolute intra-node communication performance is conservative; the benefit is
-that both backends use the same clean transport path.
-
-The native-only scaling and hybrid-mapping experiments are intentionally
-different: they use the host MPI default transport because their objective is
-to characterize native performance on the GENOA node rather than to isolate
-container overhead.
-
-After making the runtime configuration explicit, the container smoke tests and
-the final native-versus-container benchmarks completed correctly without the
-previous UCX or `vader` warnings.
-
-### 8.2 Native vs Container Application Performance
-
-The primary application-level comparison is the execution time of the complete
-N-body code in the native and Singularity deployment configurations. Native
-and Singularity runs use identical physical inputs, numbers of MPI processes,
-integration steps, repetition counts, and the matched OpenMPI runtime policy
-defined in Section 8.1.
-
-The comparison is performed for both strong and weak scaling. Each point is the median of five executions and is accompanied by the corresponding sample standard deviation.
-
-It is important to note that the two binaries deliberately use different
-compiler targets:
-
-```text
-native:     -march=native
-container:  -march=x86-64-v3
-```
-
-Therefore, the reported percentage is the measured container overhead requested
-by the assignment,
-
-$$
-100\left(\frac{T_{\mathrm{container}}}{T_{\mathrm{native}}}-1\right),
-$$
-
-but it should be interpreted as the overhead of the complete containerized
-deployment relative to the native deployment, not as a pure decomposition of
-the Singularity wrapper alone. It can contain effects from the container
-runtime, compiler target, toolchain, placement, cache behaviour, and normal
-run-to-run variability.
-
-
-The strong-scaling native-versus-container comparison is shown below. The
-percentage labels use the same overhead definition.
-
-![Strong scaling native vs container](report/figures/strong_scaling_native_container_final.svg)
-
-For `strong scaling`, the measured container overhead remains small over the complete range from 1 to 32 MPI ranks:
-
-| MPI ranks | Native time (s) | Container time (s) | Measured container overhead |
-|---:|---:|---:|---:|
-| 1 | $377.476774 \pm 1.575675$ | $373.803578 \pm 0.225742$ | -0.97% |
-| 2 | $192.136294 \pm 0.051788$ | $187.832592 \pm 0.087729$ | -2.24% |
-| 4 | $96.453229 \pm 0.070562$ | $94.165248 \pm 0.044843$ | -2.37% |
-| 8 | $48.498850 \pm 0.009672$ | $47.260008 \pm 0.013726$ | -2.55% |
-| 16 | $24.492627 \pm 0.008468$ | $23.766715 \pm 0.018591$ | -2.96% |
-| 32 | $12.529375 \pm 0.044831$ | $12.164797 \pm 0.007646$ | -2.91% |
-
-The observed differences range from approximately $-3.0\%$ to $-1.0\%$.
-Negative values mean that the measured container runtime was lower than the
-corresponding native runtime in that job. They are not interpreted as evidence
-that Singularity accelerates the code. Since the native and container binaries
-use different compilation targets and are measured as complete deployment
-configurations, the observed offset cannot be uniquely attributed to the
-container runtime alone.
-The reported $\sigma$ values quantify repeatability within each benchmark configuration; they do not include all cross-job effects such as different node placement or the native/container compilation-target difference.
-
-The `weak-scaling` comparison gives a similarly small range and is especially
-stable at low and intermediate process counts:
-
-![Weak scaling native vs container](report/figures/weak_scaling_native_container_final.svg)
-
-| MPI ranks | Native time (s) | Container time (s) | Measured container overhead |
-|---:|---:|---:|---:|
-| 1 | $23.332344 \pm 0.036565$ | $23.350336 \pm 0.001905$ | +0.08% |
-| 2 | $46.981598 \pm 0.055411$ | $46.961641 \pm 0.002709$ | -0.04% |
-| 4 | $94.373261 \pm 0.032592$ | $94.132828 \pm 0.026092$ | -0.25% |
-| 8 | $190.051070 \pm 0.027471$ | $188.543249 \pm 0.047304$ | -0.79% |
-| 16 | $386.723009 \pm 1.094676$ | $377.915699 \pm 0.162304$ | -2.28% |
-
-The measured overhead remains between approximately $+0.1\%$ and $-2.3\%$.
-
-Overall, no systematic application-level container penalty is visible above a
-few percent for these compute-intensive runs. The weak-scaling results are
-particularly useful because they cover five different process/problem-size
-configurations and remain close to zero overhead over most of the range. The
-strong-scaling results show the same qualitative conclusion: no positive
-container penalty is visible, but the negative offsets should be interpreted as
-deployment-level differences rather than as a Singularity speedup.
-
-### 8.3 Container Launch Overhead
-
-Container startup was measured independently from application execution by
-repeating a trivial command ten times:
-
-```text
-singularity exec <image> true
-```
-
-and comparing it with native execution of `true`.
-
-| Mode      | Repeats | Median (s) | Stdev (s) |  Min (s) |  Max (s) |
-| :-------- | ------: | ---------: | --------: | -------: | -------: |
-| Container |      10 |   0.102052 |  0.196828 | 0.100407 | 0.724725 |
-| Native    |      10 |   0.000444 |  0.000120 | 0.000432 | 0.000823 |
-
-The median Singularity launch time is therefore approximately
-
-$$ 0.102\ \mathrm{s}. $$
-
-Relative to the native `true` command, the corresponding fixed launch overhead
-is approximately
-
-$$
-0.102052 - 0.000444 \simeq 0.1016\ \mathrm{s}.
-$$
-
-One container launch is substantially slower than the remaining measurements, reaching $0.725$ s. No observation is removed from the reported statistics; the median is therefore particularly useful for representing the typical launch cost in the presence of this outlier.
-
-For the multi-second and multi-minute N-body runs, a fixed cost of roughly
-$0.1$ s is strongly amortized, explaining why startup is not visible as a
-significant percentage contribution in the application-level scaling results.
-
-### 8.4 MPI Communication Microbenchmark
-
-To isolate possible MPI-specific container overhead, latency and bandwidth were measured separately using the `OSU Micro-Benchmarks`.
-
-OSU was not available as an Orfeo module and was therefore built in user space using the same OpenMPI environment used by the application. Native and container measurements use two MPI processes and the same host-MPI binding mechanism used by the application container runs.
-
-This microbenchmark is more sensitive to the intra-node MPI transport than the
-full N-body application because it is a two-process communication test rather
-than a long compute-dominated run. For this reason, the same controlled policy
-defined in Section 8.1 was also used for OSU. The resulting measurements should
-not be interpreted as the maximum possible intra-node bandwidth of Orfeo;
-rather, they test whether the Singularity wrapper and host-MPI binding
-introduce a systematic communication penalty under a reproducible transport
-configuration.
-
-Each measurement was repeated five times.
-
-![OSU MPI microbenchmark: native vs container](report/figures/mpi_microbenchmark_curve.svg)
-
-The two representative points are:
-
-| Metric | Message size | Native | Container | Difference |
-|:---|---:|---:|---:|---:|
-| Latency | 1 B | $9.940 \pm 0.161\ \mu s$ | $10.000 \pm 0.088\ \mu s$ | +0.60% |
-| Bandwidth | 4 MiB | $1673.450 \pm 245.560$ MB/s | $1668.570 \pm 244.222$ MB/s | -0.29% |
-
-The complete latency and bandwidth curves are almost superimposed. At one
-byte, the container latency is higher by only $0.60\%$, corresponding to
-approximately $0.06\ \mu s$. At 4 MiB, the measured bandwidth difference is
-$-0.29\%$, much smaller than the run-to-run standard deviation of about
-$245$ MB/s.
-
-These differences are negligible relative to the cost of the direct force kernel and are consistent with the application-level measurements: for long, compute-dominated N-body runs, MPI/container overhead remains a secondary component of total execution time.
-
-The OSU results are consistent with the scaling experiments: the container
-does not remove communication overhead, but neither the Singularity runtime nor the host-MPI binding becomes a dominant performance bottleneck for this compute-intensive application. The important result is not that `self,tcp` is the fastest possible OpenMPI transport on Orfeo, but that, once the transport is controlled and identical for both backends, the container does not introduce a systematic communication penalty.
-
----
-Overall, the container study shows that portable execution can be achieved
-without materially changing the scalability of the application, provided that the MPI runtime is integrated carefully.
-
-Three aspects are essential to this conclusion:
-1. the container uses a portable userspace and compilation target rather than assuming the exact host architecture;
-2. the cluster MPI runtime is injected at execution time and its use is verified explicitly with `ldd`;
-3. native and container measurements are performed with the same MPI transport policy, preventing transport-specific behaviour from being mistaken for container overhead.
-
-The resulting `.sif` remains portable at the application level, but MPI
-portability is necessarily cluster-dependent. On a different HPC system, the source code and container image could remain largely unchanged, while the host MPI module, library bind paths, transport components, and interconnect support
-would need to be revalidated. The appropriate procedure would again be to bind the target cluster's MPI stack, verify library resolution with `ldd`, perform a small MPI smoke test, and repeat latency/bandwidth validation before interpreting application-level performance.
-
-On a cluster with InfiniBand rather than Orfeo's local GENOA environment, the application source code, binary input format, container recipe, and high-level MPI ring algorithm would remain unchanged. What would need to change is the runtime integration layer: the loaded MPI module, the bound host-library paths, and the OpenMPI transport policy should be chosen for the target interconnect. In particular, disabling fabric transports for a controlled single-node comparison is not the same as configuring a production multi-node InfiniBand run.
-
-The ring-shift communication pattern itself is safe to containerize because it uses standard point-to-point MPI operations and does not rely directly on vendor-specific APIs in the application source. However, the MPI implementation may use shared-memory mechanisms, single-copy protocols, XPMEM-like facilities, or fabric plugins underneath. These mechanisms can be unavailable or restricted inside a container, as illustrated by the observed `vader` `/dev/shm` warnings. For this reason, the report treats MPI transport validation as part of the container experiment rather than assuming that containerization is transparent.
-
-
-## 9. Limitations and Reproducibility
-
-The final benchmark campaign was designed to follow the structure of the
-assignment while adapting it to the resources actually available on Orfeo.
-The main limitations are explicit:
-
-- the experiments were executed on Orfeo GENOA rather than on LEONARDO;
-- all final MPI scaling and container comparisons are single-node experiments;
-- the strong- and weak-scaling problem sizes were reduced relative to the
-  assignment reference values because of the two-hour wall-time limit;
-- hardware performance counters were not available through `perf`, `PAPI`, or
-  `LIKWID`, so vectorization was assessed through GCC reports and derived
-  throughput rather than counter events;
-- the native/container application comparison uses complete deployment
-  configurations: native `-march=native` versus container `-march=x86-64-v3`,
-  with the same controlled MPI transport policy;
-- native-only performance experiments and native/container comparisons use
-  different MPI transport policies intentionally, because they answer different
-  questions.
-
-The repository records the commands and scripts used to regenerate the report
-artifacts. The most important traceability links are:
+All report tables and figures are generated from benchmark data and analysis scripts rather than manually edited results.
 
 | Assignment item | Report section | Reproducible artifact |
 |:---|:---|:---|
@@ -1953,34 +2462,10 @@ artifacts. The most important traceability links are:
 | $O(N^2)$ growth | Section 5.2 | `report/tables/n_growth_summary.md` |
 | Kernel profiling and throughput | Sections 5.3, 7.3 | `report/tables/force_throughput_summary.md` |
 | Newton, layout, rsqrt, accumulators | Section 6 | `report/tables/*_tradeoff_summary.md` |
-| Hybrid MPI/OpenMP mapping and binding | Sections 4.4, 7.1 | `scripts/slurm/binding_check.slurm`, `report/tables/hybrid_mapping_summary.md` |
+| Hybrid mapping and binding | Sections 4.4, 7.1 | `scripts/slurm/binding_check.slurm`, `report/tables/hybrid_mapping_summary.md` |
 | Communication overlap | Section 7.2 | `report/tables/ring_overlap_summary.md` |
 | Strong/weak scaling | Sections 7.3, 7.4 | `report/tables/*scaling*_summary.md` |
 | Container launch and MPI tests | Sections 8.3, 8.4 | `report/tables/container_launch_overhead_summary.md`, `report/tables/mpi_microbenchmark_summary.md` |
 | Native/container comparison | Section 8.2 | `report/tables/container_overhead_summary.md` |
 
-This structure makes the report reproducible from CSV-level data products
-rather than from hand-edited tables. Where a derived metric is reported, such
-as Ginteraction/s, the corresponding analysis script is included under
-`scripts/analyze/`.
-
-
-## 10. Conclusions
-
-The experiments highlight that the performance of a direct N-body solver
-depends on the interaction between numerical formulation, low-level kernel
-design, parallel decomposition, and runtime configuration.
-
-At kernel level, the results show that reducing the theoretical amount of work does not necessarily improve parallel performance. Optimizations such as Newton's third law or reciprocal-square-root approximations introduce additional constraints related to synchronization, vectorization, or numerical accuracy.
-Conversely, optimizations that preserve the existing ownership model, such as accumulator splitting, integrate more naturally into the current implementation.
-
-The parallel experiments confirm that the direct force evaluation remains the dominant cost over the tested range. MPI communication and synchronization remain secondary, which explains the good strong- and weak-scaling behaviour and the limited benefit obtained from communication-computation overlap.
-The hybrid mapping study also shows that the best MPI/OpenMP decomposition
-cannot be selected from hardware topology alone and should instead be evaluated experimentally.
-
-Finally, the container study demonstrates that portable execution can be
-obtained without significantly altering application performance, provided that the host MPI runtime and communication configuration are handled explicitly.
-The `ldd`, launch-overhead, and MPI microbenchmark tests are therefore important parts of the container validation rather than simple implementation details.
-
-A main limitation of the current implementation is that the dominant force
-loop is not effectively vectorized. A natural extension would therefore be to combine the SoA representation, explicit SIMD, reciprocal-square-root refinement, and multiple accumulators in a single optimized interaction kernel.
+Derived quantities such as `Ginteraction/s`, speedup, efficiency, and container overhead are generated by the corresponding scripts under `scripts/analyze/`.
