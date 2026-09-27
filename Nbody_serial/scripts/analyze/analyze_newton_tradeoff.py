@@ -13,6 +13,7 @@ from pathlib import Path
 FLOPS_PER_INTERACTION = {
     "direct": 20.0,
     "newton": 23.0,
+    "newton-private": 23.0,
     "newton-atomic": 23.0,
 }
 
@@ -189,10 +190,11 @@ def draw_grouped_bars(
     colors = {
         "direct": "#2563eb",
         "newton": "#16a34a",
+        "newton-private": "#ca8a04",
         "newton-atomic": "#dc2626",
     }
     if kernels is None:
-        kernels = ["direct", "newton", "newton-atomic"]
+        kernels = ["direct", "newton", "newton-private", "newton-atomic"]
     threads = sorted({int(row["threads"]) for row in rows})
     row_by_key = {(int(row["threads"]), str(row["kernel"])): row for row in rows}
     group_width = width / len(threads)
@@ -281,7 +283,7 @@ def write_svg(path: Path, summary: list[dict[str, object]]) -> None:
             "Speedup relative to direct",
             "Speedup factor = T_direct / T_kernel",
             speedup_max,
-            kernels=["newton", "newton-atomic"],
+            kernels=["newton", "newton-private", "newton-atomic"],
         ),
         f'<line x1="622" y1="{ideal_speedup_y:.1f}" x2="1042" y2="{ideal_speedup_y:.1f}" stroke="#9ca3af" stroke-dasharray="5 5"/>',
         f'<text x="930" y="{ideal_speedup_y - 8:.1f}" font-size="11" fill="#6b7280">ideal Newton 2x</text>',

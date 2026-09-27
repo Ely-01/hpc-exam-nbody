@@ -16,6 +16,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 #if defined (__SSE__)
 #include <xmmintrin.h>
 #endif
@@ -33,6 +37,7 @@ typedef enum force_kernel_e
   FORCE_KERNEL_DIRECT_SPLIT4,
   FORCE_KERNEL_DIRECT_SPLIT8,
   FORCE_KERNEL_NEWTON,
+  FORCE_KERNEL_NEWTON_PRIVATE,
   FORCE_KERNEL_NEWTON_ATOMIC
 } force_kernel_t;
 
@@ -80,10 +85,12 @@ static force_kernel_t parse_force_kernel (const char *text)
     return FORCE_KERNEL_DIRECT_SPLIT8;
   if (strcmp (text, "newton") == 0)
     return FORCE_KERNEL_NEWTON;
+  if (strcmp (text, "newton-private") == 0)
+    return FORCE_KERNEL_NEWTON_PRIVATE;
   if (strcmp (text, "newton-atomic") == 0)
     return FORCE_KERNEL_NEWTON_ATOMIC;
 
-  nbody_die ("invalid force kernel '%s': expected direct, direct-split2, direct-split4, direct-split8, newton, or newton-atomic", text);
+  nbody_die ("invalid force kernel '%s': expected direct, direct-split2, direct-split4, direct-split8, newton, newton-private, or newton-atomic", text);
   return FORCE_KERNEL_DIRECT;
 }
 
@@ -101,6 +108,8 @@ static const char *force_kernel_name (force_kernel_t kernel)
       return "direct-split8";
     case FORCE_KERNEL_NEWTON:
       return "newton";
+    case FORCE_KERNEL_NEWTON_PRIVATE:
+      return "newton-private";
     case FORCE_KERNEL_NEWTON_ATOMIC:
       return "newton-atomic";
     }
@@ -428,6 +437,131 @@ static void compute_accelerations_newton (size_t n, dtype g, dtype mass, dtype e
 }
 
 /*
+ * OpenMP Newton-third-law experiment with private thread-local accumulators.
+ *
+ * The pair loop still visits only j > i, so it keeps the arithmetic saving of
+ * Newton's third law.  Instead of protecting ax/ay/az with atomics, every
+ * OpenMP thread writes to its own private acceleration arrays.  A final
+ * reduction over the thread-private arrays produces the global acceleration.
+ *
+ * This removes write conflicts from the inner loop and is the intended
+ * non-atomic comparison against the clean direct all-pairs kernel.  Its cost is
+ * the extra memory footprint, zeroing, and reduction over n * nthreads values.
+ */
+static void compute_accelerations_newton_private (size_t n, dtype g, dtype mass,
+                                                  dtype eps,
+                                                  inv_sqrt_t inv_sqrt_mode,
+                                                  const dtype * restrict x,
+                                                  const dtype * restrict y,
+                                                  const dtype * restrict z,
+                                                  dtype * restrict ax,
+                                                  dtype * restrict ay,
+                                                  dtype * restrict az)
+{
+  const dtype eps2 = eps * eps;
+  size_t nthreads = 1u;
+  dtype *ax_private;
+  dtype *ay_private;
+  dtype *az_private;
+
+#ifdef _OPENMP
+  nthreads = (size_t) omp_get_max_threads ();
+#endif
+
+  ax_private = nbody_aligned_alloc (nthreads * n * sizeof (*ax_private),
+                                    NBODY_ALIGNMENT);
+  ay_private = nbody_aligned_alloc (nthreads * n * sizeof (*ay_private),
+                                    NBODY_ALIGNMENT);
+  az_private = nbody_aligned_alloc (nthreads * n * sizeof (*az_private),
+                                    NBODY_ALIGNMENT);
+
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+  for (size_t k = 0u; k < nthreads * n; ++k)
+    {
+      ax_private[k] = (dtype) 0.0;
+      ay_private[k] = (dtype) 0.0;
+      az_private[k] = (dtype) 0.0;
+    }
+
+#ifdef _OPENMP
+#pragma omp parallel
+#endif
+  {
+    size_t tid = 0u;
+    dtype * restrict ax_thread;
+    dtype * restrict ay_thread;
+    dtype * restrict az_thread;
+
+#ifdef _OPENMP
+    tid = (size_t) omp_get_thread_num ();
+#endif
+
+    ax_thread = ax_private + tid * n;
+    ay_thread = ay_private + tid * n;
+    az_thread = az_private + tid * n;
+
+#ifdef _OPENMP
+#pragma omp for schedule(static)
+#endif
+    for (size_t i = 0u; i < n; ++i)
+      {
+        const dtype xi = x[i];
+        const dtype yi = y[i];
+        const dtype zi = z[i];
+
+        for (size_t j = i + 1u; j < n; ++j)
+          {
+            const dtype dx = x[j] - xi;
+            const dtype dy = y[j] - yi;
+            const dtype dz = z[j] - zi;
+            const dtype r2 = dx * dx + dy * dy + dz * dz + eps2;
+            const dtype invr = inv_sqrt_value (r2, inv_sqrt_mode);
+            const dtype s = g * mass * invr * invr * invr;
+            const dtype axij = dx * s;
+            const dtype ayij = dy * s;
+            const dtype azij = dz * s;
+
+            ax_thread[i] += axij;
+            ay_thread[i] += ayij;
+            az_thread[i] += azij;
+            ax_thread[j] -= axij;
+            ay_thread[j] -= ayij;
+            az_thread[j] -= azij;
+          }
+      }
+  }
+
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+  for (size_t i = 0u; i < n; ++i)
+    {
+      dtype axi = (dtype) 0.0;
+      dtype ayi = (dtype) 0.0;
+      dtype azi = (dtype) 0.0;
+
+      for (size_t t = 0u; t < nthreads; ++t)
+        {
+          const size_t offset = t * n + i;
+
+          axi += ax_private[offset];
+          ayi += ay_private[offset];
+          azi += az_private[offset];
+        }
+
+      ax[i] = axi;
+      ay[i] = ayi;
+      az[i] = azi;
+    }
+
+  free (ax_private);
+  free (ay_private);
+  free (az_private);
+}
+
+/*
  * OpenMP Newton-third-law experiment with atomic accumulator updates.
  *
  * This is intentionally not the production kernel.  It exposes the conflict
@@ -537,6 +671,14 @@ static void compute_accelerations (particles_t *p, dtype g, dtype eps,
       compute_accelerations_newton (p->n, g, p->mass, eps, inv_sqrt_mode,
                                     p->x, p->y, p->z,
                                     p->ax, p->ay, p->az);
+      return;
+    }
+  if (kernel == FORCE_KERNEL_NEWTON_PRIVATE)
+    {
+      compute_accelerations_newton_private (p->n, g, p->mass, eps,
+                                            inv_sqrt_mode,
+                                            p->x, p->y, p->z,
+                                            p->ax, p->ay, p->az);
       return;
     }
   if (kernel == FORCE_KERNEL_NEWTON_ATOMIC)
@@ -657,7 +799,8 @@ static void print_usage (const char *program)
            "  --mass X                  particle mass (default: 1)\n"
            "  --integrator NAME         leapfrog variant: kdk or dkd (default: kdk)\n"
            "  --force-kernel NAME       force kernel: direct, direct-split2, direct-split4,\n"
-           "                            direct-split8, newton, or newton-atomic (default: direct)\n"
+           "                            direct-split8, newton, newton-private,\n"
+           "                            or newton-atomic (default: direct)\n"
            "  --inv-sqrt NAME           inverse sqrt: libm, rsqrt1, rsqrt2, or rsqrt3 (default: libm)\n"
            "  --energy-every N          diagnostic period in steps (default: 1)\n"
            "  --energy-tol X            warning tolerance for max relative drift (default: 1e-3)\n"
