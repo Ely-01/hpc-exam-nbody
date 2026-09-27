@@ -10,6 +10,27 @@ from collections import defaultdict
 from pathlib import Path
 
 
+PREFERRED_VARIANTS = [
+    "libm",
+    "rsqrt1",
+    "rsqrt2",
+    "rsqrt3",
+    "rsqrt512-0",
+    "rsqrt512-1",
+    "rsqrt512-2",
+]
+
+COLORS = {
+    "libm": "#2563eb",
+    "rsqrt1": "#16a34a",
+    "rsqrt2": "#ca8a04",
+    "rsqrt3": "#dc2626",
+    "rsqrt512-0": "#9333ea",
+    "rsqrt512-1": "#16a34a",
+    "rsqrt512-2": "#ca8a04",
+}
+
+
 def median(values: list[float]) -> float:
     return statistics.median(values)
 
@@ -25,31 +46,52 @@ def read_rows(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
+def variant_label(row: dict[str, str]) -> str:
+    mode = row["inv_sqrt"]
+    kernel = row.get("force_kernel", "direct")
+    if kernel == "direct":
+        return mode
+    if kernel.startswith("direct-rsqrt512-"):
+        return kernel.removeprefix("direct-")
+    return f"{kernel}/{mode}"
+
+
+def variant_sort_key(variant: str) -> tuple[int, str]:
+    if variant in PREFERRED_VARIANTS:
+        return (PREFERRED_VARIANTS.index(variant), variant)
+    return (len(PREFERRED_VARIANTS), variant)
+
+
+def ordered_variants(rows: list[dict[str, object]]) -> list[str]:
+    variants = {str(row["variant"]) for row in rows}
+    return sorted(variants, key=variant_sort_key)
+
+
 def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
     groups: dict[tuple[int, str], list[dict[str, str]]] = defaultdict(list)
     for row in rows:
-        groups[(int(row["threads"]), row["inv_sqrt"])].append(row)
+        groups[(int(row["threads"]), variant_label(row))].append(row)
 
     if not groups:
         raise ValueError("input CSV does not contain benchmark rows")
 
     libm_force = {
         threads: median([float(row["force_seconds"]) for row in group])
-        for (threads, mode), group in groups.items()
-        if mode == "libm"
+        for (threads, variant), group in groups.items()
+        if variant == "libm"
     }
     libm_drift = {
         threads: max(float(row["max_relative_energy_drift"]) for row in group)
-        for (threads, mode), group in groups.items()
-        if mode == "libm"
+        for (threads, variant), group in groups.items()
+        if variant == "libm"
     }
 
     if not libm_force:
         raise ValueError("input CSV does not contain libm baseline rows")
 
     summary = []
-    for threads, mode in sorted(groups, key=lambda key: (key[0], key[1])):
-        group = groups[(threads, mode)]
+    for threads, variant in sorted(groups, key=lambda key: (key[0], variant_sort_key(key[1]))):
+        group = groups[(threads, variant)]
         force_values = [float(row["force_seconds"]) for row in group]
         total_values = [float(row["total_seconds"]) for row in group]
         energy_values = [float(row["energy_seconds"]) for row in group]
@@ -60,7 +102,8 @@ def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
 
         summary.append(
             {
-                "inv_sqrt": mode,
+                "variant": variant,
+                "inv_sqrt": group[0]["inv_sqrt"],
                 "force_kernel": group[0]["force_kernel"],
                 "n": int(group[0]["n"]),
                 "nsteps": int(group[0]["nsteps"]),
@@ -88,6 +131,7 @@ def summarize(rows: list[dict[str, str]]) -> list[dict[str, object]]:
 
 def write_csv(path: Path, summary: list[dict[str, object]]) -> None:
     fieldnames = [
+        "variant",
         "inv_sqrt",
         "force_kernel",
         "n",
@@ -114,14 +158,14 @@ def write_csv(path: Path, summary: list[dict[str, object]]) -> None:
 
 def markdown_table(summary: list[dict[str, object]]) -> str:
     lines = [
-        "| Threads | inv sqrt | Repeats | Force median s | Force stdev s | Speedup vs libm | Max drift | Drift change vs libm | Status |",
+        "| Threads | Variant | Repeats | Force median s | Force stdev s | Speedup vs libm | Max drift | Drift change vs libm | Status |",
         "|---:|:---|---:|---:|---:|---:|---:|---:|:---|",
     ]
     for row in summary:
         lines.append(
             "| {threads} | {mode} | {repeats} | {force:.6f} | {stdev:.6f} | {speedup:.3f} | {drift:.6e} | {change:.3f}% | {status} |".format(
                 threads=row["threads"],
-                mode=row["inv_sqrt"],
+                mode=row["variant"],
                 repeats=row["repeats"],
                 force=float(row["force_median_s"]),
                 stdev=float(row["force_stdev_s"]),
@@ -149,17 +193,11 @@ def draw_panel(
     height: float,
     y_max: float,
 ) -> str:
-    colors = {
-        "libm": "#2563eb",
-        "rsqrt1": "#16a34a",
-        "rsqrt2": "#ca8a04",
-        "rsqrt3": "#dc2626",
-    }
-    modes = ["libm", "rsqrt1", "rsqrt2", "rsqrt3"]
+    variants = ordered_variants(rows)
     threads = sorted({int(row["threads"]) for row in rows})
-    row_by_key = {(int(row["threads"]), str(row["inv_sqrt"])): row for row in rows}
+    row_by_key = {(int(row["threads"]), str(row["variant"])): row for row in rows}
     group_width = width / len(threads)
-    bar_width = group_width / 5.2
+    bar_width = group_width / (len(variants) + 1.2)
 
     def sy(value: float) -> float:
         return y0 + height - value / y_max * height
@@ -182,8 +220,8 @@ def draw_panel(
         base_x = x0 + group_index * group_width + group_width * 0.12
         center = x0 + group_index * group_width + group_width / 2
         parts.append(f'<text x="{center:.1f}" y="{y0 + height + 22:.1f}" text-anchor="middle" font-size="11">{thread}</text>')
-        for mode_index, mode in enumerate(modes):
-            row = row_by_key.get((thread, mode))
+        for mode_index, variant in enumerate(variants):
+            row = row_by_key.get((thread, variant))
             if row is None:
                 continue
             value = float(row[metric])
@@ -194,15 +232,15 @@ def draw_panel(
                     py,
                     bar_width * 0.82,
                     y0 + height - py,
-                    colors[mode],
+                    COLORS.get(variant, "#6b7280"),
                 )
             )
 
     legend_x = x0 + width - 112
-    for index, mode in enumerate(modes):
+    for index, variant in enumerate(variants):
         ly = y0 + 18 + index * 18
-        parts.append(bar(legend_x, ly - 10, 10, 10, colors[mode]))
-        parts.append(f'<text x="{legend_x + 16:.1f}" y="{ly:.1f}" font-size="11">{mode}</text>')
+        parts.append(bar(legend_x, ly - 10, 10, 10, COLORS.get(variant, "#6b7280")))
+        parts.append(f'<text x="{legend_x + 16:.1f}" y="{ly:.1f}" font-size="11">{variant}</text>')
 
     return "\n".join(parts)
 
@@ -218,17 +256,11 @@ def draw_signed_panel(
     height: float,
     y_abs_max: float,
 ) -> str:
-    colors = {
-        "libm": "#2563eb",
-        "rsqrt1": "#16a34a",
-        "rsqrt2": "#ca8a04",
-        "rsqrt3": "#dc2626",
-    }
-    modes = ["libm", "rsqrt1", "rsqrt2", "rsqrt3"]
+    variants = ordered_variants(rows)
     threads = sorted({int(row["threads"]) for row in rows})
-    row_by_key = {(int(row["threads"]), str(row["inv_sqrt"])): row for row in rows}
+    row_by_key = {(int(row["threads"]), str(row["variant"])): row for row in rows}
     group_width = width / len(threads)
-    bar_width = group_width / 5.2
+    bar_width = group_width / (len(variants) + 1.2)
 
     def sy(value: float) -> float:
         return y0 + height - (value + y_abs_max) / (2.0 * y_abs_max) * height
@@ -253,8 +285,8 @@ def draw_signed_panel(
         base_x = x0 + group_index * group_width + group_width * 0.12
         center = x0 + group_index * group_width + group_width / 2
         parts.append(f'<text x="{center:.1f}" y="{y0 + height + 22:.1f}" text-anchor="middle" font-size="11">{thread}</text>')
-        for mode_index, mode in enumerate(modes):
-            row = row_by_key.get((thread, mode))
+        for mode_index, variant in enumerate(variants):
+            row = row_by_key.get((thread, variant))
             if row is None:
                 continue
             value = float(row[metric])
@@ -271,15 +303,15 @@ def draw_signed_panel(
                     y,
                     bar_width * 0.82,
                     h,
-                    colors[mode],
+                    COLORS.get(variant, "#6b7280"),
                 )
             )
 
     legend_x = x0 + width - 112
-    for index, mode in enumerate(modes):
+    for index, variant in enumerate(variants):
         ly = y0 + 18 + index * 18
-        parts.append(bar(legend_x, ly - 10, 10, 10, colors[mode]))
-        parts.append(f'<text x="{legend_x + 16:.1f}" y="{ly:.1f}" font-size="11">{mode}</text>')
+        parts.append(bar(legend_x, ly - 10, 10, 10, COLORS.get(variant, "#6b7280")))
+        parts.append(f'<text x="{legend_x + 16:.1f}" y="{ly:.1f}" font-size="11">{variant}</text>')
 
     return "\n".join(parts)
 
@@ -296,7 +328,7 @@ def write_svg(path: Path, summary: list[dict[str, object]]) -> None:
         '<rect width="100%" height="100%" fill="white"/>',
         '<style>text{font-family:Arial, Helvetica, sans-serif; fill:#111827;}</style>',
         '<text x="520" y="34" text-anchor="middle" font-size="21" font-weight="700">Reciprocal square-root trade-off</text>',
-        '<text x="520" y="58" text-anchor="middle" font-size="12" fill="#4b5563">rsqrt modes use an approximate reciprocal sqrt estimate plus Newton refinements; libm remains the reference.</text>',
+        '<text x="520" y="58" text-anchor="middle" font-size="12" fill="#4b5563">Approximate reciprocal-square-root variants are compared against the direct libm baseline.</text>',
         draw_panel(
             summary,
             "speedup_vs_libm",

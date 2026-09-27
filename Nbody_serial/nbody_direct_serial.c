@@ -20,6 +20,10 @@
 #include <omp.h>
 #endif
 
+#if defined (__AVX512F__)
+#include <immintrin.h>
+#endif
+
 #if defined (__SSE__)
 #include <xmmintrin.h>
 #endif
@@ -36,6 +40,9 @@ typedef enum force_kernel_e
   FORCE_KERNEL_DIRECT_SPLIT2,
   FORCE_KERNEL_DIRECT_SPLIT4,
   FORCE_KERNEL_DIRECT_SPLIT8,
+  FORCE_KERNEL_DIRECT_RSQRT512_0,
+  FORCE_KERNEL_DIRECT_RSQRT512_1,
+  FORCE_KERNEL_DIRECT_RSQRT512_2,
   FORCE_KERNEL_NEWTON,
   FORCE_KERNEL_NEWTON_PRIVATE,
   FORCE_KERNEL_NEWTON_ATOMIC
@@ -83,6 +90,12 @@ static force_kernel_t parse_force_kernel (const char *text)
     return FORCE_KERNEL_DIRECT_SPLIT4;
   if (strcmp (text, "direct-split8") == 0)
     return FORCE_KERNEL_DIRECT_SPLIT8;
+  if (strcmp (text, "direct-rsqrt512-0") == 0)
+    return FORCE_KERNEL_DIRECT_RSQRT512_0;
+  if (strcmp (text, "direct-rsqrt512-1") == 0)
+    return FORCE_KERNEL_DIRECT_RSQRT512_1;
+  if (strcmp (text, "direct-rsqrt512-2") == 0)
+    return FORCE_KERNEL_DIRECT_RSQRT512_2;
   if (strcmp (text, "newton") == 0)
     return FORCE_KERNEL_NEWTON;
   if (strcmp (text, "newton-private") == 0)
@@ -90,7 +103,7 @@ static force_kernel_t parse_force_kernel (const char *text)
   if (strcmp (text, "newton-atomic") == 0)
     return FORCE_KERNEL_NEWTON_ATOMIC;
 
-  nbody_die ("invalid force kernel '%s': expected direct, direct-split2, direct-split4, direct-split8, newton, newton-private, or newton-atomic", text);
+  nbody_die ("invalid force kernel '%s': expected direct, direct-split2, direct-split4, direct-split8, direct-rsqrt512-0, direct-rsqrt512-1, direct-rsqrt512-2, newton, newton-private, or newton-atomic", text);
   return FORCE_KERNEL_DIRECT;
 }
 
@@ -106,6 +119,12 @@ static const char *force_kernel_name (force_kernel_t kernel)
       return "direct-split4";
     case FORCE_KERNEL_DIRECT_SPLIT8:
       return "direct-split8";
+    case FORCE_KERNEL_DIRECT_RSQRT512_0:
+      return "direct-rsqrt512-0";
+    case FORCE_KERNEL_DIRECT_RSQRT512_1:
+      return "direct-rsqrt512-1";
+    case FORCE_KERNEL_DIRECT_RSQRT512_2:
+      return "direct-rsqrt512-2";
     case FORCE_KERNEL_NEWTON:
       return "newton";
     case FORCE_KERNEL_NEWTON_PRIVATE:
@@ -266,6 +285,153 @@ static void compute_accelerations_direct (size_t n, dtype g, dtype mass, dtype e
       ay[i] = ayi;
       az[i] = azi;
     }
+}
+
+#if defined (__AVX512F__) && !defined (NBODY_USE_FLOAT)
+static inline dtype hsum512_pd (__m512d value)
+{
+  dtype tmp[8];
+  dtype sum = (dtype) 0.0;
+
+  _mm512_storeu_pd (tmp, value);
+  for (size_t lane = 0u; lane < 8u; ++lane)
+    sum += tmp[lane];
+
+  return sum;
+}
+#endif
+
+/*
+ * AVX-512 direct all-pairs force kernel with double-precision rsqrt.
+ *
+ * This kernel is native-GENOA specific: it requires AVX-512 and double
+ * precision.  It keeps the same target-ownership formulation as the production
+ * direct kernel, but vectorises the inner source-particle loop and replaces the
+ * scalar libm sqrt path with _mm512_rsqrt14_pd followed by 0, 1, or 2
+ * Newton-Raphson refinement steps.
+ */
+static void compute_accelerations_direct_rsqrt512 (size_t n, dtype g,
+                                                   dtype mass, dtype eps,
+                                                   int refinements,
+                                                   const dtype * restrict x,
+                                                   const dtype * restrict y,
+                                                   const dtype * restrict z,
+                                                   dtype * restrict ax,
+                                                   dtype * restrict ay,
+                                                   dtype * restrict az)
+{
+#if defined (__AVX512F__) && !defined (NBODY_USE_FLOAT)
+  const dtype eps2 = eps * eps;
+  const dtype gmass = g * mass;
+  const __m512d veps2 = _mm512_set1_pd (eps2);
+  const __m512d vgmass = _mm512_set1_pd (gmass);
+  const __m512d vhalf = _mm512_set1_pd ((dtype) 0.5);
+  const __m512d vthree_halves = _mm512_set1_pd ((dtype) 1.5);
+
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+  for (size_t i = 0u; i < n; ++i)
+    {
+      const __m512d vxi = _mm512_set1_pd (x[i]);
+      const __m512d vyi = _mm512_set1_pd (y[i]);
+      const __m512d vzi = _mm512_set1_pd (z[i]);
+      __m512d vaxi = _mm512_setzero_pd ();
+      __m512d vayi = _mm512_setzero_pd ();
+      __m512d vazi = _mm512_setzero_pd ();
+      dtype axi = (dtype) 0.0;
+      dtype ayi = (dtype) 0.0;
+      dtype azi = (dtype) 0.0;
+      size_t j = 0u;
+
+      for (; j + 8u <= n; j += 8u)
+        {
+          __mmask8 active = 0xffu;
+          __m512d vxj;
+          __m512d vyj;
+          __m512d vzj;
+          __m512d vdx;
+          __m512d vdy;
+          __m512d vdz;
+          __m512d vr2;
+          __m512d vinvr;
+          __m512d vs;
+
+          if (i >= j && i < j + 8u)
+            active = (__mmask8) (active & ~((__mmask8) 1u << (i - j)));
+
+          vxj = _mm512_loadu_pd (&x[j]);
+          vyj = _mm512_loadu_pd (&y[j]);
+          vzj = _mm512_loadu_pd (&z[j]);
+          vdx = _mm512_sub_pd (vxj, vxi);
+          vdy = _mm512_sub_pd (vyj, vyi);
+          vdz = _mm512_sub_pd (vzj, vzi);
+          vr2 = _mm512_add_pd (
+              _mm512_add_pd (_mm512_mul_pd (vdx, vdx),
+                             _mm512_mul_pd (vdy, vdy)),
+              _mm512_add_pd (_mm512_mul_pd (vdz, vdz), veps2));
+          vinvr = _mm512_rsqrt14_pd (vr2);
+
+          for (int iter = 0; iter < refinements; ++iter)
+            {
+              const __m512d yy = _mm512_mul_pd (vinvr, vinvr);
+              const __m512d xyy = _mm512_mul_pd (vr2, yy);
+              const __m512d correction =
+                  _mm512_sub_pd (vthree_halves,
+                                 _mm512_mul_pd (vhalf, xyy));
+              vinvr = _mm512_mul_pd (vinvr, correction);
+            }
+
+          vs = _mm512_mul_pd (vgmass,
+                              _mm512_mul_pd (vinvr,
+                                             _mm512_mul_pd (vinvr, vinvr)));
+          vaxi = _mm512_mask_add_pd (vaxi, active, vaxi,
+                                     _mm512_mul_pd (vdx, vs));
+          vayi = _mm512_mask_add_pd (vayi, active, vayi,
+                                     _mm512_mul_pd (vdy, vs));
+          vazi = _mm512_mask_add_pd (vazi, active, vazi,
+                                     _mm512_mul_pd (vdz, vs));
+        }
+
+      axi = hsum512_pd (vaxi);
+      ayi = hsum512_pd (vayi);
+      azi = hsum512_pd (vazi);
+
+      for (; j < n; ++j)
+        {
+          if (j != i)
+            {
+              const dtype dx = x[j] - x[i];
+              const dtype dy = y[j] - y[i];
+              const dtype dz = z[j] - z[i];
+              const dtype r2 = dx * dx + dy * dy + dz * dz + eps2;
+              const dtype invr = (dtype) 1.0 / dtype_sqrt (r2);
+              const dtype s = gmass * invr * invr * invr;
+
+              axi += dx * s;
+              ayi += dy * s;
+              azi += dz * s;
+            }
+        }
+
+      ax[i] = axi;
+      ay[i] = ayi;
+      az[i] = azi;
+    }
+#else
+  (void) n;
+  (void) g;
+  (void) mass;
+  (void) eps;
+  (void) refinements;
+  (void) x;
+  (void) y;
+  (void) z;
+  (void) ax;
+  (void) ay;
+  (void) az;
+  nbody_die ("direct-rsqrt512 kernels require double precision and AVX-512F");
+#endif
 }
 
 /*
@@ -666,6 +832,27 @@ static void compute_accelerations (particles_t *p, dtype g, dtype eps,
                                            p->ax, p->ay, p->az);
       return;
     }
+  if (kernel == FORCE_KERNEL_DIRECT_RSQRT512_0)
+    {
+      compute_accelerations_direct_rsqrt512 (p->n, g, p->mass, eps, 0,
+                                             p->x, p->y, p->z,
+                                             p->ax, p->ay, p->az);
+      return;
+    }
+  if (kernel == FORCE_KERNEL_DIRECT_RSQRT512_1)
+    {
+      compute_accelerations_direct_rsqrt512 (p->n, g, p->mass, eps, 1,
+                                             p->x, p->y, p->z,
+                                             p->ax, p->ay, p->az);
+      return;
+    }
+  if (kernel == FORCE_KERNEL_DIRECT_RSQRT512_2)
+    {
+      compute_accelerations_direct_rsqrt512 (p->n, g, p->mass, eps, 2,
+                                             p->x, p->y, p->z,
+                                             p->ax, p->ay, p->az);
+      return;
+    }
   if (kernel == FORCE_KERNEL_NEWTON)
     {
       compute_accelerations_newton (p->n, g, p->mass, eps, inv_sqrt_mode,
@@ -799,8 +986,10 @@ static void print_usage (const char *program)
            "  --mass X                  particle mass (default: 1)\n"
            "  --integrator NAME         leapfrog variant: kdk or dkd (default: kdk)\n"
            "  --force-kernel NAME       force kernel: direct, direct-split2, direct-split4,\n"
-           "                            direct-split8, newton, newton-private,\n"
-           "                            or newton-atomic (default: direct)\n"
+           "                            direct-split8, direct-rsqrt512-0,\n"
+           "                            direct-rsqrt512-1, direct-rsqrt512-2,\n"
+           "                            newton, newton-private, or newton-atomic\n"
+           "                            (default: direct)\n"
            "  --inv-sqrt NAME           inverse sqrt: libm, rsqrt1, rsqrt2, or rsqrt3 (default: libm)\n"
            "  --energy-every N          diagnostic period in steps (default: 1)\n"
            "  --energy-tol X            warning tolerance for max relative drift (default: 1e-3)\n"
