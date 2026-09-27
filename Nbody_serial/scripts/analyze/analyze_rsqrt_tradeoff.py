@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import statistics
 from collections import defaultdict
 from pathlib import Path
@@ -44,6 +45,16 @@ def stdev(values: list[float]) -> float:
 def read_rows(path: Path) -> list[dict[str, str]]:
     with path.open(newline="") as handle:
         return list(csv.DictReader(handle))
+
+
+def svg_escape(text: object) -> str:
+    return (
+        str(text)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
 
 
 def variant_label(row: dict[str, str]) -> str:
@@ -357,6 +368,125 @@ def write_svg(path: Path, summary: list[dict[str, object]]) -> None:
     path.write_text("\n".join(parts) + "\n")
 
 
+def read_accuracy(path: Path) -> dict[str, dict[str, float]]:
+    accuracy: dict[str, dict[str, float]] = {}
+    for row in read_rows(path):
+        accuracy[row["variant"]] = {
+            "max_relative_accel_error": float(row["max_relative_accel_error"]),
+            "rms_relative_accel_error": float(row["rms_relative_accel_error"]),
+        }
+    return accuracy
+
+
+def write_speed_accuracy_svg(
+    path: Path,
+    summary: list[dict[str, object]],
+    accuracy: dict[str, dict[str, float]],
+) -> None:
+    threads = sorted({int(row["threads"]) for row in summary})
+    selected_thread = threads[0]
+    rows = [row for row in summary if int(row["threads"]) == selected_thread]
+    if not rows:
+        raise ValueError(f"no rsqrt summary rows for thread count {selected_thread}")
+
+    points = []
+    for row in rows:
+        variant = str(row["variant"])
+        if variant == "libm" or variant not in accuracy:
+            continue
+        max_error = accuracy[variant]["max_relative_accel_error"]
+        if max_error <= 0.0:
+            continue
+        points.append(
+            {
+                "variant": variant,
+                "speedup": float(row["speedup_vs_libm"]),
+                "max_error": max_error,
+                "rms_error": accuracy[variant]["rms_relative_accel_error"],
+            }
+        )
+
+    if not points:
+        raise ValueError("no positive accuracy-error values available for plotting")
+
+    x_min_log = math.floor(math.log10(min(point["max_error"] for point in points))) - 0.4
+    x_max_log = math.ceil(math.log10(max(point["max_error"] for point in points))) + 0.4
+    y_min = 0.0
+    y_max = max(1.2, max(point["speedup"] for point in points) * 1.18)
+
+    width = 1040
+    height = 560
+    left = 118
+    right = 72
+    top = 112
+    bottom = 92
+    plot_w = width - left - right
+    plot_h = height - top - bottom
+
+    def sx(value: float) -> float:
+        return left + (math.log10(value) - x_min_log) / (x_max_log - x_min_log) * plot_w
+
+    def sy(value: float) -> float:
+        return top + plot_h - (value - y_min) / (y_max - y_min) * plot_h
+
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+        '<rect width="100%" height="100%" fill="white"/>',
+        '<style>text{font-family:Arial, Helvetica, sans-serif; fill:#111827;}</style>',
+        f'<text x="{width / 2}" y="34" text-anchor="middle" font-size="23" font-weight="700">AVX-512 reciprocal square-root trade-off</text>',
+        f'<text x="{width / 2}" y="62" text-anchor="middle" font-size="13" fill="#4b5563">Force-kernel speedup versus direct acceleration error, {selected_thread} OpenMP thread(s). Left/up is better.</text>',
+        f'<line x1="{left}" y1="{top + plot_h}" x2="{left + plot_w}" y2="{top + plot_h}" stroke="#222"/>',
+        f'<line x1="{left}" y1="{top}" x2="{left}" y2="{top + plot_h}" stroke="#222"/>',
+        f'<text x="{left + plot_w / 2}" y="{height - 28}" text-anchor="middle" font-size="13">maximum relative acceleration error vs libm, log scale</text>',
+        f'<text x="34" y="{top + plot_h / 2}" transform="rotate(-90 34,{top + plot_h / 2})" text-anchor="middle" font-size="13">force-kernel speedup vs libm</text>',
+        f'<line x1="{left}" y1="{sy(1.0):.1f}" x2="{left + plot_w}" y2="{sy(1.0):.1f}" stroke="#9ca3af" stroke-dasharray="6 5"/>',
+        f'<text x="{left + plot_w - 4}" y="{sy(1.0) - 8:.1f}" text-anchor="end" font-size="12" fill="#6b7280">libm baseline 1x</text>',
+    ]
+
+    first_tick = math.ceil(x_min_log)
+    last_tick = math.floor(x_max_log)
+    for exponent in range(first_tick, last_tick + 1):
+        value = 10.0 ** exponent
+        px = sx(value)
+        parts.append(f'<line x1="{px:.1f}" y1="{top}" x2="{px:.1f}" y2="{top + plot_h}" stroke="#e5e7eb"/>')
+        parts.append(f'<text x="{px:.1f}" y="{top + plot_h + 24}" text-anchor="middle" font-size="11">1e{exponent}</text>')
+
+    for i in range(6):
+        value = y_min + (y_max - y_min) * i / 5
+        py = sy(value)
+        parts.append(f'<line x1="{left}" y1="{py:.1f}" x2="{left + plot_w}" y2="{py:.1f}" stroke="#e5e7eb"/>')
+        parts.append(f'<text x="{left - 10}" y="{py + 4:.1f}" text-anchor="end" font-size="11">{value:.1f}x</text>')
+
+    for point in points:
+        variant = str(point["variant"])
+        px = sx(float(point["max_error"]))
+        py = sy(float(point["speedup"]))
+        color = COLORS.get(variant, "#6b7280")
+        parts.append(f'<circle cx="{px:.1f}" cy="{py:.1f}" r="7.0" fill="{color}" stroke="white" stroke-width="1.5"/>')
+        label_dx = 14 if variant != "rsqrt512-2" else -14
+        anchor = "start" if label_dx > 0 else "end"
+        parts.append(
+            f'<text x="{px + label_dx:.1f}" y="{py - 12:.1f}" text-anchor="{anchor}" font-size="13" font-weight="700">{svg_escape(variant)}</text>'
+        )
+        parts.append(
+            f'<text x="{px + label_dx:.1f}" y="{py + 6:.1f}" text-anchor="{anchor}" font-size="11" fill="#4b5563">{point["speedup"]:.2f}x, max err {point["max_error"]:.1e}</text>'
+        )
+
+    notes_x = left + 18
+    notes_y = top + 24
+    parts.extend(
+        [
+            f'<rect x="{notes_x - 10}" y="{notes_y - 18}" width="292" height="58" fill="white" opacity="0.86" stroke="#e5e7eb"/>',
+            f'<text x="{notes_x}" y="{notes_y}" font-size="12" fill="#374151">One Newton step gives the best balance:</text>',
+            f'<text x="{notes_x}" y="{notes_y + 18}" font-size="12" fill="#374151">large speedup with ~1e-9 RMS acceleration error.</text>',
+        ]
+    )
+
+    parts.append("</svg>")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(parts) + "\n")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Analyze reciprocal-square-root benchmark CSV files."
@@ -366,6 +496,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--markdown", type=Path, help="optional Markdown output")
     parser.add_argument("--svg", type=Path, help="optional SVG figure output")
     return parser.parse_args()
+
+
+def default_accuracy_csv(args: argparse.Namespace) -> Path:
+    candidates = []
+    if args.csv is not None:
+        candidates.append(args.csv.parent / "rsqrt_accuracy_summary.csv")
+    if args.markdown is not None:
+        candidates.append(args.markdown.parent / "rsqrt_accuracy_summary.csv")
+    candidates.append(Path("report/tables/rsqrt_accuracy_summary.csv"))
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
 
 def main() -> None:
@@ -380,7 +524,15 @@ def main() -> None:
         args.markdown.parent.mkdir(parents=True, exist_ok=True)
         args.markdown.write_text(table + "\n")
     if args.svg is not None:
-        write_svg(args.svg, summary)
+        accuracy_csv = default_accuracy_csv(args)
+        if not accuracy_csv.exists():
+            raise SystemExit(
+                f"missing acceleration-accuracy table '{accuracy_csv}'; "
+                "run scripts/benchmark/benchmark_rsqrt_accuracy.sh first"
+            )
+        write_speed_accuracy_svg(
+            args.svg, summary, read_accuracy(accuracy_csv)
+        )
 
 
 if __name__ == "__main__":
