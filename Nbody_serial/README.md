@@ -8,7 +8,7 @@ The scientific discussion, interpretation of the results, and final exam
 deliverable are in:
 
 ```text
-REPORT.md
+FINAL_REPORT.md
 ```
 
 This README is a practical guide to the repository: what each file does, which
@@ -62,15 +62,15 @@ Nbody_serial/
 │   ├── smoke/
 │   │   └── short native/MPI/container smoke tests
 │   └── utils/
-│       └── system information, MPI binding checks, launch-overhead measurement
+│       └── system information, container MPI-linkage checks, launch-overhead measurement
 │
 ├── report/
 │   ├── data/
-│   │   └── hardware and software stack snapshot used in the report
+│   │   └── hardware/software snapshots and hybrid rank-binding verification
 │   ├── tables/
-│   │   └── final CSV and Markdown tables used in REPORT.md
+│   │   └── final CSV and Markdown tables used in FINAL_REPORT.md
 │   └── figures/
-│       └── final SVG plots used in REPORT.md
+│       └── final SVG plots used in FINAL_REPORT.md
 │
 └── results/
     └── raw benchmark logs and CSV files generated during runs
@@ -409,13 +409,67 @@ python3 scripts/analyze/analyze_accumulator_tradeoff.py results/accumulator_trad
 
 Hybrid MPI/OpenMP mapping:
 
-```sh
-CONFIGS="2x32 8x8 64x1" REPEATS=5 N=32768 NSTEPS=20 \
-  sh scripts/benchmark/benchmark_hybrid.sh
+The three final hybrid configurations use the same total number of workers
+but different rank/thread decompositions.  They are launched as separate SLURM
+jobs because each configuration needs a different `--ntasks` /
+`--cpus-per-task` allocation.
 
-python3 scripts/analyze/summarize_hybrid_csv.py results/hybrid_benchmark_*.csv \
+```sh
+sbatch -A dssc -p GENOA \
+  --nodes=1 \
+  --ntasks=2 \
+  --cpus-per-task=32 \
+  --time=00:30:00 \
+  --export=ALL,MODULES="openMPI/4.1.6",CONFIGS="2x32",N=32768,NSTEPS=20,REPEATS=5,CSV=results/final_hybrid_mapping_2x32.csv \
+  scripts/slurm/hybrid_benchmark.slurm
+
+sbatch -A dssc -p GENOA \
+  --nodes=1 \
+  --ntasks=8 \
+  --cpus-per-task=8 \
+  --time=00:30:00 \
+  --export=ALL,MODULES="openMPI/4.1.6",CONFIGS="8x8",N=32768,NSTEPS=20,REPEATS=5,CSV=results/final_hybrid_mapping_8x8.csv \
+  scripts/slurm/hybrid_benchmark.slurm
+
+sbatch -A dssc -p GENOA \
+  --nodes=1 \
+  --ntasks=64 \
+  --cpus-per-task=1 \
+  --time=00:30:00 \
+  --export=ALL,MODULES="openMPI/4.1.6",CONFIGS="64x1",N=32768,NSTEPS=20,REPEATS=5,CSV=results/final_hybrid_mapping_64x1.csv \
+  scripts/slurm/hybrid_benchmark.slurm
+
+python3 scripts/analyze/summarize_hybrid_csv.py \
+  results/final_hybrid_mapping_2x32.csv \
+  results/final_hybrid_mapping_8x8.csv \
+  results/final_hybrid_mapping_64x1.csv \
   --csv report/tables/hybrid_mapping_summary.csv \
   --markdown report/tables/hybrid_mapping_summary.md
+```
+
+Hybrid rank/thread binding verification:
+
+```sh
+sbatch -A dssc -p GENOA --nodes=1 --ntasks=2 --cpus-per-task=32 \
+  --time=00:05:00 \
+  --export=ALL,MODULES="openMPI/4.1.6",CONFIG=2x32 \
+  scripts/slurm/binding_check.slurm
+
+sbatch -A dssc -p GENOA --nodes=1 --ntasks=8 --cpus-per-task=8 \
+  --time=00:05:00 \
+  --export=ALL,MODULES="openMPI/4.1.6",CONFIG=8x8 \
+  scripts/slurm/binding_check.slurm
+
+sbatch -A dssc -p GENOA --nodes=1 --ntasks=64 --cpus-per-task=1 \
+  --time=00:05:00 \
+  --export=ALL,MODULES="openMPI/4.1.6",CONFIG=64x1 \
+  scripts/slurm/binding_check.slurm
+
+# After completion, concatenate the three selected job outputs:
+cat results/slurm_binding_check_<jobid_2x32>.out \
+    results/slurm_binding_check_<jobid_8x8>.out \
+    results/slurm_binding_check_<jobid_64x1>.out \
+  > report/data/hybrid_binding_check.txt
 ```
 
 Blocking-vs-overlap ring comparison:
@@ -625,9 +679,102 @@ python3 scripts/analyze/container_overhead_table.py \
 ## OSU MPI Microbenchmark
 
 OSU Micro-Benchmarks are not committed. They can be built in user space on
-Orfeo and used to generate raw latency/bandwidth output files. The analyzer
-expects repeated native and container OSU outputs and produces both a compact
-summary and full curves:
+Orfeo and used to generate raw latency/bandwidth output files.
+
+Build OSU in the repository-local `external/` directory:
+
+```sh
+module purge
+module load openMPI/4.1.6 singularity/4.3.1
+
+mkdir -p external
+cd external
+
+# Use the OSU Micro-Benchmarks source archive, version 7.5 in the final runs.
+# If the archive is already present on Orfeo, copy it here instead of downloading.
+tar -xf osu-micro-benchmarks-7.5.tar.gz
+
+cd osu-micro-benchmarks-7.5
+./configure CC=mpicc --prefix="$PWD/install"
+make -j
+make install
+
+cd ../..
+```
+
+Set the OSU executable paths and the same controlled MPI policy used for the
+native-vs-container comparison:
+
+```sh
+OSU_DIR=external/osu-micro-benchmarks-7.5/install/libexec/osu-micro-benchmarks/mpi/pt2pt
+OSU_LAT="$OSU_DIR/osu_latency"
+OSU_BW="$OSU_DIR/osu_bw"
+
+mkdir -p report/tables/osu_runs
+
+export OMPI_MCA_pml='^ucx'
+export OMPI_MCA_btl='self,tcp'
+export OMPI_MCA_osc='^ucx'
+export OMPI_MCA_btl_vader_single_copy_mechanism=none
+```
+
+Generate five native latency and bandwidth runs:
+
+```sh
+for i in 1 2 3 4 5; do
+  srun -n 2 -c 1 "$OSU_LAT" \
+    > "report/tables/osu_runs/osu_latency_native_${i}.txt"
+
+  srun -n 2 -c 1 "$OSU_BW" \
+    > "report/tables/osu_runs/osu_bw_native_${i}.txt"
+done
+```
+
+Generate five container latency and bandwidth runs.  The OSU binaries are still
+the user-space binaries built with host OpenMPI; the container command binds the
+repository and host MPI paths so that the runtime policy matches the application
+container runs.
+
+```sh
+HOST_MPI_HOME=$(dirname "$(dirname "$(readlink -f "$(command -v mpicc)")")")
+
+for i in 1 2 3 4 5; do
+  srun -n 2 -c 1 \
+    singularity exec \
+      --bind "$PWD:$PWD" \
+      --bind /opt/programs:/opt/programs \
+      --bind "$HOST_MPI_HOME:$HOST_MPI_HOME" \
+      --pwd "$PWD" \
+      --env LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
+      --env PATH="${PATH:-}" \
+      --env OMPI_MCA_pml="$OMPI_MCA_pml" \
+      --env OMPI_MCA_btl="$OMPI_MCA_btl" \
+      --env OMPI_MCA_osc="$OMPI_MCA_osc" \
+      --env OMPI_MCA_btl_vader_single_copy_mechanism="$OMPI_MCA_btl_vader_single_copy_mechanism" \
+      container/nbody_latest.sif \
+      "$OSU_LAT" \
+    > "report/tables/osu_runs/osu_latency_container_${i}.txt"
+
+  srun -n 2 -c 1 \
+    singularity exec \
+      --bind "$PWD:$PWD" \
+      --bind /opt/programs:/opt/programs \
+      --bind "$HOST_MPI_HOME:$HOST_MPI_HOME" \
+      --pwd "$PWD" \
+      --env LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}" \
+      --env PATH="${PATH:-}" \
+      --env OMPI_MCA_pml="$OMPI_MCA_pml" \
+      --env OMPI_MCA_btl="$OMPI_MCA_btl" \
+      --env OMPI_MCA_osc="$OMPI_MCA_osc" \
+      --env OMPI_MCA_btl_vader_single_copy_mechanism="$OMPI_MCA_btl_vader_single_copy_mechanism" \
+      container/nbody_latest.sif \
+      "$OSU_BW" \
+    > "report/tables/osu_runs/osu_bw_container_${i}.txt"
+done
+```
+
+Analyze the repeated native and container OSU outputs.  The analyzer produces
+both a compact summary and the full latency/bandwidth curves:
 
 ```sh
 python3 scripts/analyze/analyze_osu_microbench.py \

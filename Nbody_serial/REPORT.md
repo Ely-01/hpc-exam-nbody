@@ -1688,6 +1688,8 @@ N_{\mathrm{local}}N
 P\,N_{\mathrm{local}}^2.
 $$
 
+With $N_{\mathrm{local}}$ fixed, the force work per rank grows linearly with $P$. The amount of ring communication per rank also grows approximately linearly, because each rank exchanges a fixed-size source block over $P$ ring phases. Therefore, the compute-to-communication ratio remains approximately constant in the ideal weak-scaling model.
+
 The work per rank grows linearly with $P$, so the algorithm-aware ideal runtime is
 
 $$
@@ -2445,7 +2447,7 @@ Nbody_serial/
 │   └── figures/
 │       └── final SVG plots used in the report
 │
-└── FINAL_REPORT.md
+└── REPORT.md
     └── final project report
 ```
 
