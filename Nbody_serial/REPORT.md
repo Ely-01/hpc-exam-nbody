@@ -210,6 +210,12 @@ The final validation run uses:
 - energy sampling every $10$ integration steps,
 - validation tolerance $\delta_E^{\max}<10^{-4}$.
 
+This validation is a correctness check rather than a statistical performance benchmark. For a fixed input and numerical configuration, the relevant quantity is the resulting energy drift; repeated timing runs are instead used in the performance sections to account for runtime noise.
+
+| N | Steps | $\Delta t$ | $\epsilon$ | Threads | Integrator | Force kernel | inv sqrt | Total time (s) | Force time (s) | Energy time (s) | Max drift | Status |
+|---:|---:|---:|---:|---:|:---|:---|:---|---:|---:|---:|---:|:---|
+| 10000 | 100 | $10^{-4}$ | 0.05 | 8 | KDK | direct | libm | 4.910674 | 4.431348 | 0.447601 | $2.67\times10^{-7}$ | OK |
+
 The measured maximum relative energy drift is
 
 $$
@@ -426,6 +432,7 @@ The GENOA node used for the experiments is based on two AMD EPYC 9374F processor
 | Component | Configuration |
 |:---|:---|
 | CPU | AMD EPYC 9374F 32-Core Processor |
+| Operating system / kernel | Linux x86_64, kernel `6.13.12-200.fc41.x86_64` |
 | Sockets | 2 |
 | Cores per socket | 32 |
 | Hardware threads per core | 1 |
@@ -435,6 +442,7 @@ The GENOA node used for the experiments is based on two AMD EPYC 9374F processor
 | Cores per NUMA domain | 8 |
 | Main memory | 503 GiB |
 | Swap | none |
+| SIMD / vector ISA support | AVX, AVX2, FMA, AVX-512 |
 
 The NUMA layout recorded from the allocated compute node is:
 
@@ -463,7 +471,7 @@ The final native experiments were performed using the following software environ
 | C compiler                   | GCC 14.3.1          |
 | MPI implementation           | Open MPI 4.1.6      |
 | MPI compiler wrapper         | `mpicc`             |
-| OpenMP runtime               | GNU `libgomp`       |
+| OpenMP runtime               | GNU `libgomp` (`libgomp.so.1`) |
 | Container runtime            | SingularityCE 4.3.1 |
 | Hardware-locality library    | hwloc 2.12.0        |
 | GNU C library                | glibc 2.40          |
@@ -477,7 +485,7 @@ All final numerical experiments use double-precision arithmetic.
 
 ### 4.3 Compilation Configuration
 
-The final native benchmarks were built using double precision and OpenMP support. The reference build commands were:
+The final native N-body benchmarks were built using double precision and OpenMP support. The reference build commands were:
 
 ```text
 make OPENMP=1 PRECISION=double \
@@ -549,7 +557,68 @@ The main difference is:
   - enables the instruction-set extensions supported by that CPU;
   - allows GCC to apply more CPU-specific tuning and instruction scheduling.
 
-Therefore, the *native* build can potentially exploit more *specialized hardware features*, while the *container* build prioritizes *portability*. Whether these additional features produce a measurable performance benefit depends on how effectively the compiler can use them in the application kernel.
+Therefore, the *native* build can potentially exploit more *specialized hardware features*, while the *container* build prioritizes *portability*. The performance potentially left on the table by `-march=x86-64-v3` is the benefit of GENOA-specific code generation:
+
+- wider SIMD code generation where the compiler can use AVX-512;
+- instruction scheduling and tuning choices specialized for Zen 4;
+- possible use of CPU-specific variants of arithmetic and vector operations;
+- better exploitation of FMA/vector throughput in loops that are actually vectorized.
+
+This potential loss is not the same for all parts of the program. In scalar or poorly vectorized loops, `-march=native` may provide only a small benefit. In vector-friendly kernels, especially the explicit AVX-512 reciprocal-square-root force kernel discussed in Section 6.3, the gap can be larger because `x86-64-v3` does not assume AVX-512 support.
+
+The upper-bound theoretical penalty can be estimated from SIMD width. The portable `x86-64-v3` target guarantees AVX2, which operates on four double-precision values in a 256-bit vector. AVX-512 operates on eight double-precision values in a 512-bit vector. For an ideal kernel limited only by vector arithmetic throughput, the AVX2-width path could therefore provide at most about half the vector work per instruction:
+
+$$
+\frac{4\ \mathrm{FP64\ lanes}}{8\ \mathrm{FP64\ lanes}}
+=
+\frac{1}{2}.
+$$
+
+Equivalently, a perfectly vectorized AVX-512 implementation could be up to about
+
+$$
+2\times
+$$
+
+faster than a 256-bit AVX2-width implementation. This is only a ceiling estimate: it assumes that the kernel is fully vectorized, that vector arithmetic is the limiting factor, and that no other bottleneck dominates.
+
+The correct way to measure this cost is to build the same source code with both targets and run the same benchmark configurations under the same MPI binding and transport policy:
+
+```text
+portable build: -O3 -march=x86-64-v3 -ffp-contract=fast
+native build:   -O3 -march=native    -ffp-contract=fast
+```
+
+The comparison should report force time, `Ginteraction/s`, nominal GFLOP/s, and energy drift. If hardware counters are available, the measurement can be strengthened with SIMD/FMA instruction counters; otherwise, the combination of timing, derived throughput, and compiler vectorization reports is the available evidence. The native-versus-container timings in Section 8 include this compiler-target difference, so their overhead should be interpreted as a deployment-level comparison rather than the isolated cost of Singularity.
+
+#### Measured impact of the portable target
+
+To estimate this effect directly, the same $2\times32$ hybrid configuration was built and run twice on the GENOA node, changing only the compiler target.
+
+| Target | Total median s | Force median s | Ginteraction/s | Max drift | Status |
+|:---|---:|---:|---:|---:|:---|
+| `-march=x86-64-v3` | 1.489180 | 1.284213 | 17.558 | $2.549735\times10^{-7}$ | OK |
+| `-march=native` | 1.356827 | 1.208716 | 18.654 | $2.549735\times10^{-7}$ | OK |
+
+The native target improves total runtime by
+
+$$
+\frac{1.489180}{1.356827}
+\approx
+1.098,
+$$
+
+and force-kernel throughput by
+
+$$
+\frac{18.654}{17.558}
+\approx
+1.062.
+$$
+
+In this controlled check, the portable `x86-64-v3` target leaves approximately $6\%$ force-kernel throughput and approximately $9\%$ total-runtime performance on the table, while preserving the same numerical result. The gap is moderate rather than dramatic, which is consistent with the earlier vectorization analysis: architecture-specific code generation helps, but the complete solver is still limited by the structure of the force kernel rather than by SIMD peak throughput alone.
+
+The measured gap is much smaller than the theoretical $2\times$ SIMD-width ceiling because the complete solver is not an ideal dense vector-FMA workload. Parts of the force kernel are limited by inverse-distance evaluation, accumulator dependencies, control flow, memory access, and MPI/OpenMP overhead. The gap could become larger for a more explicitly vectorized production kernel, while it would remain small for scalar or poorly vectorized code.
 
 
 ### 4.4 Parallel Execution Configuration
@@ -643,9 +712,8 @@ The kernel-level experiments use dedicated configurations chosen to isolate spec
 | Reciprocal square root | $N=8192$, 20 KDK steps | Full solver |
 | Accumulator splitting | $N=8192$, 20 KDK steps | Full solver |
 | AoS vs SoA layout | $N=16\,384$ | Force-kernel microbenchmark |
-| Isolated reciprocal square root | $2^{24}$ scalar values | Operation-level microbenchmark |
 
-The three full-solver optimization experiments use the same $N=8192$ configuration to make their performance results directly comparable. The AoS/SoA and isolated reciprocal-square-root tests instead use dedicated microbenchmarks, since their purpose is to isolate a specific kernel property rather than measure the complete N-body simulation.
+The three full-solver optimization experiments use the same $N=8192$ configuration to make their performance results directly comparable. The AoS/SoA test instead uses a dedicated force-kernel microbenchmark, since its purpose is to isolate a specific layout property rather than measure the complete N-body simulation.
 
 #### Common numerical parameters
 Unless otherwise stated, the time-integration benchmarks use:
@@ -770,8 +838,6 @@ The baseline implementation therefore satisfies the required energy-conservation
 
 ### 5.2 Verification of $O(N^2)$ Computational Growth
 
- $$ \boxed{\text{Does it really scale as }N^2\text{?}} $$
-
 The direct force computation evaluates all ordered particle pairs except self-interactions, giving
 
 $$
@@ -779,24 +845,29 @@ N(N-1)
 $$
 
 interactions per force evaluation.
+Therefore, if the number of particles is increased by a factor of 10, the time spent in one force evaluation, and consequently the force time per integration step, is expected to grow by approximately a factor of
 
-To verify the expected quadratic growth experimentally, two problem sizes were executed for 50 integration steps using one OpenMP thread:
+$$
+10^2 = 100.
+$$
 
-|       $N$ | Force time (s) |
-| ----------: | -------------: |
-|  $1\,000$ |       0.180952 |
-| $10\,000$ |      18.124287 |
-
-Increasing $N$ from $1\,000$ to $10\,000$ increases the theoretical number of interactions by
+More precisely, because self-interactions are skipped, the expected interaction-count ratio from $N=1\,000$ to $N=10\,000$ is
 
 $$
 \frac{10000(10000-1)} {1000(1000-1)} = 100.090.
 $$
 
-The measured force-time ratio is
+To verify this experimentally, two problem sizes were executed for 50 integration steps using one OpenMP thread:
+
+|       $N$ | Force time (s) | Force time per step (s) |
+| ----------: | -------------: | ----------------------: |
+|  $1\,000$ |       0.180952 |                0.003619 |
+| $10\,000$ |      18.124287 |                0.362486 |
+
+The measured force-time-per-step ratio is
 
 $$
-\frac{18.124287}{0.180952} \approx 100.16.
+\frac{0.362486}{0.003619} \approx 100.16.
 $$
 
 Therefore,
@@ -805,7 +876,9 @@ $$
 \text{theoretical ratio}=100.09, \qquad \text{measured ratio}\approx100.16.
 $$
 
-The close agreement confirms that the dominant force computation follows the expected $O(N^2)$ growth.
+The measured growth is therefore essentially the expected factor of $100$. The small difference between $100.09$ and $100.16$ is due to measurement noise, finite-size effects, cache behaviour, and the fact that the exact operation count is $N(N-1)$ rather than exactly $N^2$.
+
+The result agrees with the direct-summation model: increasing $N$ by a factor of 10 makes each particle interact with 10 times more sources and also increases the number of target particles by 10, so the total pair work grows by about $10\times10=100$. This confirms that the dominant force computation follows the expected $O(N^2)$ growth.
 
 ### 5.3 Runtime Bottleneck
 
@@ -873,54 +946,114 @@ The main difficulty is parallel force ownership:
 - **direct kernel**: each thread updates only its own target acceleration $\mathbf a_i$;
 - **Newton reuse**: each pair updates both $\mathbf a_i$ and $\mathbf a_j$, creating possible write conflicts between threads.  
 
-Three implementations were compared:
+Four implementations were compared:
 
 | Kernel | Pair traversal | Update strategy |
 |:---|:---|:---|
 | `direct` | ordered pairs | independent target ownership |
 | `newton` | $i<j$ | serial, conflict-free |
+| `newton-private` | $i<j$ | OpenMP with thread-private acceleration buffers and final reduction |
 | `newton-atomic` | $i<j$ | parallel updates protected by atomics |
 
-The `newton-atomic` implementation is included as a *diagnostic case* to measure the cost of a simple synchronization-based solution rather than as a production kernel.
+The `newton-private` implementation is the non-atomic conflict-resolution experiment: each OpenMP thread accumulates into private acceleration arrays and the final acceleration is obtained by reducing the thread-local arrays. This removes write conflicts from the pair loop, at the cost of additional memory traffic, buffer initialization, and a final reduction.
+
+The `newton-atomic` implementation is included only as a *diagnostic negative case*: it is correct, but it measures the cost of solving the same race condition through fine-grained atomic updates.
 
 The experiment uses $N=8192$, 20 KDK steps, and five repetitions per configuration.
 
-| Threads | `direct` (s) | `newton` (s) | `newton-atomic` (s) |
-|---:|---:|---:|---:|
-| 1 | $5.865157 \pm 0.008173$ | $3.510821 \pm 0.003258$ | $8.407843 \pm 0.011617$ |
-| 2 | $3.119743 \pm 0.159910$ | $3.553018 \pm 0.022864$ | $8.587850 \pm 0.074676$ |
-| 4 | $1.734899 \pm 0.036081$ | $3.510410 \pm 0.000948$ | $7.214137 \pm 0.037040$ |
-| 8 | $0.893647 \pm 0.002144$ | $3.520837 \pm 0.025837$ | $6.265592 \pm 0.018730$ |
+| Threads | `direct` (s) | `newton` (s) | `newton-private` (s) | `newton-atomic` (s) |
+|---:|---:|---:|---:|---:|
+| 1 | $7.708523 \pm 0.013313$ | $6.645661 \pm 0.006854$ | $6.601909 \pm 0.007602$ | $36.815682 \pm 0.021395$ |
+| 2 | $3.855941 \pm 0.013133$ | $6.634327 \pm 0.002160$ | $4.936098 \pm 0.004779$ | $29.960169 \pm 0.860734$ |
+| 4 | $3.881073 \pm 0.024460$ | $6.638978 \pm 0.002180$ | $3.408587 \pm 0.014212$ | $28.443824 \pm 0.365154$ |
+| 8 | $3.984457 \pm 0.010679$ | $6.655043 \pm 0.016620$ | $3.487197 \pm 0.027073$ | $32.123918 \pm 0.358203$ |
 
-The `newton` kernel is serial, so its runtime is expected to remain approximately constant when the requested OpenMP thread count changes.
+The `newton` kernel is serial in the pair loop, so its runtime is expected to remain approximately constant when the requested OpenMP thread count changes.
 
 ![Newton third-law trade-off](report/figures/newton_tradeoff.svg)
 
 #### Main observations
 
 - **Serial Newton reuse is effective.**  
-  With one thread, the force time decreases from $5.87$ s to $3.51$ s:
+  With one thread, the force time decreases from $7.71$ s to $6.65$ s:
   $$
-  \frac{5.865157}{3.510821}\approx1.67\times.
+  \frac{7.708523}{6.645661}\approx1.16\times.
   $$
-  The speedup is lower than the ideal $2\times$ because only the pair-evaluation work is halved; loop overhead, memory operations, and force updates remain.
-- **The direct kernel scales much better with OpenMP.**  
-  Its runtime decreases from $5.87$ s with one thread to $0.89$ s with eight threads.
+  The speedup is lower than the ideal $2\times$ because only the pair-evaluation work is halved; loop overhead, memory operations, and the two acceleration updates per pair remain.
 - **The serial Newton kernel does not benefit from additional threads.**  
-  Its runtime remains close to $3.5$ s, so the direct kernel becomes faster from two threads onward.
-- **Atomic conflict resolution is too expensive.**  
-  `newton-atomic` is slower than both alternatives, because the synchronization and cache-coherence cost of repeated atomic updates outweighs the arithmetic saved by halving the pair count.
+  Its runtime remains close to $6.6$ s, because the pair loop itself is not parallelized.
+- **The private-buffer Newton variant resolves the race without atomics, but the gain is modest.**  
+  `newton-private` is faster than `direct` at 1, 4, and 8 threads, with a maximum measured speedup of about
+  $$
+  \frac{7.708523}{6.601909}\approx1.17\times
+  $$
+  at one thread. At 4 and 8 threads, the speedup is approximately $1.14\times$. This is far below the ideal $2\times$ because the private-buffer method adds buffer zeroing, extra memory traffic, and a final reduction over the thread-local acceleration arrays.
+- **The two-thread `newton-private` result exposes load imbalance in the triangular pair loop.**  
+  With `schedule(static)`, the Newton loop assigns much more work to the lower-$i$ part of the iteration space. With two threads, the first static block contains about three quarters of all pairs, so the measured runtime,
+  $$
+  4.936\ \mathrm{s},
+  $$
+  is close to
+  $$
+  0.75\,T_{\mathrm{newton}}\approx0.75\times6.63\ \mathrm{s}\approx4.97\ \mathrm{s}.
+  $$
+  The arithmetic saving is therefore not sufficient to beat the cleaner `direct` kernel at two threads.
+- **Atomic conflict resolution is prohibitively expensive.**  
+  `newton-atomic` is much slower than all other variants, because the synchronization and cache-coherence cost of repeated atomic updates overwhelms the arithmetic saved by halving the pair count.
 
 At eight threads:
 $$
-T_{\mathrm{direct}}=0.89\ \mathrm{s},
+T_{\mathrm{direct}}=3.98\ \mathrm{s},
 \qquad
-T_{\mathrm{newton}}=3.52\ \mathrm{s},
+T_{\mathrm{private}}=3.49\ \mathrm{s},
 \qquad
-T_{\mathrm{atomic}}=6.27\ \mathrm{s}.
+T_{\mathrm{atomic}}=32.12\ \mathrm{s}.
 $$
 
-The direct implementation is therefore approximately $3.9\times$ faster than serial Newton and about $7\times$ faster than the atomic variant.
+The non-atomic private-buffer strategy is therefore slightly faster than the clean direct kernel at 8 threads, while the atomic variant is about an order of magnitude slower.
+
+#### Trade-off interpretation
+
+The benefit of Newton reuse depends on the balance between the arithmetic saved and the cost introduced by concurrent force updates.
+
+Newton's third law is advantageous when:
+- the conflict-resolution mechanism is inexpensive;
+- the pair loop is well balanced across threads;
+- the cost of private-buffer initialization and reduction is small compared with the force computation;
+- the problem is large enough for these additional costs to be amortized.
+
+Under these conditions, evaluating only
+
+$$
+\frac{N(N-1)}{2}
+$$
+
+pairs can compensate for the additional synchronization or reduction work.
+
+In the present experiments, this is approximately the case for the private-buffer implementation at 4 and 8 threads, where Newton reuse gives a modest speedup of about $1.14\times$.
+
+The optimization becomes ineffective when the overhead introduced to resolve the write conflicts is comparable to, or larger than, the arithmetic saved. This occurs with:
+- fine-grained atomic updates, because of synchronization and cache-coherence costs;
+- poorly balanced triangular work distribution;
+- large private-buffer memory traffic and reduction costs;
+- configurations where the direct target-ownership kernel already parallelizes efficiently.
+
+The measured results illustrate both regimes:
+
+```text
+few pair evaluations
+        +
+low conflict-resolution cost
+        ↓
+Newton reuse can be beneficial
+
+
+few pair evaluations
+        +
+high synchronization / reduction / imbalance cost
+        ↓
+the arithmetic saving is lost
+```
 
 #### Conclusion
 
@@ -932,9 +1065,9 @@ $$
 }
 $$
 
-Newton's third law is beneficial in the serial case, but the direct target-ownership strategy is better suited to the current OpenMP implementation because it avoids shared writes and synchronization.
+The measurements show that Newton reuse can provide a moderate benefit when write conflicts are resolved without fine-grained synchronization. The `newton-private` implementation demonstrates this regime, while the atomic variant shows that synchronization overhead can completely outweigh the arithmetic saving.
 
-For this reason, the production kernel retains the direct formulation. A parallel Newton implementation would require a more efficient conflict-resolution strategy, such as thread-private buffers or block-wise reductions.
+For the production solver, the direct target-ownership formulation is nevertheless retained because it provides simpler and more predictable parallel execution: each thread owns its target accelerations, no shared writes occur in the inner loop, and the same ownership model maps naturally to the MPI ring decomposition. The `newton-private` variant is therefore retained as the explicit trade-off experiment rather than as the production implementation.
 
 
 ### 6.2 AoS versus SoA
@@ -1021,7 +1154,7 @@ The production solver nevertheless retains SoA because it:
 
 ### 6.3 Reciprocal Square Root
 
-The gravitational force repeatedly requires the computation of
+The gravitational force repeatedly requires the evaluation of
 
 $$
 \frac{1}{\sqrt{x}},
@@ -1029,21 +1162,27 @@ $$
 x=r^2+\epsilon^2.
 $$
 
-The reference implementation evaluates this quantity through the standard mathematical-library square-root path.
+which is then used to compute
 
-A possible alternative is the hardware **reciprocal-square-root estimate** (`rsqrt`), which directly approximates
+$$
+\frac{1}{(r^2+\epsilon^2)^{3/2}}
+=
+\left(\frac{1}{\sqrt{r^2+\epsilon^2}}\right)^3.
+$$
+
+The reference force kernel evaluates the inverse square root through the standard double-precision mathematical-library path:
+
+```text
+invr = 1.0 / sqrt(r2);
+```
+
+A faster alternative is the hardware **reciprocal-square-root estimate** (`rsqrt`), which directly approximates
 
 $$
 \frac{1}{\sqrt{x}}.
 $$
 
-The hardware estimate is *fast but less accurate*. Its precision can be improved using **Newton-Raphson refinement**. Starting from an approximation
-
-$$
-y_k \approx \frac{1}{\sqrt{x}},
-$$
-
-one refinement step computes
+The raw estimate is fast but approximate. Its accuracy can be improved through **Newton-Raphson refinement**:
 
 $$
 y_{k+1}
@@ -1053,126 +1192,170 @@ y_k
 \frac{3}{2}
 -
 \frac{1}{2}xy_k^2
-\right).
+\right),
+\qquad
+y_k \approx \frac{1}{\sqrt{x}}.
 $$
 
-Additional refinement steps generally *improve accuracy*, but also require *extra arithmetic*.
+Each refinement reduces the approximation error but introduces additional arithmetic. The optimization therefore presents a direct **speed-accuracy trade-off**.
 
-The optimization is evaluated at two levels:
-1. **isolated SIMD operation**, to measure the potential of the hardware `rsqrt` instruction;
-2. **complete N-body solver**, to determine whether this potential translates into an actual application-level improvement.
+#### 6.3.1 AVX-512 force-kernel implementation
 
-#### 6.3.1 Isolated SIMD reciprocal-square-root benchmark
-The microbenchmark processes $2^{24}$ independent single-precision values.
-The tested methods are:
-- `sqrtf`: standard-library single-precision reference;
-- `rsqrt0`: raw hardware reciprocal-square-root estimate;
-- `rsqrt1`: `rsqrt0` + one Newton refinement;
-- `rsqrt2`: `rsqrt0` + two Newton refinements.
+Since the solver uses double precision and the GENOA processors support AVX-512, the optimization was implemented directly inside an AVX-512 force kernel.
 
-The speedup is defined as
+The tested kernels are:
+
+| Variant | Implementation |
+|:---|:---|
+| `libm` | baseline kernel using `1.0 / sqrt(r2)` |
+| `rsqrt512-0` | AVX-512 `_mm512_rsqrt14_pd` estimate |
+| `rsqrt512-1` | AVX-512 estimate + one Newton refinement |
+| `rsqrt512-2` | AVX-512 estimate + two Newton refinements |
+
+A 512-bit vector operates on eight double-precision elements at a time. Therefore, the optimized variants combine two effects:
+
+```text
+AVX-512 vectorization of source interactions
+                    +
+hardware reciprocal-square-root estimate
+                    +
+optional Newton refinement
+```
+The measured performance gain must therefore be interpreted as the benefit of the complete AVX-512 force kernel, not as the isolated speedup of the `rsqrt` instruction.
+
+#### 6.3.2 Performance results
+
+The speedup is computed from the median force time:
+
 $$
-S=
-\frac{T_{\mathrm{sqrtf}}}{T_{\mathrm{method}}},
+S =
+\frac{T_{\mathrm{libm}}}{T_{\mathrm{variant}}}.
 $$
-so values above 1 indicate faster execution than the sqrtf reference.
 
-| Method | Time (s) | Gvalues/s | Speedup | Max relative error |
-|:---|---:|---:|---:|---:|
-| `sqrtf` | $0.032575 \pm 0.000021$ | 0.515 | 1.000 | $8.94\times10^{-8}$ |
-| `rsqrt0` | $0.001599 \pm 0.000011$ | 10.494 | 20.376 | $2.58\times10^{-4}$ |
-| `rsqrt1` | $0.001633 \pm 0.000006$ | 10.277 | 19.953 | $1.72\times10^{-7}$ |
-| `rsqrt2` | $0.002469 \pm 0.000004$ | 6.796 | 13.195 | $1.17\times10^{-7}$ |
+| Threads | Variant | Force time (s) | Speedup vs `libm` | Max energy drift |
+|---:|:---|---:|---:|---:|
+| 1 | `libm` | $4.830180 \pm 0.001303$ | 1.000 | $4.083561\times10^{-8}$ |
+| 1 | `rsqrt512-0` | $0.489470 \pm 0.000955$ | 9.868 | $2.510935\times10^{-8}$ |
+| 1 | `rsqrt512-1` | $0.679676 \pm 0.000580$ | 7.107 | $4.083666\times10^{-8}$ |
+| 1 | `rsqrt512-2` | $0.888685 \pm 0.001442$ | 5.435 | $4.083561\times10^{-8}$ |
+| 8 | `libm` | $0.629055 \pm 0.002645$ | 1.000 | $4.083561\times10^{-8}$ |
+| 8 | `rsqrt512-0` | $0.077441 \pm 0.001301$ | 8.123 | $2.510935\times10^{-8}$ |
+| 8 | `rsqrt512-1` | $0.101999 \pm 0.002625$ | 6.167 | $4.083666\times10^{-8}$ |
+| 8 | `rsqrt512-2` | $0.127204 \pm 0.001675$ | 4.945 | $4.083561\times10^{-8}$ |
 
-![SIMD reciprocal-square-root microbenchmark](report/figures/rsqrt_kernel.svg)
+![AVX-512 reciprocal-square-root trade-off](report/figures/rsqrt_tradeoff.svg)
+
 
 #### Main observations
-- **`rsqrt0` is extremely fast but less accurate.**  
-  It reaches about $20.4\times$ the speed of `sqrtf`, but its maximum relative error increases to
-  $$
-  2.58\times10^{-4}.
-  $$
-- **One Newton refinement gives the best speed-accuracy balance.**  
-  `rsqrt1` reduces the error to
-  $$
-  1.72\times10^{-7},
-  $$
-  while retaining almost the full $20\times$ speedup.
-- **The throughput increase is substantial.**  
-  The reference sqrtf path processes about $0.515$ Gvalues/s, while `rsqrt0` and `rsqrt1` exceed $10$ Gvalues/s.
-- **Further refinement adds cost**.  
-  `rsqrt2` slightly improves accuracy, but throughput decreases to $6.796$ Gvalues/s and the speedup falls to about $13.2\times$.
+- **All AVX-512 variants substantially outperform the libm baseline.**  
+  With one thread, rsqrt512-1 reduces force time from $4.830$ s to $0.680$ s, corresponding to a $7.107\times$ speedup. At eight threads, the same variant remains $6.167\times$ faster.
+- **The raw estimate gives the highest performance.**  
+  rsqrt512-0 reaches $9.868\times$ speedup with one thread, while each additional Newton refinement progressively increases the arithmetic cost.
+- **The gain is larger than a simple inverse-square-root replacement would suggest.**  
+  This is because the optimized implementation combines a cheaper reciprocal-square-root path with explicit AVX-512 vectorization of the source loop.
 
-#### Interpretation
-
-The isolated benchmark shows that reciprocal-square-root instructions can provide very high SIMD throughput.  
-
-However, this experiment measures only the mathematical operation itself. It does **not** imply that the complete N-body solver will obtain the same speedup.
+The result therefore represents a **force-kernel SIMD speedup**, rather than the isolated speedup of `rsqrt` alone.
 
 
-#### 6.3.2 Full-solver experiment
+#### 6.3.3 Accuracy against the `libm` force
 
-The same optimization was then tested inside the complete N-body force kernel.
+Energy conservation is an application-level diagnostic, but it does not directly quantify the error introduced by the approximate force evaluation.
 
-The reference is the standard **double-precision `sqrt` path provided by `libm`**, consistent with the double-precision solver.
+The acceleration field produced by each AVX-512 variant was therefore compared particle by particle with the `libm` reference.
 
-The unrefined `rsqrt0` variant is excluded because its approximation error is too large for the energy-conservation study. The tested variants are:
-
-- `libm`: standard double-precision reference;
-- `rsqrt1`: one Newton refinement;
-- `rsqrt2`: two refinements;
-- `rsqrt3`: three refinements.
-
-The experiment uses $N=8192$, 20 KDK steps, and 8 OpenMP threads.
-The solver-level speedup is defined as
+For particle $i$,
 
 $$
-S=
-\frac{T_{\mathrm{libm}}}{T_{\mathrm{method}}}.
+e_i =
+\frac{
+\left\|\mathbf{a}_i^{\mathrm{variant}}-\mathbf{a}_i^{\mathrm{libm}}\right\|_2
+}{
+\max\left(\left\|\mathbf{a}_i^{\mathrm{libm}}\right\|_2,\mathrm{tiny}\right)
+}.
 $$
 
-| Method | Force time (s) | Speedup vs `libm` | Max energy drift |
+The maximum relative error measures the worst particle-level deviation, while the RMS value represents the typical error over the complete system.
+
+| Variant | Max relative accel error | RMS relative accel error | Max absolute accel error |
 |:---|---:|---:|---:|
-| `libm` | $0.894669 \pm 0.055731$ | 1.000 | $4.083561\times10^{-8}$ |
-| `rsqrt1` | $1.028367 \pm 0.045048$ | 0.870 | $4.085352\times10^{-8}$ |
-| `rsqrt2` | $1.290443 \pm 0.104594$ | 0.693 | $4.083561\times10^{-8}$ |
-| `rsqrt3` | $1.476621 \pm 0.010179$ | 0.606 | $4.083561\times10^{-8}$ |
+| `libm` | $0$ | $0$ | $0$ |
+| `rsqrt512-0` | $1.784036\times10^{-4}$ | $2.754831\times10^{-5}$ | $1.218147\times10^{-1}$ |
+| `rsqrt512-1` | $4.469061\times10^{-9}$ | $1.756846\times10^{-9}$ | $7.999740\times10^{-6}$ |
+| `rsqrt512-2` | $9.545605\times10^{-15}$ | $2.527717\times10^{-15}$ | $2.415651\times10^{-11}$ |
+
 
 #### Main observations
-- **No `rsqrt` variant accelerates the complete solver.**  
-  Even `rsqrt1` is slower than the `libm` reference:
+- **The unrefined estimate is fast but visibly approximate.**  
+  Its maximum relative acceleration error is approximately
   $$
-  1.028\ \mathrm{s}
-  \quad\text{vs}\quad
-  0.895\ \mathrm{s}.
+  1.8\times10^{-4}.
   $$
-- **Additional Newton refinements further increase runtime.**  
-  The speedup decreases from $0.870$ for `rsqrt1` to $0.606$ for `rsqrt3`.
-- **Numerical accuracy is recovered after refinement.**  
-  From `rsqrt2` onward, the measured energy drift matches the `libm` reference.
+- **One Newton refinement recovers most of the required accuracy.**  
+  The maximum relative error decreases to
+  $$
+  4.47\times10^{-9},
+  $$
+  while retaining most of the performance gain.
+- **A second refinement reaches near-libm numerical agreement.**  
+  The maximum relative error decreases to approximately
+  $$
+  10^{-14},
+  $$
+  but at additional computational cost.
 
-#### Interpretation
+The first Newton refinement therefore provides most of the useful accuracy recovery. The second refinement further improves numerical agreement, but this additional precision does not produce a visible advantage in the energy behaviour examined below.
 
-The two experiments expose different levels of performance:
-- the isolated benchmark shows that **SIMD `rsqrt`** is very fast;
-- the full solver shows that **this advantage is not automatically transferred to the application**;
-- the refined variants recover the required numerical accuracy, but at additional computational cost.
-The key result is
+#### 6.3.4 Energy Diagnostic and Timestep Sensitivity
+
+The energy-conservation diagnostic must remain **sensitive to the numerical integration error** rather than being limited by a fixed error introduced by the approximate reciprocal square root.
+
+If the `rsqrt` approximation dominated the diagnostic, reducing the timestep would have little effect on the measured energy drift. Conversely, if the drift decreases when $\Delta t$ is reduced, the diagnostic is still responding to the KDK integration.
+
+The final candidate, `rsqrt512-1`, was therefore compared with `libm` at two timesteps while keeping the same physical final time.
+
+| Kernel | $\Delta t$ | Steps | Physical time | Max energy drift |
+|:---|---:|---:|---:|---:|
+| `libm` | $10^{-4}$ | 20 | $2.0\times10^{-3}$ | $1.913904978\times10^{-7}$ |
+| `libm` | $5\times10^{-5}$ | 40 | $2.0\times10^{-3}$ | $7.599504748\times10^{-8}$ |
+| `rsqrt512-1` | $10^{-4}$ | 20 | $2.0\times10^{-3}$ | $1.913901028\times10^{-7}$ |
+| `rsqrt512-1` | $5\times10^{-5}$ | 40 | $2.0\times10^{-3}$ | $7.599440426\times10^{-8}$ |
+
+For a second-order KDK integrator, the timestep-dependent integration error is expected to decrease as $\Delta t$ is reduced. The maximum sampled energy drift is not expected to decrease by exactly a factor of four in this finite simulation; the relevant diagnostic is whether it responds consistently to the timestep.
+
+#### Main observations
+- **Halving the timestep reduces the energy drift for both kernels.**
+- **`libm` and `rsqrt512-1` produce essentially identical drift values at both timesteps.**
+- **The direct force error of `rsqrt512-1` is already very small**, with an RMS relative acceleration error of
+  $$
+  1.76\times10^{-9}.
+  $$
+These results show that the energy diagnostic is **not saturated by the `rsqrt` approximation**. It continues to respond to the integration timestep, while `rsqrt512-1` follows essentially the same energy-conservation behaviour as the `libm` reference.
+The two accuracy checks therefore provide complementary information:
+
+```text
+direct acceleration comparison
+→ measures the rsqrt force error directly
+
+timestep sensitivity
+→ verifies that the energy drift still
+  responds to the KDK integration
+```
+
+Thus, after one Newton refinement, the reciprocal-square-root approximation is sufficiently accurate for the energy diagnostic to remain a meaningful test of the integrator.
+
+
+#### Conclusion
+The experiment exposes a clear performance-accuracy trade-off.
+
+`rsqrt512-0` provides the highest throughput but introduces a visible force approximation error. Two Newton refinements recover near-libm numerical accuracy, but at additional computational cost.
+
+The intermediate `rsqrt512-1` variant provides the best measured compromise: it preserves a large AVX-512 force-kernel speedup, reduces the relative acceleration error to the $10^{-9}$ range, and reproduces the same timestep-dependent energy behaviour as the libm reference.
 
 $$
 \boxed{
-\text{the SIMD rsqrt advantage is lost in the current non-vectorized force kernel}
+\text{one Newton-refined AVX-512 rsqrt gives the best measured speed-accuracy trade-off}
 }
 $$
-
-In the current solver, the dominant force loop is not effectively vectorized, so it **cannot exploit** the same SIMD throughput observed in the microbenchmark. At the same time, the `rsqrt` path still pays the cost of the approximation and Newton refinement steps.
-
-Therefore:
-- `libm` remains the fastest option for the current full solver;
-- refined `rsqrt` variants achieve comparable numerical accuracy;
-- `rsqrt` may become advantageous only in a future force kernel that is effectively vectorized.
-
-For this reason, the production implementation retains the standard `libm` path.
 
 
 ### 6.4 Accumulator Splitting and Critical Path
@@ -1213,7 +1396,30 @@ The number of particle interactions is unchanged. The purpose is only to expose 
 
 The benchmark compares 1, 2, 4, and 8 accumulators for each OpenMP thread count. One accumulator corresponds to the original direct kernel.
 
-`Ginteraction/s` measures billions of particle-pair interactions processed per second and is used as the force-kernel throughput metric. The marginal gain measures the improvement relative to the previous accumulator configuration.
+`Ginteraction/s` is a **throughput metric** for the force kernel: it measures how many billions of ordered particle-pair interactions are processed per second. Since the production force kernel does not use Newton's third law, both ordered interactions $(i,j)$ and $(j,i)$ are evaluated, while self-interactions are skipped. Therefore, one complete force evaluation contains
+
+$$
+N_{\mathrm{interactions}}
+=
+N(N-1)
+$$
+
+ordered interactions. For a KDK run with $n_{\mathrm{steps}}$ timesteps, the force kernel is called once before the first step and once per step, so
+
+$$
+N_{\mathrm{force}} = n_{\mathrm{steps}}+1.
+$$
+
+The reported interaction throughput is then computed as
+
+$$
+\mathrm{Ginteraction/s}
+=
+\frac{N(N-1)N_{\mathrm{force}}}
+     {T_{\mathrm{force}}\cdot 10^9},
+$$
+
+where $T_{\mathrm{force}}$ is the measured time spent in force evaluations. In the accumulator benchmark shown below, the marginal gain measures the improvement relative to the previous accumulator configuration.
 
 | Threads | Accumulators | Force time (s) | Speedup vs direct | Marginal gain | Ginteraction/s |
 |---:|---:|---:|---:|---:|---:|
@@ -1296,13 +1502,156 @@ $$
 Accumulator splitting therefore provides a moderate but measurable optimization, reaching a maximum observed speedup of $1.151\times$ while preserving the numerical result.
 
 
-#### 6.5 Optimization Summary
+### 6.5 Optimization Summary
 - **Newton**: fewer interactions, but more difficult parallel updates.
 - **SoA**: suitable layout, but little benefit without vectorization.
-- **rsqrt**: high SIMD throughput in isolation, but no solver-level speedup.
+- **rsqrt**: AVX-512 plus one Newton refinement gives the best speed-accuracy trade-off.
 - **Accumulator splitting**: best practical improvement, up to $1.151\times$.
 
 Overall, the results show that an optimization is effective only when it matches the structure of the complete kernel.
+
+### 6.6 Single-Socket Throughput and Peak Performance
+
+The optimization results can be placed in the context of the floating-point capability of a single CPU socket.
+
+Two different quantities must be distinguished:
+
+1. the **theoretical hardware peak**, determined by the processor architecture;
+2. the **sustained kernel throughput**, determined by the actual force loop executed by the program.
+
+The theoretical peak depends on the number of active cores, the clock frequency, the SIMD/FMA throughput of the core, and whether the compiler can generate instructions that use those units efficiently.
+
+For one socket of the GENOA node used in this work:
+
+| Quantity | Value used |
+|:---|---:|
+| Architecture | AMD EPYC 9374F, Zen 4 |
+| Cores per socket | 32 |
+| Observed clock snapshot | $\approx 3.85$ GHz |
+| FP64 throughput assumption | 16 FLOP/cycle/core |
+
+The FP64 throughput assumption corresponds to two 256-bit FMA execution paths per Zen 4 core. A 256-bit double-precision FMA operates on four doubles and counts as two floating-point operations per lane, giving
+
+$$
+4\ \mathrm{lanes}
+\times
+2\ \mathrm{FLOP/FMA}
+\times
+2\ \mathrm{FMA/cycle}
+=
+16\ \mathrm{FLOP/cycle/core}.
+$$
+
+The theoretical single-socket peak is therefore estimated as
+
+$$
+P_{\mathrm{peak,socket}}
+=
+N_{\mathrm{cores}}
+\times
+f
+\times
+P_{\mathrm{core}},
+$$
+
+where $N_{\mathrm{cores}}$ is the number of cores in one socket, $f$ is the clock frequency in GHz, and $P_{\mathrm{core}}$ is the FP64 throughput per core in FLOP/cycle. Using the observed clock snapshot,
+
+$$
+P_{\mathrm{peak,socket}}
+\approx
+32
+\times
+3.85
+\times
+16
+=
+1971\ \mathrm{GFLOP/s}
+\approx
+1.97\ \mathrm{TFLOP/s}.
+$$
+
+This value is a hardware ceiling. It assumes that the code executes a dense stream of vectorized FMA operations with no limiting instruction, dependency, memory, or control-flow bottleneck.
+
+The sustained throughput of the actual N-body kernel is measured differently. The force kernel throughput is reported in `Ginteraction/s`, i.e. billions of ordered particle-pair interactions per second. To express this as a nominal floating-point rate, the interaction throughput is multiplied by the approximate operation count per interaction:
+
+$$
+P_{\mathrm{kernel}}
+\approx
+R_{\mathrm{interaction}}
+\times
+F_{\mathrm{interaction}},
+$$
+
+where $R_{\mathrm{interaction}}$ is measured in Ginteraction/s and $F_{\mathrm{interaction}}$ is the nominal number of FLOP per interaction. In this report,
+
+$$
+F_{\mathrm{interaction}}\approx 20.
+$$
+
+This conversion is useful for comparing against the theoretical peak, but it is not a hardware-counter measurement. It should be interpreted as a **nominal kernel throughput**.
+
+The cleanest socket-level estimate comes from the $2\times32$ hybrid mapping: two MPI ranks are used on one node, and the binding check places one rank on each 32-core socket. The measured node-level force throughput is
+
+$$
+18.654\ \mathrm{Ginteraction/s}.
+$$
+
+Assuming the two socket-local ranks perform balanced work, the sustained throughput per socket is approximately
+
+$$
+R_{\mathrm{socket}}
+\approx
+\frac{18.654}{2}
+=
+9.327\ \mathrm{Ginteraction/s}.
+$$
+
+The corresponding nominal floating-point throughput is
+
+$$
+P_{\mathrm{kernel,socket}}
+\approx
+9.327
+\times
+20
+=
+186.5\ \mathrm{GFLOP/s}.
+$$
+
+Relative to the theoretical single-socket peak,
+
+$$
+\frac{P_{\mathrm{kernel,socket}}}
+     {P_{\mathrm{peak,socket}}}
+\approx
+\frac{186.5}{1971}
+=
+0.095,
+$$
+
+so the measured kernel reaches roughly
+
+$$
+\boxed{9.5\%}
+$$
+
+of the estimated FP64 socket peak.
+
+This gap is expected. The theoretical Zen 4 peak assumes ideal vector FMA execution, while the N-body force loop is not an ideal FMA-only kernel. The limiting factors observed in the previous optimization experiments are:
+
+- **inverse-distance evaluation**: the interaction requires $1/\sqrt{r^2 + \epsilon^2}$, and the faster `rsqrt` path gives large gains only in the isolated SIMD benchmark;
+- **ineffective vectorization of the complete force loop**: the full solver does not convert the isolated SIMD advantage into a comparable application-level speedup;
+- **accumulator dependency chains**: splitting the accumulators improves throughput, showing that instruction-level parallelism is limited by the serial accumulation path;
+- **control flow and data movement**: the self-interaction check and repeated reads of source coordinates make the loop less like a dense matrix/FMA kernel;
+- **parallel overheads**: OpenMP and MPI costs are present, although the timing breakdown shows that they remain secondary to the force computation in the tested range.
+
+Therefore, the single-socket performance is not determined only by the theoretical Zen 4 FLOP peak. The relevant limit for this application is the sustained throughput of the specific force kernel:
+
+$$
+\boxed{
+\text{single-socket performance is limited by how well the interaction loop exposes vectorized, independent arithmetic}
+}
+$$
 
 The next section examines MPI communication and parallel scaling.
 
@@ -1662,13 +2011,13 @@ A clear scaling limit is not reached in the tested range. Such a limit would bec
 
 Weak scaling evaluates how performance changes when the problem size grows together with the number of parallel resources.
 
-In this experiment, each MPI rank always owns
+In this experiment, each MPI rank owns a fixed number of target particles,
 
 $$
 N_{\mathrm{local}}=8192
 $$
 
-target particles, while the global problem size grows as
+while the global problem size grows with the number of MPI ranks:
 
 $$
 N=P\,N_{\mathrm{local}},
@@ -1676,9 +2025,7 @@ $$
 
 where $P$ is the number of MPI ranks.
 
-For a direct all-pairs N-body algorithm, keeping $N_{\mathrm{local}}$ fixed does not imply constant work per rank. Each local target still interacts with all global source particles.
-
-Therefore,
+For a direct all-pairs N-body algorithm, keeping $N_{\mathrm{local}}$ fixed does **not** imply constant work per rank. Each local target still interacts with all global source particles. Therefore, the useful force work per rank scales as
 
 $$
 W_{\mathrm{rank}}
@@ -1688,9 +2035,26 @@ N_{\mathrm{local}}N
 P\,N_{\mathrm{local}}^2.
 $$
 
-With $N_{\mathrm{local}}$ fixed, the force work per rank grows linearly with $P$. The amount of ring communication per rank also grows approximately linearly, because each rank exchanges a fixed-size source block over $P$ ring phases. Therefore, the compute-to-communication ratio remains approximately constant in the ideal weak-scaling model.
+The ring communication follows the same first-order trend. In one force evaluation, each rank exchanges a fixed-size source block across approximately $P$ ring phases, so the communicated data volume per rank scales as
 
-The work per rank grows linearly with $P$, so the algorithm-aware ideal runtime is
+$$
+V_{\mathrm{rank}}
+\sim
+P\,N_{\mathrm{local}}.
+$$
+
+The ideal compute-to-communication ratio is then
+
+$$
+\frac{W_{\mathrm{rank}}}{V_{\mathrm{rank}}}
+\sim
+\frac{P\,N_{\mathrm{local}}^2}
+     {P\,N_{\mathrm{local}}}
+=
+N_{\mathrm{local}}.
+$$
+
+Since $N_{\mathrm{local}}$ is fixed, this ratio should remain approximately constant in the ideal model. The ideal runtime is not constant, however: because the work per rank grows linearly with $P$, the algorithm-aware weak-scaling reference is
 
 $$
 T_{\mathrm{ideal}}(P)=P\,T(1).
@@ -1726,6 +2090,16 @@ with ideal value $P$.
 | 8 | 65,536 | $195.622070 \pm 0.250037$ | 7.862 | 0.983 |
 | 16 | 131,072 | $391.787201 \pm 1.201007$ | 15.703 | 0.981 |
 
+The measured communication behaviour is summarized below. The `Force / communication` column is a timing ratio, not a pure work/volume ratio: it includes latency, synchronization, MPI progress, cache effects, and runtime noise. It is still useful because it shows whether useful computation remains dominant.
+
+| MPI ranks | Force time (s) | Communication time (s) | Communication fraction | Force / communication |
+|---:|---:|---:|---:|---:|
+| 1 | 23.778439 | 0.000000 | 0.0% | - |
+| 2 | 47.952845 | 0.714484 | 1.5% | 67.1 |
+| 4 | 95.913355 | 2.311073 | 2.4% | 41.5 |
+| 8 | 191.977621 | 6.059525 | 3.1% | 31.7 |
+| 16 | 384.396733 | 10.344596 | 2.6% | 37.2 |
+
 #### Main observations
 - **Runtime follows the expected linear growth very closely.**  
   $$
@@ -1739,7 +2113,7 @@ with ideal value $P$.
   \rightarrow
   391.8\ \mathrm{s}.
   $$
-  Doubling the number of ranks also doubles the global problem size and approximately doubles the work performed by each rank.
+  This is the correct weak-scaling expectation for direct N-body: doubling $P$ also doubles the global number of source particles seen by each local target.
 - **Scaled speedup remains close to ideal.**  
   At 16 ranks,
   $$
@@ -1752,8 +2126,12 @@ with ideal value $P$.
   $$
 - **The measurements are stable.**  
   The standard deviations remain small compared with the median runtimes.
-- **Communication remains a secondary cost.**  
-  Its fraction stays at only a few percent, reaching approximately $3.1\%$ at 8 ranks and $2.6\%$ at 16 ranks. The small non-monotonic variation does not affect the overall scaling trend.
+- **Communication remains secondary, but the timing ratio is not ideal.**  
+  Communication stays at only a few percent of total runtime, reaching approximately $3.1\%$ at 8 ranks and $2.6\%$ at 16 ranks. The force/communication ratio remains large, but it is not constant:
+  ```text
+  67.1 -> 41.5 -> 31.7 -> 37.2
+  ```
+  This is the measured departure from the ideal compute-to-communication model.
 - **Numerical correctness is preserved.**  
   The largest measured energy drift is
   $$
@@ -1763,7 +2141,7 @@ with ideal value $P$.
 
 #### Interpretation
 
-The weak-scaling behaviour can be summarized as:
+The weak-scaling result can be summarized as:
 
 ```text
 fixed number of targets per rank
@@ -1779,15 +2157,23 @@ work per rank grows as P
 ideal runtime also grows as P
 ```
 
-The measured runtime follows this expected behaviour very closely. The small decrease in efficiency from $1.000$ to $0.981$ shows that communication and synchronization introduce only limited additional overhead.
+The measured runtime follows this algorithm-aware ideal very closely. The small decrease in efficiency from $1.000$ to $0.981$ shows that communication and synchronization introduce overhead, but not enough to change the dominant scaling trend.
+
+The ideal model assumes that communication cost is proportional only to the amount of data moved. The timing ratio shows that this is not exactly true in practice, because real executions also include:
+
+- **network injection and message latency**: each rank participates in more ring phases as $P$ increases, so more messages must be injected into the MPI stack;
+- **synchronization between ring phases**: the next phase cannot start until the required source block has arrived, so small rank-to-rank timing differences can expose waiting time;
+- **OS and runtime jitter**: small variations in process scheduling, MPI progress, and node activity become visible when all ranks must progress through the ring together;
+- **cache and NUMA effects**: larger global problem sizes change how source blocks move through cache and memory, even though each local block size is fixed;
+- **particle-distribution effects**: the Plummer sphere is spatially non-uniform, so the numerical values and memory-access behaviour are not perfectly identical across all rank-local blocks, although the direct algorithm keeps the pair count balanced.
+
+Within the tested range, these effects remain secondary: the force kernel dominates and weak efficiency stays above $98\%$. At larger rank counts, the effects expected to win eventually are the ring communication costs, especially message latency and network injection limits, followed by synchronization and jitter. Once those costs become comparable to useful force computation, the compute-to-communication ratio will no longer behave as the ideal model predicts.
 
 $$
 \boxed{
 \text{the measured weak scaling closely follows the direct-N-body ideal, with efficiency remaining above }98\%
 }
 $$
-
-The key point is therefore that constant runtime is not the correct weak-scaling expectation for a direct $O(N^2)$ solver. With $N_{\mathrm{local}}$ fixed, the amount of work per rank still increases linearly with the number of MPI ranks.
 
 
 ### 7.5 Scalability and Bottleneck Evolution
@@ -1900,7 +2286,26 @@ The container provides a reproducible userspace while reusing the MPI stack inst
 #### Container design
 The image is based on `Ubuntu 24.04`. Ubuntu 22.04 was initially considered, but it was not compatible with the OpenMPI installation available on Orfeo because the host MPI stack required a newer `glibc`.
 
-A general-purpose Ubuntu image was preferred to a vendor HPC image because the application is CPU-only and does not require GPU libraries, vendor math libraries, or a pre-packaged HPC software stack.
+A general-purpose Ubuntu base image was preferred to a vendor HPC image, such as `nvcr.io/hpc/...`, for three reasons.
+
+1. The application is a CPU-only C/MPI/OpenMP code. It does not require CUDA, GPU drivers, vendor GPU communication libraries, or a pre-packaged accelerated math stack. Using a vendor image would therefore add software layers that are not used by the solver.
+
+2. The goal of the container is to provide a minimal and reproducible userspace for building and launching the application, while the performance-critical MPI runtime is supplied by the cluster at execution time. This avoids tying the image to a vendor-specific MPI or communication stack that may not match the host system.
+
+3. A plain Ubuntu image makes the container easier to audit: the installed dependencies are limited to the compiler toolchain, OpenMPI headers and binaries needed for the build, `make`, and Python utilities. The performance comparison is therefore easier to interpret, because fewer unrelated libraries or vendor defaults can affect the result.
+
+In short, the container is intentionally generic:
+
+```text
+portable Ubuntu userspace
+        +
+host MPI at runtime
+        +
+CPU-only application
+```
+
+This matches the requirements of the N-body solver better than a vendor HPC image.
+
 Two versioned recipes are provided:
 
 ```text
@@ -1935,7 +2340,17 @@ build time   → container MPI
 runtime      → host MPI
 ```
 
+Thus, the container MPI is a build dependency, not the MPI runtime used for the final performance measurements.
+
 This distinction is important because the MPI implementation inside a container may not match the launcher, transport components, or communication stack of the HPC system.
+
+If the MPI used at build time and the MPI injected at runtime are not compatible, the executable may fail before the simulation starts, or it may start but communicate through an unexpected or slower MPI path. Typical symptoms are missing-library or missing-symbol errors, OpenMPI startup warnings, hangs during MPI calls, or anomalous communication times.
+
+This can be checked even without access to the application source code, because it is a binary and runtime-consistency problem:
+
+- inspect the dynamically linked libraries with `ldd` and verify that `libmpi`, `libopen-rte`, and `libopen-pal` are resolved from the host MPI installation during the final run;
+- compare `mpirun --version` or `ompi_info` inside the bound container with the host MPI environment;
+- run a minimal MPI smoke test and the application on a very small case, checking for startup errors, MPI warnings, hangs, or unexpectedly different communication timings.
 
 The runtime binding was verified with `ldd` in three environments:
 
@@ -2285,15 +2700,27 @@ cluster-dependent
 MPI libraries + transport + interconnect configuration
 ```
 
-The MPI ring algorithm itself uses standard point-to-point operations and therefore does not depend directly on vendor-specific APIs. However, the MPI implementation may internally rely on shared-memory mechanisms or network-specific components that must remain available inside the container.
+The MPI ring algorithm itself uses standard point-to-point operations and therefore does not depend directly on vendor-specific APIs. At source-code level, it is therefore safe to containerize without changing the ring-shift logic.
 
-For this reason, deployment on another HPC system requires revalidating:
-- the host MPI implementation and library binding;
-- the available transport components;
-- the target interconnect;
+However, this does not mean that every MPI runtime feature is automatically available inside the container. The MPI implementation may internally rely on shared-memory support, `/dev/shm`, UCX, or network-specific libraries provided by the cluster. If these resources are not visible or compatible inside the container, the application code can remain correct while the MPI runtime emits warnings, disables the fastest transport, falls back to a slower path, or fails during communication initialization.
+
+This is exactly why the final experiments do not assume that containerization is transparent for MPI: the MPI libraries are bound explicitly from the host, the selected transport is controlled, and small smoke tests are run before collecting performance data.
+
+For this reason, moving the same `.sif` image to another HPC system would not require changing the application-level part:
+
+- the C source code;
+- the MPI ring decomposition;
+- the OpenMP force kernel;
+- the input format and benchmark scripts, apart from scheduler options such as account, partition, and node layout.
+
+The cluster-dependent part would instead need to be adapted and revalidated:
+
+- the host MPI implementation injected at runtime;
+- the library binding inside Singularity;
+- the MPI transport selected for the available interconnect;
 - basic MPI correctness and communication performance.
 
-For example, a multi-node InfiniBand system would keep the same application code and ring decomposition, but would require an MPI transport configuration appropriate for that fabric. The controlled `self,tcp` policy used here for native-versus-container comparison should therefore not be interpreted as a production configuration for a different cluster.
+For example, on a multi-node InfiniBand system the same application code and the same `.sif` image should remain usable, but the MPI transport policy should be changed to use the InfiniBand-capable host stack, for example through the cluster-provided OpenMPI/UCX or OpenMPI/OFI configuration. The controlled `self,tcp` policy used here for native-versus-container comparison is useful for isolating container overhead, but it is not a production setting for an InfiniBand cluster because it would bypass the high-performance network path.
 
 $$
 \boxed{
@@ -2328,8 +2755,8 @@ This project evaluated a direct N-body solver from four complementary perspectiv
 - **Numerical correctness**  
   The KDK integration with softened gravity remained within the selected energy-drift tolerance in all final validation experiments.
 - **Kernel optimization**  
-  Reducing the theoretical operation count does not automatically improve performance. Newton's third law introduces update dependencies, while reciprocal-square-root approximations provide high isolated throughput but no solver-level benefit without effective vectorization.
-  The most useful low-level optimization was accumulator splitting, reaching up to
+  Reducing the theoretical operation count does not automatically improve performance. Newton's third law introduces update dependencies, while the AVX-512 reciprocal-square-root kernel shows that architecture-aware SIMD can provide a large speedup when the approximation error is controlled by Newton refinement.
+  Accumulator splitting also provides a useful low-level improvement, reaching up to
   $$
   1.151\times
   $$
@@ -2413,9 +2840,17 @@ Nbody_serial/
 ├── generate_ic.c
 │   └── Plummer initial-condition generator used by validation and benchmarks
 │
+├── inspect_particles.c
+│   └── diagnostic reader for binary particle snapshots
+│
 ├── benchmark_layout.c
+│   └── focused AoS/SoA force-kernel layout benchmark
+│
+├── benchmark_rsqrt_accuracy.c
+│   └── direct acceleration-error check for AVX-512 rsqrt variants
+│
 ├── benchmark_rsqrt_kernel.c
-│   └── focused microbenchmarks for data layout and SIMD reciprocal square root
+│   └── isolated AVX-512 reciprocal-square-root microbenchmark
 │
 ├── Makefile
 │   └── native/MPI builds, precision selection, OpenMP flags
@@ -2439,6 +2874,9 @@ Nbody_serial/
 │   └── utils/
 │       └── system information, MPI binding checks, launch-overhead measurement
 │
+├── results/
+│   └── raw benchmark CSV files and SLURM output logs generated on Orfeo
+│
 ├── report/
 │   ├── data/
 │   │   └── hardware and software stack snapshot
@@ -2451,7 +2889,7 @@ Nbody_serial/
     └── final project report
 ```
 
-This layout mirrors the experimental structure of the project: source files implement the solver, `scripts/benchmark` and `scripts/slurm` produce the raw measurements, `scripts/analyze` converts them into report-ready artifacts, and `report/` stores only the final tables, figures, and setup information used in the discussion.
+This layout mirrors the experimental structure of the project: source files implement the solver and focused microbenchmarks, `scripts/benchmark` and `scripts/slurm` produce the raw measurements under `results/`, `scripts/analyze` converts them into report-ready artifacts, and `report/` stores the final tables, figures, and setup information used in the discussion.
 
 
 ### A.2 Benchmark Traceability
@@ -2463,11 +2901,14 @@ All report tables and figures are generated from benchmark data and analysis scr
 | Energy validation | Section 2.4 | `report/tables/validation_energy_summary.md` |
 | $O(N^2)$ growth | Section 5.2 | `report/tables/n_growth_summary.md` |
 | Kernel profiling and throughput | Sections 5.3, 7.3 | `report/tables/force_throughput_summary.md` |
+| Portable/native compilation target | Section 4.3 | `report/tables/march_x86_64_v3_2x32.md`, `report/tables/march_native_2x32.md` |
 | Newton, layout, rsqrt, accumulators | Section 6 | `report/tables/*_tradeoff_summary.md` |
+| Single-socket peak comparison | Section 6.6 | `report/data/system_info_genoa.txt`, `report/tables/march_native_2x32.md` |
 | Hybrid mapping and binding | Sections 4.4, 7.1 | `scripts/slurm/binding_check.slurm`, `report/tables/hybrid_mapping_summary.md` |
 | Communication overlap | Section 7.2 | `report/tables/ring_overlap_summary.md` |
 | Strong/weak scaling | Sections 7.3, 7.4 | `report/tables/*scaling*_summary.md` |
-| Container launch and MPI tests | Sections 8.3, 8.4 | `report/tables/container_launch_overhead_summary.md`, `report/tables/mpi_microbenchmark_summary.md` |
+| Container design and MPI binding | Sections 8.1, 8.5 | `container/nbody.def`, `scripts/utils/check_container_mpi_binding.sh`, `report/data/system_info_genoa.txt` |
 | Native/container comparison | Section 8.2 | `report/tables/container_overhead_summary.md` |
+| Container launch and MPI tests | Sections 8.3, 8.4 | `report/tables/container_launch_overhead_summary.md`, `report/tables/mpi_microbenchmark_summary.md` |
 
 Derived quantities such as `Ginteraction/s`, speedup, efficiency, and container overhead are generated by the corresponding scripts under `scripts/analyze/`.

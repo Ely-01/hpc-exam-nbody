@@ -8,7 +8,7 @@ The scientific discussion, interpretation of the results, and final exam
 deliverable are in:
 
 ```text
-FINAL_REPORT.md
+REPORT.md
 ```
 
 This README is a practical guide to the repository: what each file does, which
@@ -40,6 +40,9 @@ Nbody_serial/
 ├── benchmark_layout.c
 │   └── AoS-vs-SoA force-kernel layout microbenchmark
 │
+├── benchmark_rsqrt_accuracy.c
+│   └── acceleration-error check for approximate reciprocal-square-root variants
+│
 ├── benchmark_rsqrt_kernel.c
 │   └── isolated SIMD reciprocal-square-root microbenchmark
 │
@@ -68,9 +71,9 @@ Nbody_serial/
 │   ├── data/
 │   │   └── hardware/software snapshots and hybrid rank-binding verification
 │   ├── tables/
-│   │   └── final CSV and Markdown tables used in FINAL_REPORT.md
+│   │   └── final CSV and Markdown tables used in REPORT.md
 │   └── figures/
-│       └── final SVG plots used in FINAL_REPORT.md
+│       └── final SVG plots used in REPORT.md
 │
 └── results/
     └── raw benchmark logs and CSV files generated during runs
@@ -298,6 +301,39 @@ Final snapshot:
 report/data/system_info_genoa.txt
 ```
 
+Commands used interactively inside a GENOA allocation to confirm the actual
+node topology, NUMA layout, and observed clock frequencies:
+
+```sh
+srun -A dssc -p GENOA -N 1 -n 1 -c 64 bash -lc '
+hostname
+lscpu | grep -E "Model name|Socket|Core|Thread|CPU MHz|CPU max MHz|CPU min MHz|NUMA"
+numactl -H
+'
+```
+
+More detailed clock-frequency check used for the single-socket peak estimate:
+
+```sh
+srun -A dssc -p GENOA -N 1 -n 1 -c 64 bash -lc '
+hostname
+echo "=== lscpu MHz ==="
+lscpu | grep -i mhz || true
+echo "=== per-core MHz ==="
+lscpu --extended=CPU,SOCKET,CORE,MHZ | head -80 || true
+echo "=== /proc/cpuinfo ==="
+grep -m 16 "cpu MHz" /proc/cpuinfo || true
+echo "=== cpufreq ==="
+for f in /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq /sys/devices/system/cpu/cpu0/cpufreq/base_frequency /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq; do
+  echo "$f:"
+  cat "$f" 2>/dev/null || echo "not available"
+done
+'
+```
+
+The final report uses the observed GENOA snapshot of approximately `3.85 GHz`
+for the conservative socket-level peak calculation.
+
 ## Validation and Growth Checks
 
 Energy-conservation validation:
@@ -379,6 +415,20 @@ THREADS="1 2 4 8" REPEATS=5 N=8192 NSTEPS=20 DT=1e-4 EPS=0.05 \
 python3 scripts/analyze/analyze_rsqrt_tradeoff.py results/rsqrt_tradeoff_*.csv \
   --csv report/tables/rsqrt_tradeoff_summary.csv \
   --markdown report/tables/rsqrt_tradeoff_summary.md
+```
+
+Reciprocal-square-root accuracy check:
+
+```sh
+N=8192 EPS=0.05 \
+  sh scripts/benchmark/benchmark_rsqrt_accuracy.sh
+```
+
+Outputs:
+
+```text
+report/tables/rsqrt_accuracy_summary.csv
+report/tables/rsqrt_accuracy_summary.md
 ```
 
 Isolated SIMD reciprocal-square-root microbenchmark:
@@ -470,6 +520,40 @@ cat results/slurm_binding_check_<jobid_2x32>.out \
     results/slurm_binding_check_<jobid_8x8>.out \
     results/slurm_binding_check_<jobid_64x1>.out \
   > report/data/hybrid_binding_check.txt
+```
+
+Native-vs-portable compilation target check used in the report:
+
+```sh
+sbatch -A dssc -p GENOA \
+  --nodes=1 \
+  --ntasks=2 \
+  --cpus-per-task=32 \
+  --time=00:30:00 \
+  --export=ALL,MODULES="openMPI/4.1.6",CONFIGS="2x32",N=32768,NSTEPS=20,REPEATS=5,CSV=report/tables/march_x86_64_v3_2x32.csv,CFLAGS="-O3 -march=x86-64-v3 -ffp-contract=fast -Wall -Wextra -Wpedantic" \
+  scripts/slurm/hybrid_benchmark.slurm
+
+sbatch -A dssc -p GENOA \
+  --nodes=1 \
+  --ntasks=2 \
+  --cpus-per-task=32 \
+  --time=00:30:00 \
+  --export=ALL,MODULES="openMPI/4.1.6",CONFIGS="2x32",N=32768,NSTEPS=20,REPEATS=5,CSV=report/tables/march_native_2x32.csv,CFLAGS="-O3 -march=native -ffp-contract=fast -Wall -Wextra -Wpedantic" \
+  scripts/slurm/hybrid_benchmark.slurm
+```
+
+Summaries generated from the two CSV files:
+
+```sh
+python3 scripts/analyze/summarize_hybrid_csv.py \
+  report/tables/march_x86_64_v3_2x32.csv \
+  --markdown report/tables/march_x86_64_v3_2x32.md \
+  --csv report/tables/march_x86_64_v3_2x32_summary.csv
+
+python3 scripts/analyze/summarize_hybrid_csv.py \
+  report/tables/march_native_2x32.csv \
+  --markdown report/tables/march_native_2x32.md \
+  --csv report/tables/march_native_2x32_summary.csv
 ```
 
 Blocking-vs-overlap ring comparison:
@@ -832,6 +916,7 @@ generate_ic
 inspect_particles
 benchmark_layout
 benchmark_rsqrt_kernel
+benchmark_rsqrt_accuracy
 *.bin
 results/
 __pycache__/
