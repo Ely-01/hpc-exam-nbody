@@ -9,7 +9,7 @@ OPENMP    ?= 0
 
 PROGRAMS := nbody_direct_serial generate_ic inspect_particles benchmark_layout
 MPI_PROGRAMS := nbody_mpi_omp
-EXTRA_PROGRAMS := benchmark_rsqrt_kernel
+EXTRA_PROGRAMS := benchmark_rsqrt_kernel benchmark_rsqrt_accuracy
 HEADERS  := nbody_common.h nbody_core.h
 BUILD_DIR := build
 COMMON_FLAGS_FILE := $(BUILD_DIR)/common.flags
@@ -50,6 +50,9 @@ benchmark_layout: benchmark_layout.c nbody_core.c $(HEADERS) $(COMMON_FLAGS_FILE
 
 benchmark_rsqrt_kernel: benchmark_rsqrt_kernel.c nbody_core.c $(HEADERS) $(COMMON_FLAGS_FILE)
 	$(CC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) -o $@ benchmark_rsqrt_kernel.c nbody_core.c $(LDLIBS)
+
+benchmark_rsqrt_accuracy: benchmark_rsqrt_accuracy.c nbody_core.c $(HEADERS) $(COMMON_FLAGS_FILE)
+	$(CC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) -o $@ benchmark_rsqrt_accuracy.c nbody_core.c $(LDLIBS)
 
 nbody_mpi_omp: nbody_mpi_omp.c nbody_core.c $(HEADERS) $(COMMON_FLAGS_FILE) $(SOLVER_FLAGS_FILE)
 	$(MPICC) $(STD) $(CPPFLAGS) $(PRECISION_CPPFLAGS) $(CFLAGS) $(OPENMP_CFLAGS) -o $@ nbody_mpi_omp.c nbody_core.c $(LDLIBS) $(OPENMP_LDLIBS)
