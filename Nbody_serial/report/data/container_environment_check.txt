@@ -1,0 +1,81 @@
+=== Native environment ===
+genoa002.hpc.rd.areasciencepark.it
+NAME="Fedora Linux"
+VERSION="41 (Forty One)"
+RELEASE_TYPE=stable
+ID=fedora
+VERSION_ID=41
+VERSION_CODENAME=""
+PLATFORM_ID="platform:f41"
+PRETTY_NAME="Fedora Linux 41 (Forty One)"
+ANSI_COLOR="0;38;2;60;110;180"
+LOGO=fedora-logo-icon
+CPE_NAME="cpe:/o:fedoraproject:fedora:41"
+DEFAULT_HOSTNAME="fedora"
+HOME_URL="https://fedoraproject.org/"
+DOCUMENTATION_URL="https://docs.fedoraproject.org/en-US/fedora/f41/"
+SUPPORT_URL="https://ask.fedoraproject.org/"
+BUG_REPORT_URL="https://bugzilla.redhat.com/"
+REDHAT_BUGZILLA_PRODUCT="Fedora"
+REDHAT_BUGZILLA_PRODUCT_VERSION=41
+REDHAT_SUPPORT_PRODUCT="Fedora"
+REDHAT_SUPPORT_PRODUCT_VERSION=41
+SUPPORT_END=2025-12-15
+gcc (GCC) 14.3.1 20251022 (Red Hat 14.3.1-4)
+gcc (GCC) 14.3.1 20251022 (Red Hat 14.3.1-4)
+mpirun (Open MPI) 4.1.6rc4
+ldd (GNU libc) 2.40
+	libm.so.6 => /lib64/libm.so.6 (0x00007f6f5242c000)
+	libmpi.so.40 => /opt/programs/openMPI/4.1.6/lib/libmpi.so.40 (0x00007f6f522e0000)
+	libgomp.so.1 => /lib64/libgomp.so.1 (0x00007f6f5228a000)
+	libc.so.6 => /lib64/libc.so.6 (0x00007f6f52097000)
+	libhwloc.so.15 => /opt/programs/hwloc/2.12.0/lib/libhwloc.so.15 (0x00007f6f51e9d000)
+
+=== Container build environment ===
+PRETTY_NAME="Ubuntu 24.04.4 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.4 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+mpirun (Open MPI) 4.1.6
+ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007ff4f7519000)
+	libmpi.so.40 => /lib/x86_64-linux-gnu/libmpi.so.40 (0x00007ff4f73e7000)
+	libgomp.so.1 => /lib/x86_64-linux-gnu/libgomp.so.1 (0x00007ff4f7391000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007ff4f717e000)
+	libhwloc.so.15 => /lib/x86_64-linux-gnu/libhwloc.so.15 (0x00007ff4f6fab000)
+	libcap.so.2 => /lib/x86_64-linux-gnu/libcap.so.2 (0x00007ff4f6f13000)
+
+=== Container final runtime with host MPI binding ===
+PRETTY_NAME="Ubuntu 24.04.4 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.4 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+mpirun (Open MPI) 4.1.6rc4
+ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007f5e03173000)
+	libmpi.so.40 => /opt/programs/openMPI/4.1.6/lib/libmpi.so.40 (0x00007f5e03027000)
+	libgomp.so.1 => /lib/x86_64-linux-gnu/libgomp.so.1 (0x00007f5e02fd1000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f5e02dbe000)
+	libhwloc.so.15 => /opt/programs/hwloc/2.12.0/lib/libhwloc.so.15 (0x00007f5e02bcc000)
