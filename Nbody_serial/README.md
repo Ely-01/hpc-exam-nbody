@@ -663,6 +663,10 @@ results/mpi_ldd_container_build_env.txt
 results/mpi_ldd_container_host_mpi.txt
 ```
 
+The consolidated report artifact for the native/container software-environment
+check is `report/data/container_environment_check.txt`.
+
+
 Measure launch overhead:
 
 The utility option is named `--apptainer` for historical compatibility, but the
@@ -899,10 +903,11 @@ Report-ready plots:
 report/figures/*.svg
 ```
 
-Hardware/software stack snapshot:
+Hardware/software stack snapshots:
 
 ```text
 report/data/system_info_genoa.txt
+report/data/container_environment_check.txt
 ```
 
 Generated files that should normally not be committed:

@@ -466,16 +466,20 @@ The NUMA layout recorded from the allocated compute node is:
 
 The final native experiments were performed using the following software environment:
 
-| Component                    | Version             |
-| :--------------------------- | :------------------ |
-| C compiler                   | GCC 14.3.1          |
-| MPI implementation           | Open MPI 4.1.6      |
-| MPI compiler wrapper         | `mpicc`             |
-| OpenMP runtime               | GNU `libgomp` (`libgomp.so.1`) |
-| Container runtime            | SingularityCE 4.3.1 |
-| Hardware-locality library    | hwloc 2.12.0        |
-| GNU C library                | glibc 2.40          |
-| External numerical libraries | none                |
+| Component | Version / configuration |
+|:---|:---|
+| Host userspace | Fedora Linux 41 |
+| Kernel | Linux x86_64, `6.13.12-200.fc41.x86_64` |
+| C compiler | GCC 14.3.1 `20251022` |
+| MPI implementation | Orfeo module `openMPI/4.1.6`, reporting Open MPI `4.1.6rc4` |
+| MPI compiler wrapper | `/opt/programs/openMPI/4.1.6/bin/mpicc` |
+| MPI launcher | `/opt/programs/openMPI/4.1.6/bin/mpirun` |
+| OpenMP runtime | GNU `libgomp` (`/lib64/libgomp.so.1`) |
+| GNU C library | glibc 2.40 |
+| Math library | host `libm` (`/lib64/libm.so.6`) |
+| Hardware-locality library | Orfeo hwloc 2.12.0 (`/opt/programs/hwloc/2.12.0`) |
+| Container runtime | SingularityCE 4.3.1 |
+| External numerical libraries | none |
 
 The MPI executable is compiled through `mpicc`, the Open MPI compiler wrapper. It uses the underlying GCC compiler while automatically adding the MPI headers and libraries required for compilation and linking.
 
@@ -582,14 +586,14 @@ $$
 
 faster than a 256-bit AVX2-width implementation. This is only a ceiling estimate: it assumes that the kernel is fully vectorized, that vector arithmetic is the limiting factor, and that no other bottleneck dominates.
 
-The correct way to measure this cost is to build the same source code with both targets and run the same benchmark configurations under the same MPI binding and transport policy:
+This cost was measured by building the same source code with both targets and running the same benchmark configuration under the same MPI binding and transport policy:
 
 ```text
 portable build: -O3 -march=x86-64-v3 -ffp-contract=fast
 native build:   -O3 -march=native    -ffp-contract=fast
 ```
 
-The comparison should report force time, `Ginteraction/s`, nominal GFLOP/s, and energy drift. If hardware counters are available, the measurement can be strengthened with SIMD/FMA instruction counters; otherwise, the combination of timing, derived throughput, and compiler vectorization reports is the available evidence. The native-versus-container timings in Section 8 include this compiler-target difference, so their overhead should be interpreted as a deployment-level comparison rather than the isolated cost of Singularity.
+The comparison reports force time, `Ginteraction/s`, and energy drift. If hardware counters were available, the measurement could be strengthened with SIMD/FMA instruction counters; otherwise, the combination of timing, derived throughput, and compiler vectorization reports is the available evidence. The native-versus-container timings in Section 8 include this compiler-target difference, so their overhead should be interpreted as a deployment-level comparison rather than the isolated cost of Singularity.
 
 #### Measured impact of the portable target
 
@@ -1855,14 +1859,14 @@ $$
 
 ![Native strong scaling](report/figures/strong_scaling_native_final.svg)
 
-| MPI ranks | Total time (s) | Speedup | Efficiency |
-|---:|---:|---:|---:|
-| 1 | $374.387700 \pm 0.490059$ | 1.000 | 1.000 |
-| 2 | $187.821448 \pm 0.065840$ | 1.993 | 0.997 |
-| 4 | $94.101276 \pm 0.017829$ | 3.979 | 0.995 |
-| 8 | $47.148061 \pm 0.005166$ | 7.941 | 0.993 |
-| 16 | $23.620087 \pm 0.005129$ | 15.850 | 0.991 |
-| 32 | $11.870895 \pm 0.015770$ | 31.538 | 0.986 |
+| MPI ranks | $N_{\mathrm{local}}$ | Total time (s) | Force median (s) | Comm median (s) | Comm fraction | Speedup | Efficiency | Max drift |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 32768 | $374.387700 \pm 0.490059$ | 370.531173 | 0.000000 | 0.0% | 1.000 | 1.000 | $1.848721\times10^{-7}$ |
+| 2 | 16384 | $187.821448 \pm 0.065840$ | 185.020960 | 0.213892 | 0.1% | 1.993 | 0.997 | $1.848721\times10^{-7}$ |
+| 4 | 8192 | $94.101276 \pm 0.017829$ | 92.475055 | 0.944024 | 1.0% | 3.979 | 0.995 | $1.848721\times10^{-7}$ |
+| 8 | 4096 | $47.148061 \pm 0.005166$ | 46.242101 | 0.760987 | 1.6% | 7.941 | 0.993 | $1.848721\times10^{-7}$ |
+| 16 | 2048 | $23.620087 \pm 0.005129$ | 23.142003 | 0.483388 | 2.0% | 15.850 | 0.991 | $1.848721\times10^{-7}$ |
+| 32 | 1024 | $11.870895 \pm 0.015770$ | 11.584479 | 0.300861 | 2.5% | 31.538 | 0.986 | $1.848721\times10^{-7}$ |
 
 
 Main observations
@@ -1899,6 +1903,10 @@ Main observations
   corresponding to $98.6\%$ efficiency.
 - **The scaling trend is stable across repetitions.**
   The standard deviations are small compared with the median runtimes, indicating low run-to-run variability.
+- **Communication remains a small fraction of the runtime.**
+  Even at 32 ranks, the measured communication time is only $0.300861$ s, corresponding to $2.5\%$ of the total runtime.
+- **Numerical correctness is unchanged by the rank count.**
+  The maximum relative energy drift remains approximately $1.85\times10^{-7}$ for all strong-scaling configurations.
 - **No clear scaling saturation is observed.**  
   Up to 32 ranks, adding more MPI processes still provides almost proportional performance gains.
 
@@ -2082,17 +2090,17 @@ with ideal value $P$.
 
 ![Native weak scaling](report/figures/weak_scaling_native_final.svg)
 
-| MPI ranks | Global $N$ | Total time (s) | Scaled speedup | Efficiency |
-|---:|---:|---:|---:|---:|
-| 1 | 8,192 | $24.032469 \pm 0.022871$ | 1.000 | 1.000 |
-| 2 | 16,384 | $48.688509 \pm 0.049339$ | 1.974 | 0.987 |
-| 4 | 32,768 | $97.615508 \pm 0.098695$ | 3.939 | 0.985 |
-| 8 | 65,536 | $195.622070 \pm 0.250037$ | 7.862 | 0.983 |
-| 16 | 131,072 | $391.787201 \pm 1.201007$ | 15.703 | 0.981 |
+| MPI ranks | Global $N$ | Total time (s) | Scaled speedup | Efficiency | Max drift |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 8192 | $24.032469 \pm 0.022871$ | 1.000 | 1.000 | $8.988769\times10^{-8}$ |
+| 2 | 16384 | $48.688509 \pm 0.049339$ | 1.974 | 0.987 | $1.034404\times10^{-7}$ |
+| 4 | 32768 | $97.615508 \pm 0.098695$ | 3.939 | 0.985 | $1.848721\times10^{-7}$ |
+| 8 | 65536 | $195.622070 \pm 0.250037$ | 7.862 | 0.983 | $9.648401\times10^{-7}$ |
+| 16 | 131072 | $391.787201 \pm 1.201007$ | 15.703 | 0.981 | $3.576960\times10^{-6}$ |
 
 The measured communication behaviour is summarized below. The `Force / communication` column is a timing ratio, not a pure work/volume ratio: it includes latency, synchronization, MPI progress, cache effects, and runtime noise. It is still useful because it shows whether useful computation remains dominant.
 
-| MPI ranks | Force time (s) | Communication time (s) | Communication fraction | Force / communication |
+| MPI ranks | Force median (s) | Comm median (s) | Comm fraction | Force / communication |
 |---:|---:|---:|---:|---:|
 | 1 | 23.778439 | 0.000000 | 0.0% | - |
 | 2 | 47.952845 | 0.714484 | 1.5% | 67.1 |
@@ -2284,7 +2292,7 @@ The goal is to determine whether any difference observed at application level is
 The container provides a reproducible userspace while reusing the MPI stack installed on the HPC system at runtime.
 
 #### Container design
-The image is based on `Ubuntu 24.04`. Ubuntu 22.04 was initially considered, but it was not compatible with the OpenMPI installation available on Orfeo because the host MPI stack required a newer `glibc`.
+The image is based on `Ubuntu 24.04.4 LTS`. Ubuntu 22.04 was initially considered, but it was not compatible with the Open MPI installation available on Orfeo because the host MPI stack required a newer `glibc`.
 
 A general-purpose Ubuntu base image was preferred to a vendor HPC image, such as `nvcr.io/hpc/...`, for three reasons.
 
@@ -2327,6 +2335,26 @@ singularity build container/nbody_latest.sif container/nbody.def
 
 The `.sif` file is not committed because it is a generated binary artifact; the reproducible source is the definition file.
 All experiments used **SingularityCE 4.3.1**, which was the container runtime available on Orfeo.
+
+#### Container Software Environment
+
+The container environment was inspected both before and after binding the host MPI stack. This distinction is important because the image provides the Ubuntu userspace and build-time dependencies, whereas the final MPI communication stack is supplied by Orfeo at runtime. The corresponding command output is saved in `report/data/container_environment_check.txt`.
+
+| Component | Image / build environment | Final container runtime |
+|:---|:---|:---|
+| Host kernel | Orfeo Linux kernel, shared through Singularity | Orfeo Linux kernel, shared through Singularity |
+| Userspace | Ubuntu 24.04.4 LTS | Ubuntu 24.04.4 LTS |
+| Container engine (host) | SingularityCE 4.3.1 | SingularityCE 4.3.1 |
+| Compiler used for build | GCC 13.3.0 | — |
+| Binary ISA target | `-march=x86-64-v3` | `-march=x86-64-v3` |
+| MPI used for build | Ubuntu Open MPI 4.1.6 | — |
+| MPI used at runtime | Ubuntu Open MPI 4.1.6 | Orfeo `openMPI/4.1.6` module, reporting Open MPI `4.1.6rc4` |
+| `libmpi` resolved by `ldd` | `/lib/x86_64-linux-gnu/libmpi.so.40` | `/opt/programs/openMPI/4.1.6/lib/libmpi.so.40` |
+| C / math runtime | Ubuntu glibc 2.39 and `libm` | Ubuntu glibc 2.39 and `libm` |
+| OpenMP runtime | Ubuntu `libgomp.so.1` | Ubuntu `libgomp.so.1` |
+| Hardware locality | Ubuntu `libhwloc.so.15` | Orfeo hwloc 2.12.0 |
+
+The final execution therefore uses a **mixed runtime environment**: the application retains the Ubuntu 24.04 userspace, C/math libraries, and OpenMP runtime from the container, while MPI and `hwloc` are resolved from the Orfeo host installation.
 
 
 #### Host MPI binding
@@ -2481,39 +2509,41 @@ The measured percentage must therefore be interpreted as a **deployment-level di
 ![Strong scaling native vs container](report/figures/strong_scaling_native_container_final.svg)
 
 
-| MPI ranks | Native time (s) | Container time (s) | Overhead |
-|---:|---:|---:|---:|
-| 1 | $377.476774 \pm 1.575675$ | $373.803578 \pm 0.225742$ | $-0.97\%$ |
-| 2 | $192.136294 \pm 0.051788$ | $187.832592 \pm 0.087729$ | $-2.24\%$ |
-| 4 | $96.453229 \pm 0.070562$ | $94.165248 \pm 0.044843$ | $-2.37\%$ |
-| 8 | $48.498850 \pm 0.009672$ | $47.260008 \pm 0.013726$ | $-2.55\%$ |
-| 16 | $24.492627 \pm 0.008468$ | $23.766715 \pm 0.018591$ | $-2.96\%$ |
-| 32 | $12.529375 \pm 0.044831$ | $12.164797 \pm 0.007646$ | $-2.91\%$ |
+| MPI ranks | $N_{\mathrm{local}}$ | Native time (s) | Container time (s) | Overhead | Native comm frac | Container comm frac | Max drift |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 32768 | $377.476774 \pm 1.575675$ | $373.803578 \pm 0.225742$ | $-0.97\%$ | 0.0% | 0.0% | $1.848721\times10^{-7}$ |
+| 2 | 16384 | $192.136294 \pm 0.051788$ | $187.832592 \pm 0.087729$ | $-2.24\%$ | 0.4% | 0.1% | $1.848721\times10^{-7}$ |
+| 4 | 8192 | $96.453229 \pm 0.070562$ | $94.165248 \pm 0.044843$ | $-2.37\%$ | 1.3% | 1.0% | $1.848721\times10^{-7}$ |
+| 8 | 4096 | $48.498850 \pm 0.009672$ | $47.260008 \pm 0.013726$ | $-2.55\%$ | 1.9% | 1.6% | $1.848721\times10^{-7}$ |
+| 16 | 2048 | $24.492627 \pm 0.008468$ | $23.766715 \pm 0.018591$ | $-2.96\%$ | 2.6% | 2.3% | $1.848721\times10^{-7}$ |
+| 32 | 1024 | $12.529375 \pm 0.044831$ | $12.164797 \pm 0.007646$ | $-2.91\%$ | 4.4% | 4.4% | $1.848721\times10^{-7}$ |
 
-Main observations
+##### Main observations
 - Native and container curves follow almost the same strong-scaling trend.
 - The measured difference remains small across all configurations:
-$$
--3.0\% \lesssim O_{\mathrm{container}} \lesssim -1.0\%.
-$$
+  $$
+  -3.0\% \lesssim O_{\mathrm{container}} \lesssim -1.0\%.
+  $$
+  The negative values of $O_{\mathrm{container}}$ mean that the measured container runtime is slightly lower than the corresponding native runtime. They should not be interpreted as a general Singularity speedup, because the comparison includes the complete deployment configuration, including compiler target, MPI binding, transport policy, and run-to-run variability.
 - No positive container penalty is observed up to 32 MPI ranks.
 - The scaling behaviour itself is preserved: container execution does not introduce an increasing loss of efficiency as the number of ranks grows.
-The negative values must not be interpreted as a Singularity speedup. They only indicate that, in these measurements, the complete container deployment produced slightly lower runtimes.
+- The communication fraction remains small and comparable in the two deployments, reaching about $4.4\%$ at 32 ranks in both cases.
+- The maximum energy drift is identical to the native run, so the container does not change the numerical result.
 
 
 #### Weak-scaling comparison
 
 ![Weak scaling native vs container](report/figures/weak_scaling_native_container_final.svg)
 
-| MPI ranks | Native time (s) | Container time (s) | Overhead |
-|---:|---:|---:|---:|
-| 1 | $23.332344 \pm 0.036565$ | $23.350336 \pm 0.001905$ | $+0.08\%$ |
-| 2 | $46.981598 \pm 0.055411$ | $46.961641 \pm 0.002709$ | $-0.04\%$ |
-| 4 | $94.373261 \pm 0.032592$ | $94.132828 \pm 0.026092$ | $-0.25\%$ |
-| 8 | $190.051070 \pm 0.027471$ | $188.543249 \pm 0.047304$ | $-0.79\%$ |
-| 16 | $386.723009 \pm 1.094676$ | $377.915699 \pm 0.162304$ | $-2.28\%$ |
+| MPI ranks | Global $N$ | Native time (s) | Container time (s) | Overhead | Native comm frac | Container comm frac | Max drift |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 8192 | $23.332344 \pm 0.036565$ | $23.350336 \pm 0.001905$ | $+0.08\%$ | 0.0% | 0.0% | $8.988769\times10^{-8}$ |
+| 2 | 16384 | $46.981598 \pm 0.055411$ | $46.961641 \pm 0.002709$ | $-0.04\%$ | 0.1% | 0.3% | $1.034404\times10^{-7}$ |
+| 4 | 32768 | $94.373261 \pm 0.032592$ | $94.132828 \pm 0.026092$ | $-0.25\%$ | 1.0% | 1.0% | $1.848721\times10^{-7}$ |
+| 8 | 65536 | $190.051070 \pm 0.027471$ | $188.543249 \pm 0.047304$ | $-0.79\%$ | 1.9% | 1.4% | $9.648401\times10^{-7}$ |
+| 16 | 131072 | $386.723009 \pm 1.094676$ | $377.915699 \pm 0.162304$ | $-2.28\%$ | 1.7% | 1.7% | $3.576960\times10^{-6}$ |
 
-Main observations
+##### Main observations
 - Native and container weak-scaling curves remain closely aligned.
 - The measured overhead ranges from approximately
 $$
@@ -2521,6 +2551,8 @@ $$
 $$
 - At low and intermediate rank counts, the difference is very close to zero.
 - Even as both the number of ranks and the global problem size increase, no growing positive container penalty appears.
+- Communication fractions remain comparable between native and container runs, supporting the conclusion that the controlled MPI binding and transport policy are consistent.
+- The numerical drift is unchanged between deployments for each problem size.
 
 #### Interpretation
 
@@ -2537,7 +2569,7 @@ runtime differences remain within a few percent
 no systematic container penalty is observed
 ```
 
-he small native-versus-container differences should be interpreted carefully:
+The small native-versus-container differences should be interpreted carefully:
 - they reflect the **complete deployment configuration**, not Singularity alone;
 - native and container binaries use different compiler targets;
 - normal run-to-run and job-to-job variability may also contribute;
@@ -2632,12 +2664,18 @@ Because `self,tcp` is deliberately used instead of the native shared-memory `vad
 
 ![OSU MPI microbenchmark: native vs container](report/figures/mpi_microbenchmark_curve.svg)
 
-Representative results are:
+Representative points from the full OSU curves are:
 
-| Metric | Message size | Native | Container | Difference |
+| Benchmark | Message size (bytes) | Native median $\pm\sigma$ | Container median $\pm\sigma$ | Container difference |
 |:---|---:|---:|---:|---:|
-| Latency | 1 B | $9.940 \pm 0.161\ \mu s$ | $10.000 \pm 0.088\ \mu s$ | $+0.60\%$ |
-| Bandwidth | 4 MiB | $1673.450 \pm 245.560$ MB/s | $1668.570 \pm 244.222$ MB/s | $-0.29\%$ |
+| latency | 1 | $9.940 \pm 0.161\ \mu s$ | $10.000 \pm 0.088\ \mu s$ | $+0.60\%$ |
+| latency | 1024 | $11.190 \pm 0.130\ \mu s$ | $11.170 \pm 0.070\ \mu s$ | $-0.18\%$ |
+| latency | 1048576 | $678.790 \pm 131.701\ \mu s$ | $765.030 \pm 151.795\ \mu s$ | $+12.70\%$ |
+| latency | 4194304 | $2424.840 \pm 8.366\ \mu s$ | $2427.500 \pm 690.235\ \mu s$ | $+0.11\%$ |
+| bandwidth | 1 | $0.140 \pm 0.005$ MB/s | $0.140 \pm 0.004$ MB/s | $+0.00\%$ |
+| bandwidth | 1024 | $108.840 \pm 2.122$ MB/s | $108.510 \pm 2.376$ MB/s | $-0.30\%$ |
+| bandwidth | 1048576 | $1572.810 \pm 213.220$ MB/s | $1574.700 \pm 214.964$ MB/s | $+0.12\%$ |
+| bandwidth | 4194304 | $1673.450 \pm 245.560$ MB/s | $1668.570 \pm 244.222$ MB/s | $-0.29\%$ |
 
 
 #### Main observations
@@ -2650,11 +2688,12 @@ Representative results are:
   $$
   +0.60\%.
   $$
-- For a 4 MiB message, bandwidth changes by only
+- At 1 MiB, the latency difference is larger in percentage terms, but it is of the same order as the run-to-run variability reported by the repeated measurements.
+- For the largest bandwidth point, 4 MiB, bandwidth changes by only
   $$
   -0.29\%.
   $$
-- The bandwidth difference is much smaller than the observed run-to-run variability, so it does not indicate a meaningful communication penalty.
+- Across the representative bandwidth points, the differences remain small compared with the observed run-to-run variability, so they do not indicate a meaningful communication penalty.
 
 #### Interpretation
 
@@ -2738,10 +2777,7 @@ The main limitations are:
 - **Single-node execution**: all final MPI scaling and container comparisons were limited to one compute node.
 - **Problem size**: strong- and weak-scaling sizes were reduced relative to the assignment reference values because of the two-hour wall-time limit.
 - **Hardware counters**: perf, PAPI, and LIKWID counters were not available. Vectorization and kernel behaviour were therefore evaluated through GCC optimization reports, timing, and derived throughput.
-- **Container comparison**: native and container binaries use different compilation targets: native: `-march=native` and container: `-march=x86-64-v3`
-
-Therefore, measured native-versus-container differences represent the complete deployment configurations rather than the isolated cost of Singularity.
-
+- **Container comparison**: native and container binaries use different compilation targets: native: `-march=native` and container: `-march=x86-64-v3`. Therefore, measured native-versus-container differences represent the complete deployment configurations rather than the isolated cost of Singularity.
 - **MPI transport**: native-only performance experiments use the host default MPI transport, whereas native-versus-container experiments use the controlled transport defined in Section 8.1. This difference is intentional because the two experiments answer different questions.
 
 These limitations restrict how far the results can be generalized, but do not affect the internal comparison of configurations performed under the same experimental conditions.
@@ -2907,7 +2943,7 @@ All report tables and figures are generated from benchmark data and analysis scr
 | Hybrid mapping and binding | Sections 4.4, 7.1 | `scripts/slurm/binding_check.slurm`, `report/tables/hybrid_mapping_summary.md` |
 | Communication overlap | Section 7.2 | `report/tables/ring_overlap_summary.md` |
 | Strong/weak scaling | Sections 7.3, 7.4 | `report/tables/*scaling*_summary.md` |
-| Container design and MPI binding | Sections 8.1, 8.5 | `container/nbody.def`, `scripts/utils/check_container_mpi_binding.sh`, `report/data/system_info_genoa.txt` |
+| Container design and MPI binding | Sections 8.1, 8.5 | `container/nbody.def`, `scripts/utils/check_container_mpi_binding.sh`, `report/data/container_environment_check.txt`, `report/data/system_info_genoa.txt` |
 | Native/container comparison | Section 8.2 | `report/tables/container_overhead_summary.md` |
 | Container launch and MPI tests | Sections 8.3, 8.4 | `report/tables/container_launch_overhead_summary.md`, `report/tables/mpi_microbenchmark_summary.md` |
 
